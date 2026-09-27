@@ -1,0 +1,80 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --paper: 247 246 242;
+    --card: 255 255 255;
+    --ink: 34 39 53;
+    --muted: 104 120 154;
+    --line: 224 226 231;
+    --brand: 18 179 148;
+    --clay: 220 111 71;
+    color-scheme: light;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-[rgb(var(--paper))] text-ink-950 font-sans antialiased;
+    margin: 0;
+    min-height: 100dvh;
+    background-image:
+      radial-gradient(900px 500px at 12% -10%, rgba(18, 179, 148, 0.1), transparent 60%),
+      radial-gradient(700px 420px at 92% 0%, rgba(220, 111, 71, 0.09), transparent 55%);
+    background-attachment: fixed;
+  }
+
+  h1,
+  h2,
+  h3 {
+    @apply font-display tracking-tight text-ink-950;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-brand-500 ring-offset-2 ring-offset-[rgb(var(--paper))];
+  }
+
+  input,
+  textarea,
+  select,
+  button {
+    font: inherit;
+    color: inherit;
+  }
+
+  /* Keep mobile form controls from zooming the viewport on focus */
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-ink-100 bg-white/90 shadow-soft backdrop-blur;
+  }
+
+  .field-label {
+    @apply mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-400;
+  }
+
+  .field-input {
+    @apply w-full rounded-xl border border-ink-200 bg-white px-3.5 py-2.5 text-[15px] text-ink-950 shadow-sm transition
+      placeholder:text-ink-300 focus:border-brand-400 focus:outline-none focus:ring-4 focus:ring-brand-500/15;
+  }
+
+  .safe-bottom {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem);
+  }
+}
+
+/* Scrollbars that match the paper theme */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--line)) transparent;
+}

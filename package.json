@@ -1,0 +1,41 @@
+{
+  "name": "reportini",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Gestione delle relazioni anagrafiche e degli appuntamenti su Google Calendar",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && cp dist/index.html dist/404.html",
+    "typecheck": "tsc -b --noEmit",
+    "test": "vitest run && bun scripts/smoke.mjs",
+    "test:ui": "vitest run",
+    "preview": "vite preview",
+    "electron:install": "cd electron && npm install",
+    "electron:build": "vite build && rm -rf electron/renderer && cp -R dist electron/renderer",
+    "electron:dev": "cd electron && npm run dev",
+    "electron:pack": "bun run electron:build && cd electron && npm run dist"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.117.2",
+    "idb-keyval": "^6.2.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.2",
+    "sql.js": "^1.11.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.0",
+    "@types/sql.js": "^1.4.9",
+    "@vitejs/plugin-react": "^4.3.2",
+    "autoprefixer": "^10.4.20",
+    "fake-indexeddb": "^6.2.5",
+    "jsdom": "^30.1.1",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.13",
+    "typescript": "^5.6.2",
+    "vite": "^5.4.8",
+    "vitest": "^2"
+  }
+}

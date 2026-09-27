@@ -1,0 +1,37 @@
+{
+  "name": "reportini-desktop",
+  "productName": "Reportini",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Reportini desktop: relazioni anagrafiche e appuntamenti su Google Calendar",
+  "main": "main.cjs",
+  "scripts": {
+    "dev": "electron .",
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^31.7.7",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "app.reportini.desktop",
+    "productName": "Reportini",
+    "files": ["main.cjs", "preload.cjs", "renderer/**/*"],
+    "directories": {
+      "output": "release"
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.productivity"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage",
+      "category": "Office"
+    }
+  }
+}

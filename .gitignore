@@ -1,3 +1,18 @@
+# Reportini
+dist
+dist-ssr
+electron/node_modules
+electron/renderer
+electron/release
+*.local
+.DS_Store
+
+# Chiavi e configurazione locale: VITE_* finisce nel bundle pubblico,
+# quindi il file .env non deve mai entrare nel repository.
+.env
+.env.*
+!.env.example
+
 # Logs
 logs
 *.log
