@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.0 — 2026-09-28
+
+- Versione incrementata automaticamente (minor).
+
 ## 0.1.31 — 2026-09-28
 
 - Versione incrementata automaticamente (patch).
