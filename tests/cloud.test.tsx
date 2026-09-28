@@ -601,3 +601,23 @@ describe("Barra di navigazione", () => {
     expect(etichetta.querySelector(".invisible")).toBeNull();
   });
 });
+
+describe("Base dei percorsi", () => {
+  it("sul web il router usa la base di Vite", async () => {
+    const { baseRoutte } = await import("../src/lib/cloud/destinazione");
+    expect(baseRoutte()).toBe("/");
+  });
+
+  it("nell'app desktop, che si apre da file://, il router prende la radice", async () => {
+    // L'app desktop si costruisce con base "./" (gli asset devono essere
+    // relativi: da file:// un /assets/app.js punta alla radice del
+    // filesystem). Per il router "./" però non è un percorso utilizzabile.
+    vi.stubEnv("BASE_URL", "./");
+    try {
+      const { baseRoutte } = await import("../src/lib/cloud/destinazione");
+      expect(baseRoutte()).toBe("/");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+});

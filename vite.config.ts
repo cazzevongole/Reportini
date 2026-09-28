@@ -3,7 +3,16 @@ import react from "@vitejs/plugin-react";
 
 // BASE_PATH lets the same build target the root (local / Freebuff hosting)
 // and a project subpath (GitHub Pages: https://<user>.github.io/Reportini/).
-const base = process.env.BASE_PATH ? `${process.env.BASE_PATH}/` : "/";
+//
+// ELECTRON=1 forces a *relative* base instead. The desktop app opens
+// index.html from file://, where a path like "/assets/app.js" points to
+// file:///assets/app.js — the filesystem root, where nothing is. Relative
+// paths are the only ones that resolve there.
+const base = process.env.ELECTRON
+  ? "./"
+  : process.env.BASE_PATH
+    ? `${process.env.BASE_PATH}/`
+    : "/";
 
 const PREFISSI_PRIVILEGIATI = ["sb_secret_", "sbp_"];
 

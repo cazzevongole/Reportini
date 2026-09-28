@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { urlDiRitorno } from "./destinazione";
+import { baseRoutte, urlDiRitorno } from "./destinazione";
 import { cloudEnabled, supabase } from "./supabase";
 import { avviaAccessoGoogle, completaAccesso, googleConfigured } from "../google/auth";
 import { resettaRuolo } from "../sviluppo/richieste";
@@ -98,7 +98,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     // all'origine finirebbe sulla pagina del profilo, non sull'app.
     const { error: errore } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: urlDiRitorno(window.location.origin, import.meta.env.BASE_URL) },
+      options: { redirectTo: urlDiRitorno(window.location.origin, baseRoutte()) },
     });
     if (errore) setError(errore.message);
   }, []);

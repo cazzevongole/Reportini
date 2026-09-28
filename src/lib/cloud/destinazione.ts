@@ -17,3 +17,17 @@ export function urlDiRitorno(origine: string, base: string): string {
   const percorso = base === "/" ? "" : base.replace(/\/+$/, "");
   return `${origine.replace(/\/+$/, "")}${percorso}`;
 }
+
+/**
+ * Il percorso base da dare al router e agli URL di rientro.
+ *
+ * Sulla web vale quello di Vite ("/" in locale, "/Reportini/" su GitHub
+ * Pages). Nell'app desktop la base è "./" — gli asset devono essere relativi,
+ * perché da file:// un "/assets/app.js" punta alla radice del filesystem e non
+ * a nulla — ma "./" non è un percorso che un router possa usare: qui si
+ * traduce in radice, che è la stessa app vista dal suo file.
+ */
+export function baseRoutte(): string {
+  const base = import.meta.env.BASE_URL;
+  return base.startsWith(".") ? "/" : base;
+}
