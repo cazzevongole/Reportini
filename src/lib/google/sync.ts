@@ -1,8 +1,9 @@
 import {
-  aggiornaAppuntamento,
+  eliminaAppuntamento,
   elencaAppuntamenti,
   marcaAppuntamentoSincronizzato,
   ottieniAppuntamento,
+  rimuoviCollegamentoGoogle,
 } from "../repo";
 import { aggiornaEvento, creaEvento, eliminaEvento } from "./calendar";
 import type { Appuntamento, AppuntamentoDettagliato } from "../types";
@@ -29,8 +30,30 @@ function aSincronizzabile(appuntamento: Appuntamento | AppuntamentoDettagliato):
     .join("\n");
   return {
     ...(base as Appuntamento),
-    descrizione: [appuntamento.descrizione, contesto].filter(Boolean).join("\n\n"),
+    descrizione: descrizioneConContesto(appuntamento.descrizione, contesto),
   };
+}
+
+/**
+ * Aggiunge il contesto dell'anagrafico, una volta sola.
+ *
+ * Il contesto non sta nella descrizione salvata: sta solo nell'evento. Ma
+ * può esserci già dentro, perché le versioni precedenti scrivevano qui
+ * l'appuntamento arricchito e il modulo di modifica lo mostrava. Senza
+ * questo controllo, ogni sincronizzazione avrebbe aggiunto un blocco in più
+ * e la descrizione sarebbe cresciuta a ogni modifica.
+ */
+function descrizioneConContesto(descrizione: string, contesto: string): string {
+  if (!contesto) return descrizione;
+  let testo = (descrizione ?? "").trimEnd();
+  const suffisso = `\n\n${contesto}`;
+  // Si toglie ogni copia finale, non solo l'ultima: la ripetizione è
+  // esattamente il danno da riparare, e fermarsi alla prima lascerebbe
+  // indietro quelle già accumulate.
+  while (testo.endsWith(suffisso)) testo = testo.slice(0, -suffisso.length);
+  // Una descrizione ridotta al solo contesto non aveva testo proprio.
+  if (testo === contesto) testo = "";
+  return [testo, contesto].filter(Boolean).join("\n\n");
 }
 
 /** Invia un appuntamento a Google Calendar, creando o aggiornando l'evento. */
@@ -108,17 +131,47 @@ export async function dissociaAppuntamento(
         salvato.googleCalendarId ?? calendarId,
       );
     }
-    aggiornaAppuntamento(salvato.id, {
-      ...aSincronizzabile(salvato),
-      googleEventId: null,
-      googleCalendarId: null,
-      googleHtmlLink: null,
-      googleSyncAt: null,
-    });
+    // Solo i marcatori di Google: l'appuntamento non si tocca. Riscriverlo
+    // porterebbe nel database la descrizione arricchita che va solo
+    // all'evento, e il modulo di modifica la mostrerebbe con dentro il
+    // contesto dell'anagrafico — che si accoderebbe a ogni passaggio.
+    rimuoviCollegamentoGoogle(salvato.id);
     return { ok: true, messaggio: "Appuntamento scollegato da Google Calendar" };
   } catch (error) {
     return { ok: false, messaggio: spiega(error) };
   }
+}
+
+/**
+ * Cancella l'appuntamento e, se c'era, anche l'evento che ne era stato creato.
+ *
+ * L'ordine è quello che sembra controintuitivo e non lo è: prima l'evento,
+ * poi l'appuntamento. Se la rete fallisce l'appuntamento **resta in lista**,
+ * con l'avviso che spiega il motivo, e premere di nuovo Elimina riprova. Il
+ * contrario — cancellare in locale e fallire la rete — lascerebbe un evento
+ * orfano in agenda del quale l'app non saprebbe più niente: impossibile
+ * ritrovarlo e impossibile toglierlo.
+ */
+export async function eliminaAppuntamentoEEvento(id: number): Promise<SyncResult> {
+  const salvato = ottieniAppuntamento(id);
+  if (!salvato) return { ok: true, messaggio: "L'appuntamento era già stato eliminato" };
+  try {
+    if (salvato.googleEventId) {
+      await eliminaEvento(salvato.googleEventId, salvato.googleCalendarId ?? "primary");
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      messaggio: `L'appuntamento non è stato eliminato: ${spiega(error)}`,
+    };
+  }
+  eliminaAppuntamento(salvato.id);
+  return {
+    ok: true,
+    messaggio: salvato.googleEventId
+      ? "Appuntamento eliminato, evento rimosso anche da Google Calendar"
+      : "Appuntamento eliminato",
+  };
 }
 
 /** Invia tutti gli appuntamenti non ancora sincronizzati. */

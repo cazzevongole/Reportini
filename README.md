@@ -389,6 +389,7 @@ Cosa succede a seconda della situazione, deciso in `pubblicaAppuntamento()`
 | Appuntamento nuovo | crea l'evento e salva il collegamento sull'appuntamento |
 | Appuntamento già pubblicato, ora modificato | **aggiorna** l'evento esistente, non ne crea un secondo |
 | Appuntamento portato ad "annullato" | **toglie** l'evento dal calendario di Google |
+| Appuntamento **eliminato** | **toglie** l'evento dal calendario di Google |
 | Spunta disattivata | salva solo in locale, Google non viene toccato |
 
 Due dettagli che contano più di quanto sembrino:
@@ -398,6 +399,11 @@ Due dettagli che contano più di quanto sembrino:
   riprova con **Invia a Google** nella lista appuntamenti, senza riscriverlo.
 - **Un appuntamento annullato non può restare in agenda.** È l'unico caso in cui l'app e il
   calendario direbbero due cose diverse, quindi l'evento viene cancellato, non solo ignorato.
+- **Il contesto dell'anagrafico vive solo nell'evento.** All'evento viene aggiunto
+  `Anagrafico: …`, `Documento: …` e `Relazione: …`; la descrizione che l'utente scrive resta quella
+  nel database e nel modulo di modifica. Scollegare l'evento tocca **solo** i marcatori di Google
+  (`rimuoviCollegamentoGoogle()`), non riscrive l'appuntamento: prima scriveva qui anche la
+  descrizione arricchita, e il blocco si accodava a ogni passaggio fino a ripetersi due, tre volte.
 
 ---
 
@@ -408,7 +414,7 @@ bun install
 bun run dev        # server di sviluppo su http://localhost:5173
 bun run build      # build statica in dist/ (+ 404.html per GitHub Pages)
 bun run typecheck  # tsc -b --noEmit
-bun run test       # test vitest (127 test) + smoke test dello schema
+bun run test       # test vitest (135 test) + smoke test dello schema
 bun run test:ui    # solo i test vitest
 bun run version:check  # la versione è coerente? (lo usa anche il rilascio)
 bun run version:patch  # alza la versione di un patch, come fa il workflow
@@ -419,7 +425,8 @@ I test vitest coprono dodici file:
 - `tests/app.test.tsx` monta l'app reale in jsdom con un IndexedDB finto: è la rete che
   intercetta i crash a runtime (per esempio un dereferenziamento di `window.reportini` fatto al
   caricamento del modulo, che produceva una pagina bianca). Verifica anche che senza account non
-  si veda nessuna pagina interna.
+  si veda nessuna pagina interna, e che la schermata di errore dica che cosa è andato storto e che
+  i dati non sono persi.
 - `tests/avvisi.test.tsx` verifica il meccanismo degli avvisi: successo, errore con la causa,
   auto-chiusura, durata maggiore per gli errori, tetto di tre avvisi contemporanei.
 - `tests/apertura.test.tsx` monta la schermata di benvenuto da sola: copre l'app, la frase è
@@ -450,7 +457,11 @@ I test vitest coprono dodici file:
   elimini l'evento remoto e che un errore di Google non lasci marcatori falsi. Verifica anche la
   **pubblicazione automatica**: che cosa fa il modulo quando si salva — evento nuovo, aggiornamento
   di quello esistente, rimozione se l'appuntamento viene annullato — e che la spunta disattivata
-  salvi in locale senza toccare Google.
+  salvi in locale senza toccare Google. E che **eliminare** un appuntamento taga l'evento, con il
+  caso in cui Google non risponde: l'appuntamento resta in lista e si riprova, invece di lasciare
+  un evento orfano di cui l'app non sa più niente. Verifica infine che il contesto dell'anagrafico
+  (nome, documento, relazione) finisca **solo** nell'evento e non nella descrizione salvata: è la
+  duplicazione che si vedeva a ogni modifica.
 - `tests/aggiornamento.test.tsx` guida l'aggiornamento automatico con un ponte finto (Electron
   non serve): verifica che un controllo automatico fallito resti silenzioso, che quello chiesto a
   mano risponda, che l'avanzamento e il pacchetto pronto si vedano, che «più tardi» nasconda solo
@@ -478,6 +489,15 @@ bun run electron:pack      # impacchetta (dmg / nsis / AppImage)
 `electron/main.cjs` apre `electron/renderer/index.html` ed espone via IPC solo quattro operazioni:
 leggere il file SQLite, scriverlo, mostrarlo nel file manager e chiedere lo stato
 dell'aggiornamento automatico. Il renderer gira con `contextIsolation` e senza accesso a Node.
+
+**Due reti di sicurezza, perché una pagina bianca non serve a nessuno.** Nell'app impacchettata
+non esiste una console: quello che il renderer scrive finisce nei devtools, che nessuno apre. Quindi
+`main.cjs` copia ogni messaggio del renderer — e gli errori di caricamento, di preload e la morte
+del processo di rendering — in un file `renderer.log` nella stessa cartella del database
+(`%APPDATA%\reportini` su Windows, `~/Library/Application Support/Reportini` su mac). E se un
+errore capita durante un render, invece di lasciare la finestra vuota compare
+`src/components/ErroreAvvio.tsx`: il messaggio dell'errore e la reassurance che **i dati non sono
+persi**, con il percorso del log per i dettagli.
 
 ---
 
