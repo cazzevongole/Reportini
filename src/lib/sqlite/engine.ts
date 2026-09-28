@@ -1,7 +1,7 @@
 import initSqlJs, { type Database, type SqlJsStatic } from "sql.js";
 import wasmUrl from "sql.js/dist/sql-wasm.wasm?url";
 import { storage } from "./storage";
-import { runMigrations } from "./migrations";
+import { PRAGMA_CHIAVI_ESTERNE, runMigrations } from "./migrations";
 
 let SQL: SqlJsStatic | null = null;
 let db: Database | null = null;
@@ -54,11 +54,28 @@ export function getDatabase(): Database {
 }
 
 export async function persist(): Promise<void> {
+  const bytes = esporta();
+  await storage.save(bytes);
+}
+
+/**
+ * Esporta il database e rimette le chiavi esterne.
+ *
+ * export() in sql.js chiude il database e lo riapre dal file interno:
+ * tutto ciò che è stato impostato con PRAGMA torna al default, e
+ * `foreign_keys` è disattivato di default. Senza rimetterlo qui, dal
+ * primo salvataggio in poi le ON DELETE CASCADE e SET NULL non farebbero
+ * più niente: cancellando un'anagrafica le relazioni resterebbero a
+ * puntare a una persona che non esiste più, e sulle altre pagine
+ * continuerebbero a comparire come righe senza nome.
+ */
+function esporta(): Uint8Array {
   const current = getDatabase();
   // Copia l'heap WASM prima di cedere il controllo: la vista vale solo finché
   // nessuna altra istruzione tocca il database.
   const bytes = current.export();
-  await storage.save(bytes);
+  current.run(PRAGMA_CHIAVI_ESTERNE);
+  return bytes;
 }
 
 function schedulePersist(): void {
@@ -142,5 +159,5 @@ export async function replaceDatabase(bytes: Uint8Array): Promise<void> {
 
 /** Istantanea grezza del database, usata dai backup e dalla sincronizzazione. */
 export function snapshot(): Uint8Array {
-  return getDatabase().export();
+  return esporta();
 }

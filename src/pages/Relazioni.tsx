@@ -12,7 +12,12 @@ import { Badge, Button, EmptyState, Input, PageHeader, Select, Sheet } from "../
 import { useLiveQuery } from "../hooks/useLiveQuery";
 import { scaricaTesto } from "../lib/google/calendar";
 import { dataBreve } from "../lib/date";
-import { elencaRelazioni, eliminaRelazione, nomeCompleto } from "../lib/repo";
+import {
+  effettoEliminazioneRelazione,
+  elencaRelazioni,
+  eliminaRelazione,
+  nomeCompleto,
+} from "../lib/repo";
 import type { Relazione, StatoRelazione } from "../lib/types";
 
 const STATI: Array<{ valore: StatoRelazione | ""; etichetta: string }> = [
@@ -149,7 +154,20 @@ export default function Relazioni() {
                   size="sm"
                   variant="danger"
                   onClick={() => {
-                    if (confirm(`Eliminare la relazione “${relazione.titolo}”?`)) {
+                    const effetto = effettoEliminazioneRelazione(relazione.id);
+                    if (
+                      confirm(
+                        `Eliminare la relazione “${relazione.titolo}”?${
+                          effetto.appuntamenti > 0
+                            ? ` Verranno eliminati anche ${effetto.appuntamenti} ${
+                                effetto.appuntamenti === 1
+                                  ? "appuntamento che si riferiva"
+                                  : "appuntamenti che si riferivano"
+                              } solo a questa relazione.`
+                            : ""
+                        }`,
+                      )
+                    ) {
                       eliminaRelazione(relazione.id);
                     }
                   }}

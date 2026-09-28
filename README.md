@@ -119,6 +119,64 @@ Da **Impostazioni → Versioni di backup** si può:
 
 Le copie stanno in un IndexedDB separato (`reportini-backup`), anche nella versione Electron.
 
+### "Questa app non è verificata da Google"
+
+Quando si accede con Google, finché l'app è in fase di test la schermata di consenso avvisa che
+**non è verificata**. Non è un errore: è Google che avvisa gli utenti quando lo scope chiesto è
+"sensibile" e nessuno ha ancora verificato l'app. Per farlo sparire ci sono due passi, uno
+facoltativo e uno che dipende da Google.
+
+**1. Passa la schermata di consenso da "In test" a "In produzione"** (scompare subito, ed è
+gratis):
+
+1. *Google Cloud Console → API e servizi → OAuth 2.0 → Schermata di consenso* (in inglese
+   *Google Auth Platform → Branding*);
+2. stato del rilascio: da **In test** a **In produzione**;
+3. compila *Informazioni sull'app*: nome, logo, email di supporto, homepage
+   (`https://cazzevongole.github.io/Reportini/`), privacy policy e condizioni;
+4. nei *Domini autorizzati* aggiungi `cazzevongole.github.io`.
+
+Finché l'app resta in "In test" Google mostra anche il banner "App in fase di test" e limita a
+100 utenti e 7 giorni la validità del token: per un uso normale conviene la produzione.
+
+**2. La verifica vera e propria** serve solo per togliere l'avviso agli utenti *esterni* quando
+si chiedono scope come `calendar.events`, ed è una procedura di Google, non un'impostazione:
+
+- il progetto Google Cloud deve essere **verificato** (schermata di consenso → *Passa alla
+  verifica*): servono homepage e privacy policy pubbliche, una descrizione precisa dello scope e
+  il **video dimostrativo** (≤ 5 minuti) che mostra l|accesso e l'uso della funzione;
+- se l'app resta per uso interno, l'alternativa è **Google Workspace**: gli account del tuo
+  dominio non vedono l'avviso, perché l'applicazione è considerata interna;
+- finché la verifica non arriva, l'alternativa tecnica è chiedere **solo** lo scope minimo e
+  usare `prompt=consent` per far accettare lo scope aggiuntivo al primo uso (è già così: l'app
+  chiede `calendar.events` fin dall'accesso, quindi niente passaggi aggiuntivi).
+
+Nel dubbio: il messaggio è un avviso di Google, non un errore dell'app, e l'accesso funziona
+lo stesso — ogni volta che l'app chiede il consenso, però, l'utente lo vede.
+
+### Versionamento e rilascio
+
+La versione non sta in una discussione: sale da sola.
+
+| Dove | Cosa fa |
+| --- | --- |
+| `scripts/version.mjs` | alza la versione in `package.json` e in `electron/package.json` e scrive il `CHANGELOG.md` |
+| `scripts/versione-check.mjs` | controlla che le due versioni coincidano e che il tag sia quello giusto |
+| `.github/workflows/auto-version.yml` | a ogni merge su `master` alza la versione (patch) e crea il tag `v<versione>` |
+| `.github/workflows/release-electron.yml` | al tag `v*` costruisce i pacchetti desktop (mac, Windows, Linux) e pubblica la release |
+
+In pratica: si mergea su `master`, il commit di versione sale da solo, il tag scatta da solo e
+la release desktop viene pubblicata come **latest** (le prerelease restano fuori dal latest, se un
+giorno serviranno). Il commit di versione tocca solo i tre file della versione, e per quello
+`paths-ignore` impedisce al workflow di rilanciarsi da solo all'infinito.
+
+Il rilascio si può forzare a mano: *Actions → Versione automatica → Run workflow* scegliendo
+`minor` o `major` invece di `patch`.
+
+La build desktop usa `BASE_PATH` vuoto (l'app si apre da `file://`), e `scripts/copia-renderer.mjs`
+sostituisce `rm -rf && cp -R` perché su Windows la shell di GitHub Actions è PowerShell: senza,
+i pacchetti si costruirebbero solo su Linux e macOS.
+
 ### Avvisi
 
 Ogni azione che chiama la rete — salvataggio online, pubblicazione su Google Calendar,
@@ -161,11 +219,13 @@ bun install
 bun run dev        # server di sviluppo su http://localhost:5173
 bun run build      # build statica in dist/ (+ 404.html per GitHub Pages)
 bun run typecheck  # tsc -b --noEmit
-bun run test       # test vitest (68 test) + smoke test dello schema
+bun run test       # test vitest (82 test) + smoke test dello schema
 bun run test:ui    # solo i test vitest
+bun run version:check  # la versione è coerente? (lo usa anche il rilascio)
+bun run version:patch  # alza la versione di un patch, come fa il workflow
 ```
 
-I test vitest coprono sei file:
+I test vitest coprono otto file:
 
 - `tests/app.test.tsx` monta l'app reale in jsdom con un IndexedDB finto: è la rete che
   intercetta i crash a runtime (per esempio un dereferenziamento di `window.reportini` fatto al
@@ -176,6 +236,12 @@ I test vitest coprono sei file:
 - `tests/backup.test.tsx` verifica il versionamento: una copia per ora, potatura a tre giorni,
   scarto delle versioni successive, anteprima che legge una copia senza toccare il database di
   lavoro, e il percorso completo "guarda e richiudi" / "riparti da qui" dalle impostazioni.
+- `tests/repo.test.ts` gira sul motore SQLite vero e controlla le cancellazioni: che portino
+  via i riferimenti orfani e che le chiavi esterne restino attive anche dopo un salvataggio
+  (sql.js chiude e riapre il database a ogni export: senza rimettere il PRAGMA, le cascate
+  smetterebbero di funzionare).
+- `tests/benvenuto.test.ts` e `tests/versione.test.ts` coprono i messaggi di benvenuto e il
+  controllo di versione che fa scoppiare il rilascio se il tag non torna.
 - `tests/cloud.test.tsx` verifica con un client Supabase finto l'accesso con Google, il
   caricamento e il ripristino della copia online, il pulsante "Salva subito online" con
   l'id dell'utente e non l'email, l'auto-salvataggio dopo ogni modifica, il

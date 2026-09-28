@@ -11,6 +11,7 @@ import {
 } from "../components/icons";
 import { Button, Card, EmptyState, Sheet, Stat } from "../components/ui";
 import { useLiveQuery } from "../hooks/useLiveQuery";
+import { fraseBenvenuto, saluto } from "../lib/benvenuto";
 import { dataLunga, durata, inizioGiorno, ora, relativo } from "../lib/date";
 import {
   elencaAnagrafici,
@@ -45,6 +46,9 @@ export default function Panel() {
           })}
         </p>
         <h1 className="mt-1 text-[28px] leading-tight sm:text-4xl">La tua scrivania</h1>
+        <p className="mt-2 max-w-xl text-sm leading-relaxed text-ink-500">
+          <span className="font-medium text-ink-700">{saluto()},</span> {fraseBenvenuto()}
+        </p>
       </header>
 
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
