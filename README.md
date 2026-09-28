@@ -225,7 +225,7 @@ bun install
 bun run dev        # server di sviluppo su http://localhost:5173
 bun run build      # build statica in dist/ (+ 404.html per GitHub Pages)
 bun run typecheck  # tsc -b --noEmit
-bun run test       # test vitest (82 test) + smoke test dello schema
+bun run test       # test vitest (83 test) + smoke test dello schema
 bun run test:ui    # solo i test vitest
 bun run version:check  # la versione è coerente? (lo usa anche il rilascio)
 bun run version:patch  # alza la versione di un patch, come fa il workflow
