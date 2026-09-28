@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS appuntamenti (
   googleCalendarId TEXT,
   googleHtmlLink TEXT,
   googleSyncAt TEXT,
+  googleErrore TEXT,
   createdAt TEXT NOT NULL,
   updatedAt TEXT NOT NULL
 );
@@ -58,12 +59,46 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_appuntamenti_google ON appuntamenti(google
 `;
 
 /**
+ * Colonne nate dopo la prima versione, e come aggiungerle ai database già
+ * esistenti.
+ *
+ * `CREATE TABLE IF NOT EXISTS` non aggiunge niente a una tabella che c'è già:
+ * chi ha il database dalla versione precedente si troverebbe una tabella senza
+ * la nuova colonna, e ogni query che la nomina fallirebbe. Per questo qui si
+ * guarda prima `PRAGMA table_info` e si aggiunge solo quello che manca, che è
+ * anche l'unico modo che SQLite permette: non si può togliere una colonna.
+ */
+const COLONNE_AGGIUNTE: { tabella: string; colonna: string; tipo: string }[] = [
+  { tabella: "appuntamenti", colonna: "googleErrore", tipo: "TEXT" },
+];
+
+function colonneDi(db: Database, tabella: string): string[] {
+  // `exec` su un PRAGMA restituisce tutte le righe in `values`, ognuna un
+  // array: `name` è il secondo elemento di ciascuna, non il primo. Leggere
+  // `values` come se fosse una riga sola faceva pensare che la colonna non
+  // ci fosse, e l'ALTER TABLE veniva eseguito ogni volta: "duplicate column".
+  const righe = db.exec(`PRAGMA table_info(${tabella})`);
+  const valori = righe[0]?.values ?? [];
+  return valori
+    .map((riga) => (Array.isArray(riga) ? riga[1] : undefined))
+    .filter((nome): nome is string => typeof nome === "string");
+}
+
+function aggiungiColonneMancanti(db: Database): void {
+  for (const { tabella, colonna, tipo } of COLONNE_AGGIUNTE) {
+    if (colonneDi(db, tabella).includes(colonna)) continue;
+    db.run(`ALTER TABLE ${tabella} ADD COLUMN ${colonna} ${tipo}`);
+  }
+}
+
+/**
  * SQLite mantiene le chiavi esterne disattivate di default: senza questo
  * PRAGMA le ON DELETE CASCADE / SET NULL non verrebbero mai applicate.
  */
 export function runMigrations(db: Database): void {
   db.run(PRAGMA_CHIAVI_ESTERNE);
   db.run(SCHEMA);
+  aggiungiColonneMancanti(db);
 }
 
 /**

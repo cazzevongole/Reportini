@@ -1,23 +1,28 @@
-Il rientro non deve più tornare nell'URL: era un ciclo
+Un fallimento di Google non può più passare per un successo
 
-Lo spam di richieste a `/?code=…` non era un sintomo: era la causa. Il server
-riconosce il rientro proprio da quei parametri, quindi quando il main
-riportava la finestra all'indirizzo con il `code` non stava portando a casa
-l'utente, stava **chiedendo un rientro nuovo**. Il main rimandava la
-finestra, la finestra chiedeva di nuovo, e il renderer non arrivava mai a
-mostrare niente: da qui "l'app non si aggiorna" e nessun errore.
+`pubblicaAppuntamento()` non solleva mai: ritorna `{ ok: false }`. Passata a
+`esegui()` come `successo: (r) => r.messaggio`, un fallimento arrivava a
+schermo come una **notifica verde** con dentro la frase dell'errore — e poi
+spariva di lì a pochi secondi. L'appuntamento restava in lista identico a uno
+pubblicato, l'utente aveva visto un avviso di successo, e in agenda non c'era
+niente. Lo stesso in `Appuntamenti.tsx`, su sincronizza e scollega.
 
-Ora `riportaAllaApp()` scrive i parametri nella `sessionStorage` della pagina
-corrente, che sopravvive al ricaricamento, e porta la finestra su un
-indirizzo pulito. `completaAccesso()` legge da lì quando nell'URL non c'è
-niente, cioè sempre sul desktop e mai sulla web, e `giraRientroDaGoogle()`
-chiede a `cERitornoDaChiudere()` se c'è qualcosa da chiudere invece di guardare
-solo l'indirizzo: altrimenti sul desktop l'accesso non sarebbe mai stato
-chiuso.
+Ora l'esito decide il colore dell'avviso, e il motivo resta **sull'appuntamento**
+in una colonna nuova, `googleErrore`: la riga "Non pubblicato su Google
+Calendar" compare sulla scheda finché non si riesce, con il pulsato "Invia a
+Google" per riprovare accanto. Un avviso sparisce e un riavvio lo cancella, un
+campo no. Al primo tentativo riuscito la colonna si svuota, perché un
+appuntamento finito in agenda non deve continuare ad accusare un 500.
 
-Se il passaggio non riesce, la funzione solleva e il main lo scrive nel log:
-perdere il rientro in silenzio sarebbe lo stesso difetto di prima.
+La colonna arriva anche ai database già esistenti: lo schema è
+`CREATE TABLE IF NOT EXISTS`, che su una tabella già presente non aggiunge
+niente, quindi senza migrazione chi ha il database dalla versione precedente
+avrebbe avuto una tabella senza la colonna e ogni query che la nomina sarebbe
+fallita con un errore che non c'entrava niente con la modifica.
 
-158 test verdi. I due nuovi coprono proprio il ciclo: uno verifica che
-l'indirizzo in cui la finestra viene portata non sia un rientro, l'altro che
-`completaAccesso()` apra la sessione dal rientro in `sessionStorage`.
+Quattro test nuovi, e uno è la ripetizione delle migrazioni: al secondo avvio
+l'app riapplica gli schemi, e un controllo fatto male (`db.exec` su un PRAGMA
+restituisce tutte le righe, non una) faceva eseguire l'ALTER TABLE ogni volta,
+con "duplicate column name" e l'app che non apriva più.
+
+164 test verdi.

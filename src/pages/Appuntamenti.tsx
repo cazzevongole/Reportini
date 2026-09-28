@@ -73,17 +73,22 @@ export default function Appuntamenti() {
 
   async function sincronizza(appuntamento: Appuntamento) {
     notifica("info", `Sincronizzo “${appuntamento.titolo}” con Google Calendar…`);
-    await esegui(() => sincronizzaAppuntamento(appuntamento.id), {
-      successo: (r) => r.messaggio,
+    // Come nel modulo: queste funzioni non sollevano, ritornano `{ ok: false }`.
+    // Passarle a `esegui` con `successo` mostrava il fallimento come un avviso
+    // verde: verde e con dentro la frase dell'errore.
+    const esito = await esegui(() => sincronizzaAppuntamento(appuntamento.id), {
       errore: "Sincronizzazione con Google Calendar non riuscita",
     });
+    if (esito?.ok) notifica("ok", esito.messaggio);
+    else if (esito) notifica("errore", esito.messaggio);
   }
 
   async function dissocia(appuntamento: Appuntamento) {
-    await esegui(() => dissociaAppuntamento(appuntamento.id), {
-      successo: (r) => r.messaggio,
+    const esito = await esegui(() => dissociaAppuntamento(appuntamento.id), {
       errore: "Scollegamento dall'evento non riuscito",
     });
+    if (esito?.ok) notifica("ok", esito.messaggio);
+    else if (esito) notifica("errore", esito.messaggio);
   }
 
   async function elimina(appuntamento: Appuntamento) {
@@ -185,6 +190,20 @@ export default function Appuntamenti() {
                         </span>
                       ) : null}
                     </div>
+
+                    {appuntamento.googleErrore ? (
+                      // La ragione del fallimento sta qui, non in un avviso: un
+                      // avviso sparisce in pochi secondi e al riavvio non
+                      // resta niente, quindi un appuntamento mai finito in
+                      // agenda sembrava uno a posto.
+                      <div className="mt-3 rounded-xl bg-clay-50 px-3 py-2 text-xs leading-relaxed text-clay-900">
+                        <p className="font-semibold">Non pubblicato su Google Calendar</p>
+                        <p className="mt-0.5 break-words">{appuntamento.googleErrore}</p>
+                        <p className="mt-1 text-clay-700">
+                          Il pulsato “Invia a Google” qui sotto riprova senza perdere quello che hai scritto.
+                        </p>
+                      </div>
+                    ) : null}
 
                     <div className="mt-4 flex flex-wrap items-center gap-1.5 border-t border-ink-100 pt-3">
                       {googlePronto ? (

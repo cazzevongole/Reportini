@@ -275,6 +275,7 @@ function valoriAppuntamento(data: AppuntamentoInput) {
     googleCalendarId: data.googleCalendarId,
     googleHtmlLink: data.googleHtmlLink,
     googleSyncAt: data.googleSyncAt,
+    googleErrore: data.googleErrore,
     updatedAt: now(),
   };
 }
@@ -301,8 +302,24 @@ export function marcaAppuntamentoSincronizzato(
     googleCalendarId: dati.googleCalendarId,
     googleHtmlLink: dati.googleHtmlLink,
     googleSyncAt: now(),
+    // Col riuscito sparisce anche il motivo del fallimento precedente: se non
+    // restasse, l'appuntamento pubblicato continuerebbe ad accusare un
+    // errore che non c'è più.
+    googleErrore: null,
     updatedAt: now(),
   });
+}
+
+/**
+ * Scrive perché la pubblicazione è fallita, e lo scrive **sull'appuntamento**.
+ *
+ * Il motivo di un errore di rete è la cosa che serve di più e quella che
+ * sparisce per prima: un avviso dura pochi secondi, un riavvio lo cancella, e
+ * senza questo l'unico sintomo era un appuntamento che non compare in
+ * agenda e una notifica verde passata.
+ */
+export function marcaErroreGoogle(id: number, messaggio: string): void {
+  update("appuntamenti", id, { googleErrore: messaggio, updatedAt: now() });
 }
 
 /**
@@ -320,6 +337,7 @@ export function rimuoviCollegamentoGoogle(id: number): void {
     googleCalendarId: null,
     googleHtmlLink: null,
     googleSyncAt: null,
+    googleErrore: null,
     updatedAt: now(),
   });
 }

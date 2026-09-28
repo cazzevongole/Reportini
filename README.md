@@ -403,6 +403,20 @@ Cosa succede a seconda della situazione, deciso in `pubblicaAppuntamento()`
 | Appuntamento portato ad "annullato" | **segnal annullato** sull'evento, che resta in agenda scritto *Cancelled* |
 | Appuntamento **eliminato** | **toglie** l'evento dal calendario di Google |
 | Spunta disattivata | salva solo in locale, Google non viene toccato |
+| **Google risponde con un errore** | l'appuntamento resta salvato, e sulla scheda compare **perché** non è stato pubblicato, con il pulsato per riprovare |
+
+Quel'ultima riga è la conseguenza di un difetto che è costato tre release a
+capirlo. `pubblicaAppuntamento()` non solleva mai: ritorna `{ ok: false }`. Passata
+a `esegui()` come `successo: (r) => r.messaggio`, un fallimento arrivava a schermo
+come una **notifica verde** con dentro la frase dell'errore, e spariva di lì a
+pochi secondi. Risultato: l'appuntamento in lista sembrava a posto, l'utente aveva
+visto un avviso di successo, e in agenda non c'era niente.
+
+Ora il motivo sta in una colonna dell'appuntamento (`googleErrore`, con migrazione
+per i database già esistenti) e la scheda lo mostra finché non si riesce: un
+avviso sparisce, un riavvio lo cancella, un campo no. Al primo tentativo riuscito
+la colonna si svuota, perché un appuntamento finito in agenda non deve continuare
+ad accusare un errore che non c'è più.
 
 Lo stato segue l'appuntamento, quindi l'evento dice sempre la stessa cosa
 che dice l'app. Un annullato in Google Calendar non è sparito, è scritto
@@ -439,7 +453,7 @@ bun install
 bun run dev        # server di sviluppo su http://localhost:5173
 bun run build      # build statica in dist/ (+ 404.html per GitHub Pages)
 bun run typecheck  # tsc -b --noEmit
-bun run test       # test vitest (158 test) + smoke test dello schema
+bun run test       # test vitest (164 test) + smoke test dello schema
 bun run test:ui    # solo i test vitest
 bun run version:check  # la versione è coerente? (lo usa anche il rilascio)
 bun run version:patch  # alza la versione di un patch, come fa il workflow
