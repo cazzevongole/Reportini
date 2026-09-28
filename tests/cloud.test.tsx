@@ -486,15 +486,18 @@ describe("Accesso obbligatorio", () => {
 });
 
 describe("Barra di navigazione", () => {
-  it("ha quattro icone e l'etichetta solo sulla voce attiva", async () => {
+  it("ha cinque icone e l'etichetta solo sulla voce attiva", async () => {
     await entraCome("utente@esempio.it");
     await monta("/panel");
 
     const barra = contenitore.querySelector('nav[aria-label="Navigazione principale"]');
     expect(barra).not.toBeNull();
     const voci = [...(barra!.querySelectorAll("a") as NodeListOf<HTMLAnchorElement>)];
-    // Quattro voci: Home, Anagrafici, Appuntamenti, Impostazioni.
-    expect(voci).toHaveLength(4);
+    // Cinque voci: Home, Anagrafici, Relazioni, Appuntamenti, Impostazioni.
+    expect(voci).toHaveLength(5);
+    // Le relazioni devono restare raggiungibili dalla barra: sono il
+    // documento che si consegna, non una schermata interna.
+    expect(voci.map((voce) => voce.textContent)).toContain("Relazioni");
 
     const attive = voci.filter((voce) => voce.getAttribute("aria-current") === "page");
     expect(attive).toHaveLength(1);

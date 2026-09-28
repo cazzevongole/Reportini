@@ -1,14 +1,16 @@
 import { NavLink, Outlet } from "react-router-dom";
-import { CalendarIcon, HomeIcon, SettingsIcon, UsersIcon } from "./icons";
+import { CalendarIcon, FileTextIcon, HomeIcon, SettingsIcon, UsersIcon } from "./icons";
 
 /**
- * Quattro voci: abbastanza per orientarsi, poche per non far accavallare le
- * icone sul telefono. Le relazioni si raggiungono dall'anagrafica e dal pannello,
- * quindi non occupano un'icona tutta loro.
+ * Cinque voci: Home, le due cose che si cercano ogni giorno (persone e
+ * relazioni), gli appuntamenti e le impostazioni. Le relazioni hanno una
+ * voce tutta loro perché sono il documento che si consegna, non una
+ * schermata di servizio: toglierla dalla barra le nascondeva.
  */
 const NAV = [
   { to: "/panel", label: "Home", icon: HomeIcon, end: true },
   { to: "/panel/anagrafici", label: "Anagrafici", icon: UsersIcon, end: false },
+  { to: "/panel/relazioni", label: "Relazioni", icon: FileTextIcon, end: false },
   { to: "/panel/appuntamenti", label: "Appuntamenti", icon: CalendarIcon, end: false },
   { to: "/panel/impostazioni", label: "Impostazioni", icon: SettingsIcon, end: false },
 ];
