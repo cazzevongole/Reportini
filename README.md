@@ -439,7 +439,7 @@ bun install
 bun run dev        # server di sviluppo su http://localhost:5173
 bun run build      # build statica in dist/ (+ 404.html per GitHub Pages)
 bun run typecheck  # tsc -b --noEmit
-bun run test       # test vitest (153 test) + smoke test dello schema
+bun run test       # test vitest (154 test) + smoke test dello schema
 bun run test:ui    # solo i test vitest
 bun run version:check  # la versione è coerente? (lo usa anche il rilascio)
 bun run version:patch  # alza la versione di un patch, come fa il workflow
@@ -581,6 +581,13 @@ origine è `127.0.0.1:5173` ed è già registrata.
 
 `motivoRientroNonValido()` resta, come rete di sicurezza: se la frase compare, il server locale non
 è partito, e il messaggio dice di leggere il `renderer.log` invece di lasciare il pulsante muto.
+
+**Se il rientro fallisce, la ragione è sulla schermata di accesso, non nelle impostazioni.** Il primo
+tentativo la teneva solo nelle impostazioni, cioè dove non si arriva senza essere già entrati: il
+sintomo che ne veniva fuori era "l'app non si aggiorna" senza nessuna spiegazione, che è un modo
+costoso di dire "non lo so". Ora `Accesso.tsx` mostra `readErroreCollegamento()` sotto il pulsante,
+con un *Nascondi* perché un errore vecchio non resti mentre l'utente riprova, e `completaAccesso()`
+lascia una riga per ogni passo in `renderer.log`. Il `code` non ci finisce mai: è una credenziale.
 
 ---
 
