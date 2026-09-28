@@ -13,6 +13,7 @@ import { cloudEnabled, supabase } from "./supabase";
 import {
   avviaAccessoGoogle,
   completaAccesso,
+  cERitornoDaChiudere,
   googleConfigured,
   type EsitoAvvio,
 } from "../google/auth";
@@ -41,8 +42,10 @@ let accessoGirato = false;
 
 function giraRientroDaGoogle(): void {
   if (accessoGirato) return;
-  const url = new URL(window.location.href);
-  if (!url.searchParams.has("code") && !url.searchParams.has("error")) return;
+  // Non basta guardare l'URL: sul desktop il rientro è in `sessionStorage`,
+  // perché lì rimetterlo significherebbe far sembrare il ricaricamento della
+  // finestra un rientro nuovo, e l'app ripartirebbe da capo per sempre.
+  if (!cERitornoDaChiudere()) return;
   accessoGirato = true;
   // Non è bloccante: se il backend non è pronto, `completaAccesso` ripiega
   // sull'accesso con Supabase da sola. Un errore qui non deve impedire

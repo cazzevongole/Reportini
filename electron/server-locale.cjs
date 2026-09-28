@@ -53,6 +53,14 @@ const PAGINA_ATTESA = `<!doctype html>
 const CHIAVI_RITORNO = ["code", "state", "error", "error_description"];
 
 /**
+ * Dove il main lascia il rientro, per il renderer che sta per ripartire.
+ *
+ * Deve coincidere con `ARRIVO_KEY` di `src/lib/google/auth.ts`: uno la
+ * scrive, l'altro lo legge, e i due non possono accorgersi del disaccordo.
+ */
+const CHIAVE_ARRIVO = "reportini.google.arrivo";
+
+/**
  * Tiene solo ciò che serve, e lo ricostruisce da capo.
  *
  * Questa porta è raggiungibile da qualunque programma sulla macchina, quindi
@@ -66,6 +74,38 @@ function queryRitorno(parametri) {
     if (valore) utili.set(chiave, valore);
   }
   return utili.toString();
+}
+
+/**
+ * Porta il rientro dentro l'app, senza rimetterlo nell'URL.
+ *
+ * **Perché non si naviga a `/?code=…`.** Il server riconosce il rientro proprio
+ * da quei parametri, quindi chiedere alla finestra di caricare quella stessa
+ * URL la farebbe sembrare un rientro nuovo: il main rimanda la finestra, la
+ * finestra chiede di nuovo, e l'app si ricarica all'infinito senza mai
+ * mostrare niente. È successo, ed è la ragione per cui il rientro finiva con
+ * "la pagina non si aggiorna" e nessun errore.
+ *
+ * Quindi i parametri passano dalla sessionStorage della pagina corrente, che
+ * sopravvive al ricaricamento, e la finestra si riporta a un indirizzo pulito.
+ */
+async function riportaAllaApp(finestra, origine, query) {
+  if (finestra.isDestroyed()) return false;
+  // JSON.stringify anche del codice eseguito: la query arriva da un URL, e
+  // iniettarla cruda sarebbe eseguire ciò che c'era scritto lì.
+  const codice = `sessionStorage.setItem(${JSON.stringify(CHIAVE_ARRIVO)}, ${JSON.stringify(query)}); true`;
+  try {
+    await finestra.webContents.executeJavaScript(codice);
+  } catch (errore) {
+    // Senza questo passaggio il rientro non c'è più: meglio saperlo nel log
+    // che perdere l'accesso in silenzio.
+    throw new Error(`non riesco a portare il rientro dentro l'app: ${errore.message}`);
+  }
+  if (finestra.isMinimized()) finestra.restore();
+  finestra.show();
+  finestra.focus();
+  await finestra.webContents.loadURL(`${origine}/`);
+  return true;
 }
 
 /** La richiesta è il ritorno di Google? */
@@ -175,10 +215,12 @@ function avviaServer({ porta, tentativi = 10, ...resto }) {
 module.exports = {
   TIPI,
   PAGINA_ATTESA,
+  CHIAVE_ARRIVO,
   CHIAVI_RITORNO,
   avviaServer,
   creaServer,
   eRitorno,
   percorsoDi,
   queryRitorno,
+  riportaAllaApp,
 };

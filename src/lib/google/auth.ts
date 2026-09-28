@@ -39,6 +39,19 @@ const ERRORE_KEY = "reportini.google.errore";
 /** Fra l'authorize e il ritorno: cosa stavamo facendo e con quale state. */
 const RITORNO_KEY = "reportini.google.ritorno";
 
+/**
+ * Dove il pacchetto desktop lascia il rientro, subito prima di ricaricare la
+ * finestra.
+ *
+ * Deve coincidere con `CHIAVE_ARRIVO` di `electron/server-locale.cjs`: uno la
+ * scrive, l'altro la legge, e i due non possono accorgersi del disaccordo.
+ * Sta in `sessionStorage` e non nell'URL per un motivo preciso: l'URL con
+ * `?code=` è ciò che il server riconosce come rientro, quindi rimettercelo
+ * farebbe sembrare un rientro nuovo e l'app si ricaricherebbe da sola all'
+ * infinito.
+ */
+const ARRIVO_KEY = "reportini.google.arrivo";
+
 const PROFILE_ENDPOINT = "https://www.googleapis.com/oauth2/v3/userinfo";
 const AUTHORIZE_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth";
 
@@ -178,6 +191,30 @@ function leggiRITORNO(): Ritorno | null {
   } catch {
     return null;
   }
+}
+
+/** Il rientno lasciato dal main process, vuoto se non c'è. */
+function leggiArrivo(): string {
+  try {
+    return sessionStorage.getItem(ARRIVO_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * C'è un rientorno da chiudere?
+ *
+ * Nell'URL c'è solo sulla web: sul desktop il main process lo mette in
+ * `sessionStorage` prima di ricaricare, perché rimetterlo nell'URL farebbe
+ * sembrare il rientro a un rientro e l'app si ricaricherebbe da sola all'
+ * infinito. Chi deve decidere se chiamare `completaAccesso()` non può
+ * controllare solo l'URL, o sul desktop non chiamerebbe mai.
+ */
+export function cERitornoDaChiudere(): boolean {
+  if (leggiArrivo()) return true;
+  const url = new URL(window.location.href);
+  return url.searchParams.has("code") || url.searchParams.has("error");
 }
 
 /** Toglie i parametri di Google dalla barra degli indirizzi. */
@@ -341,12 +378,19 @@ export type EsitoAccesso = "calendario" | "solo-account" | "nessuno";
  * si può fare è tirare a indovinare — cosa che è già costato due release.
  */
 export async function completaAccesso(): Promise<EsitoAccesso> {
-  const url = new URL(window.location.href);
-  const code = url.searchParams.get("code");
-  const state = url.searchParams.get("state");
-  const erroreGoogle = url.searchParams.get("error");
+  // Sul desktop il rientro è in `sessionStorage`, non nell'URL: lo mette lì il
+  // main process prima di ricaricare la finestra. Sulla web non esiste un
+  // main process e tutto torna da Google nell'indirizzo, quindi si prova lì.
+  const dallUrl = new URL(window.location.href).searchParams;
+  const dallArrivo = new URLSearchParams(leggiArrivo());
+  const presa = dallArrivo.get("code") || dallArrivo.get("error") ? dallArrivo : dallUrl;
+
+  const code = presa.get("code");
+  const state = presa.get("state");
+  const erroreGoogle = presa.get("error");
   const ritorno = leggiRITORNO();
   sessionStorage.removeItem(RITORNO_KEY);
+  sessionStorage.removeItem(ARRIVO_KEY);
 
   if (erroreGoogle) {
     ripulisciUrl();

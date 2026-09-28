@@ -20,6 +20,7 @@ import {
   eRitorno,
   percorsoDi,
   queryRitorno,
+  riportaAllaApp,
 } from "../electron/server-locale.cjs";
 
 let radice: string;
@@ -161,6 +162,97 @@ describe("La query di rientro", () => {
     expect(eRitorno(conCode)).toBe(true);
     expect(eRitorno(conErrore)).toBe(true);
     expect(eRitorno(normale)).toBe(false);
+  });
+});
+
+describe("Dove viene portato il rientro", () => {
+  /** Finestra finta: registra quello che il main le chiede di fare. */
+  function finestraFinta(senzaEsecuzione = false) {
+    const mosse: string[] = [];
+    return {
+      mosse,
+      finestra: {
+        isDestroyed: () => false,
+        isMinimized: () => true,
+        restore: () => mosse.push("restore"),
+        show: () => mosse.push("show"),
+        focus: () => mosse.push("focus"),
+        webContents: {
+          executeJavaScript: async (codice: string) => {
+            mosse.push("esegui");
+            if (senzaEsecuzione) throw new Error("Execution context was destroyed");
+            // Si fa davvero quello che il main chiede, con la sessionStorage
+            // di una pagina: è il passaggio che nel difetto non c'era.
+            const salvato = /setItem\("([^"]+)", "([^"]*)"\)/.exec(codice);
+            if (salvato) sessionStorage.setItem(salvato[1], salvato[2].replace(/\\"/g, '"'));
+            return true;
+          },
+          loadURL: async (url: string) => {
+            mosse.push(`load ${url}`);
+          },
+        },
+      },
+    };
+  }
+
+  it("non rimette il code nell'URL: lì il server lo prende per un rientno nuovo", async () => {
+    const { finestra, mosse } = finestraFinta();
+    const query = queryRitorno(new URLSearchParams({ code: "4/abc", state: "xyz" }));
+
+    await riportaAllaApp(finestra, "http://127.0.0.1:42720", query);
+
+    // Il codice è arrivato a destinazione...
+    expect(sessionStorage.getItem("reportini.google.arrivo")).toBe(query);
+    // ...ma la finestra va su un indirizzo pulito. Con `?code=` qui il server
+    // avrebbe richiamato `riportaAllaApp` all'infinito.
+    expect(mosse).toContain("load http://127.0.0.1:42720/");
+    expect(mosse.some((m) => m.includes("code="))).toBe(false);
+    // Il nesso fra le due cose, detto una volta sola: l'indirizzo in cui la
+    // finestra viene portata non è un rientno, o il ricaricamento si
+    // rimetterebbe in loop da capo.
+    const caricata = mosse.find((m) => m.startsWith("load "))!.slice("load ".length);
+    expect(eRitorno(new URL(caricata))).toBe(false);
+    // E l'utente si vede tornare l'app davanti, non una finestra in secondo piano.
+    expect(mosse).toEqual(["esegui", "restore", "show", "focus", "load http://127.0.0.1:42720/"]);
+    sessionStorage.clear();
+  });
+
+  it("se non riesce a passare il rientno, lo dice invece di perderlo", async () => {
+    const { finestra, mosse } = finestraFinta(true);
+    // La finestra non va manovrata: senza il passaggio, il rientro non
+    // arriverebbe da nessuna parte e l'accesso si perderebbe in silenzio.
+    await expect(
+      riportaAllaApp(finestra, "http://127.0.0.1:42720", "code=abc"),
+    ).rejects.toThrow(/non riesco a portare il rientro dentro l'app/);
+    expect(mosse.some((m) => m.startsWith("load "))).toBe(false);
+  });
+
+  it("una finestra distrutta non viene toccata", async () => {
+    const mosse: string[] = [];
+    const distrutta = {
+      isDestroyed: () => true,
+      isMinimized: () => false,
+      restore: () => {
+        mosse.push("restore");
+      },
+      show: () => {
+        mosse.push("show");
+      },
+      focus: () => {
+        mosse.push("focus");
+      },
+      webContents: {
+        executeJavaScript: async () => {
+          mosse.push("esegui");
+          return true;
+        },
+        loadURL: async () => {
+          mosse.push("load");
+        },
+      },
+    };
+    await expect(riportaAllaApp(distrutta, "http://127.0.0.1:42720", "code=abc")).resolves.toBe(false);
+    expect(mosse).toEqual([]);
   });
 });
 
