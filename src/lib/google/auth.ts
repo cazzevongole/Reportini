@@ -133,6 +133,23 @@ function ricordaErrore(messaggio: string): void {
   localStorage.setItem(ERRORE_KEY, messaggio);
 }
 
+/** Dimentica l'errore dell'ultimo rientro, quando l'utente lo ha letto. */
+export function scordaErroreCollegamento(): void {
+  localStorage.removeItem(ERRORE_KEY);
+}
+
+/**
+ * Ricorda un errore e lo mette anche nel log.
+ *
+ * Tutti i rientri che finiscono male passano di qui: senza la riga nel log,
+ * dalla finestra dell'app non si vede niente e l'unico posto dove la ragione
+ * compare è la schermata di accesso, che è proprio quella da cui si guarda.
+ */
+function ricordaErroreNelLog(messaggio: string): void {
+  console.warn(`accesso: ${messaggio}`);
+  ricordaErrore(messaggio);
+}
+
 /* --------------------------------- stato ---------------------------------- */
 
 /**
@@ -231,6 +248,9 @@ export async function avviaAccessoGoogle(): Promise<EsitoAvvio> {
   }
   const state = stateCasuale();
   sessionStorage.setItem(RITORNO_KEY, JSON.stringify({ state, redirect } satisfies Ritorno));
+  // Il tentativo precedente, se c'è stato, non vale più: senza, un errore
+  // vecchio resta a schermo mentre l'utente sta provando di nuovo.
+  localStorage.removeItem(ERRORE_KEY);
 
   const url = new URL(AUTHORIZE_ENDPOINT);
   url.searchParams.set("client_id", clientId);
@@ -315,6 +335,10 @@ export type EsitoAccesso = "calendario" | "solo-account" | "nessuno";
  * lascia l'utente fuori dalla porta: si ripiega sull'accesso con Supabase
  * da sola e si ricorda perché il calendario manca, così nelle impostazioni
  * c'è scritto cosa fare.
+ *
+ * Ogni passo lascia una riga nel log. Non è pignoleria: qui l'utente sta
+ * guardando una finestra che sembra bloccata, e senza righe l'unica cosa che
+ * si può fare è tirare a indovinare — cosa che è già costato due release.
  */
 export async function completaAccesso(): Promise<EsitoAccesso> {
   const url = new URL(window.location.href);
@@ -331,6 +355,7 @@ export async function completaAccesso(): Promise<EsitoAccesso> {
         ? "Accesso annullato."
         : `Google ha rifiutato l'accesso (${erroreGoogle}).`;
     ricordaErrore(messaggio);
+    console.warn(`accesso: rientro senza esito, ${erroreGoogle}`);
     return "nessuno";
   }
 
@@ -338,13 +363,19 @@ export async function completaAccesso(): Promise<EsitoAccesso> {
 
   // Un `code` di cui non ci siamo persi traccia non è nostro: può arrivare da
   // un altro accesso. Si ignora, e non è un errore da mostrare a nessuno.
-  if (!ritorno) return "nessuno";
+  if (!ritorno) {
+    console.warn("accesso: è arrivato un codice senza un accesso avviato da questa finestra");
+    return "nessuno";
+  }
 
   if (ritorno.state !== state) {
     ripulisciUrl();
-    ricordaErrore("Accesso non riconosciuto: riprova.");
+    ricordaErroreNelLog("Accesso non riconosciuto: riprova.");
     return "nessuno";
   }
+
+  // Il `code` non entra nel log: è una credenzione. Si dice solo che c'è.
+  console.info("accesso: rientro da Google, scambio del codice col backend");
 
   try {
     const scambio = await chiamaBackend<RispostaScambio>({
@@ -364,10 +395,15 @@ export async function completaAccesso(): Promise<EsitoAccesso> {
 
     scriviToken(scambio.access_token, scambio.refresh_token, scambio.expires_in);
     ripulisciUrl();
+    console.info("accesso: sessione aperta, calendario collegato");
     void arricchisciProfilo(scambio.access_token);
     return "calendario";
   } catch (causa) {
     const messaggio = causa instanceof Error ? causa.message : "Accesso non riuscito";
+    // Qui la riga che conta: il messaggio del backend è la ragione vera
+    // (redirect_uri_mismatch, client_secret, id_token rifiutato) e senza
+    // questa non c'è niente su cui lavorare.
+    console.error("accesso: scambio o apertura di sessione falliti —", messaggio);
     ricordaErrore(
       `${messaggio} L'accesso continua senza calendario: le impostazioni dicono come rimetterlo.`,
     );

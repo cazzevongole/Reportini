@@ -1,8 +1,10 @@
+import { useEffect, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { CalendarIcon, FileTextIcon, UsersIcon } from "../components/icons";
 import { Button } from "../components/ui";
 import { useAvvisi } from "../components/Avvisi";
 import { useAccount } from "../lib/cloud/session";
+import { readErroreCollegamento, scordaErroreCollegamento } from "../lib/google/auth";
 import { problemaConfigurazione } from "../lib/cloud/supabase";
 
 /**
@@ -33,6 +35,15 @@ export default function Accesso() {
   const { esegui } = useAvvisi();
   const posizione = useLocation();
   const da = (posizione.state as { da?: string } | null)?.da ?? "/panel";
+  // L'errore dell'ultimo rientro da Google. Finora stava solo nelle
+  // impostazioni, cioè nella schermata a cui non si arriva senza essere già
+  // entrati: quando il rientro fallisce l'utente resta qui, e qui deve
+  // trovare la ragione. È anche l'unica differenza fra "l'app non si
+  // aggiorna" e "l'app non si aggiorna perché X".
+  const [motivoRitorno, setMotivoRitorno] = useState<string | null>(null);
+  useEffect(() => {
+    setMotivoRitorno(readErroreCollegamento());
+  }, [email]);
 
   if (!loading && email) return <Navigate to={da} replace />;
 
@@ -78,6 +89,22 @@ export default function Accesso() {
               <p className="mt-3 rounded-xl bg-clay-50 px-3 py-2 text-xs leading-relaxed text-clay-900">
                 {error}
               </p>
+            ) : null}
+
+            {motivoRitorno ? (
+              <div className="mt-3 rounded-xl bg-clay-50 px-3 py-2 text-xs leading-relaxed text-clay-900">
+                <p>{motivoRitorno}</p>
+                <button
+                  type="button"
+                  className="mt-1 underline underline-offset-2 hover:no-underline"
+                  onClick={() => {
+                    scordaErroreCollegamento();
+                    setMotivoRitorno(null);
+                  }}
+                >
+                  Nascondi
+                </button>
+              </div>
             ) : null}
 
             {problemaConfigurazione ? (

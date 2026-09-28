@@ -198,6 +198,31 @@ describe("Accesso con Google", () => {
     await monta("/panel");
     expect(contenitore.textContent).toContain("Accedi con Google");
   });
+
+  it("dice sul posto perché l'ultimo rientro è fallito", async () => {
+    // Finora l'errore del rientro stava solo nelle impostazioni, cioè dove
+    // non si arriva senza essere già entrati. Il sintomo che ne nasceva è
+    // "l'app non si aggiorna" senza nessuna spiegazione: qui la ragione deve
+    // trovarsi sulla stessa schermata da cui si guarda.
+    // Chiave e formato li scrive auth.ts al rientro fallito; qui si mette a
+    // mano quello che l'utente si troverebbe davanti.
+    localStorage.setItem(
+      "reportini.google.errore",
+      "redirect_uri_mismatch: l'indirizzo di rientro non è registrato in Google.",
+    );
+
+    await monta("/panel");
+
+    expect(contenitore.textContent).toContain("redirect_uri_mismatch");
+    // E si può togliere: un errore che resta lì mentre l'utente riprova
+    // sembra un errore nuovo.
+    const nascondi = [...contenitore.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Nascondi"),
+    );
+    expect(nascondi).toBeTruthy();
+    await act(async () => nascondi!.click());
+    expect(contenitore.textContent).not.toContain("redirect_uri_mismatch");
+  });
 });
 
 describe("Salvataggio online", () => {
