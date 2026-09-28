@@ -1,24 +1,91 @@
 name: Release desktop
 
-# I pacchetti di Electron si costruiscono qui, a partire dai tag
-# "v<versione>" creati dal workflow di versionazione: la release pubblicata
-# su GitHub è quella marcata come latest, quindi chi scarica "ultima
-# versione" prende sempre l'ultima reale e non una prerelease.
+# I pacchetti di Electron si costruiscono qui e la release pubblicata su
+# GitHub è quella marcata come latest, così chi scarica "ultima versione"
+# prende sempre l'ultima reale e non una prerelease.
+#
+# Parte da due eventi:
+#   - un tag "v<versione>", spinto da una persona (o dal workflow di
+#     versionazione, se avesse un permesso per farlo);
+#   - un push su master, il caso normale.
+#
+# Perché il secondo? Un workflow non ne innesca un altro quando usa
+# GITHUB_TOKEN: il tag creato dal workflow di versionazione partirebbe
+# qui solo se il token non fosse quello del bot, e il rilascio non
+# partirebbe mai. Quindi su master questo workflow risolve la versione da
+# sé, crea il tag se manca, e non fa niente se quella versione è già
+# stata rilasciata.
 
 on:
   push:
+    branches: [master]
     tags: ["v*"]
   workflow_dispatch:
     inputs:
       tag:
-        description: Tag da rilasciare
-        required: true
+        description: Tag da rilasciare (vuoto = versione attuale)
+        required: false
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-desktop
+  cancel-in-progress: false
+
 jobs:
+  prepara:
+    runs-on: ubuntu-latest
+    outputs:
+      versione: ${{ steps.scegli.outputs.versione }}
+      daRilasciare: ${{ steps.scegli.outputs.daRilasciare }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Scegli la versione
+        id: scegli
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REF_TIPO: ${{ github.ref_type }}
+          REF_NOME: ${{ github.ref_name }}
+          TAG_MANUALE: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          TAG="${TAG_MANUALE:-}"
+          if [ "$REF_TIPO" = "tag" ]; then TAG="$REF_NOME"; fi
+          if [ -z "$TAG" ]; then
+            TAG="v$(node -p "require('./package.json').version")"
+            echo "Nessun tag dato: uso $TAG dalla versione del pacchetto."
+          fi
+          echo "versione=$TAG" >> "$GITHUB_OUTPUT"
+
+          node scripts/versione-check.mjs
+
+          # Se la release c'è già, non si ricostruisce tutto: il tag e gli
+          # artefatti esistono e rifare il lavoro sarebbe solo sprecato.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "La release $TAG esiste già: niente da fare."
+            echo "daRilasciare=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Il tag serve comunque: è lui che identifica la versione nei
+          # pacchetti e nelle note.
+          if ! git rev-parse "$TAG" >/dev/null 2>&1; then
+            git tag "$TAG"
+            git push origin "$TAG"
+            echo "Creato e pubblicato il tag $TAG."
+          else
+            echo "Il tag $TAG esiste già."
+          fi
+          echo "daRilasciare=true" >> "$GITHUB_OUTPUT"
+
   impacchetta:
+    needs: prepara
+    if: needs.prepara.outputs.daRilasciare == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -45,7 +112,7 @@ jobs:
         run: node scripts/versione-check.mjs
         env:
           GITHUB_REF_TYPE: tag
-          GITHUB_REF_NAME: ${{ inputs.tag || github.ref_name }}
+          GITHUB_REF_NAME: ${{ needs.prepara.outputs.versione }}
 
       - name: Dipendenze
         run: bun install --frozen-lockfile
@@ -76,7 +143,8 @@ jobs:
           retention-days: 7
 
   pubblica:
-    needs: impacchetta
+    needs: [prepara, impacchetta]
+    if: needs.prepara.outputs.daRilasciare == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Scarica gli artefatti
@@ -87,7 +155,7 @@ jobs:
       - name: Crea la release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          VERSIONE: ${{ needs.prepara.outputs.versione }}
         run: |
           # I pacchetti finiscono sotto pacchetti/<nome>/: si appiattiscono
           # in una directory sola, altrimenti la release avrebbe allegati
@@ -95,7 +163,7 @@ jobs:
           mkdir -p dist
           find pacchetti -type f -exec cp {} dist/ \;
           ls -l dist
-          gh release create "$TAG" dist/* \
-            --title "Reportini $TAG" \
+          gh release create "$VERSIONE" dist/* \
+            --title "Reportini $VERSIONE" \
             --generate-notes \
             --latest
