@@ -1,0 +1,20 @@
+{
+  "name": "Reportini · Anagrafiche e appuntamenti",
+  "short_name": "Reportini",
+  "description": "Gestisci le relazioni delle tue anagrafiche e fissa gli appuntamenti su Google Calendar.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f7f6f2",
+  "theme_color": "#222735",
+  "lang": "it",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

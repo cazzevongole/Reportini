@@ -1,0 +1,77 @@
+import { useEffect, useState, type ReactNode } from "react";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import AppShell from "./components/AppShell";
+import AnagraficoDettaglio from "./pages/AnagraficoDettaglio";
+import Anagrafici from "./pages/Anagrafici";
+import Appuntamenti from "./pages/Appuntamenti";
+import DashboardSviluppatore from "./pages/DashboardSviluppatore";
+import Impostazioni from "./pages/Impostazioni";
+import Landing from "./pages/Landing";
+import Panel from "./pages/Panel";
+import Relazioni from "./pages/Relazioni";
+import { initDatabase } from "./lib/sqlite/engine";
+
+/**
+ * Il database viene aperto qui, prima di montare le pagine: così ogni vista
+ * può interrogarlo senza dover verificare da parte sua che sia pronto.
+ */
+function DatabaseGate({ children }: { children: ReactNode }) {
+  const [stato, setStato] = useState<"caricamento" | "pronto" | "errore">("caricamento");
+  const [errore, setErrore] = useState("");
+
+  useEffect(() => {
+    initDatabase()
+      .then(() => setStato("pronto"))
+      .catch((causa: unknown) => {
+        console.error(causa);
+        setErrore(causa instanceof Error ? causa.message : String(causa));
+        setStato("errore");
+      });
+  }, []);
+
+  if (stato === "caricamento") {
+    return (
+      <div className="flex min-h-dvh items-center justify-center p-6">
+        <div className="card max-w-sm p-6 text-center">
+          <div className="mx-auto mb-4 h-9 w-9 animate-spin rounded-full border-2 border-ink-100 border-t-brand-500" />
+          <p className="text-sm text-ink-400">Apertura dei tuoi dati…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (stato === "errore") {
+    return (
+      <div className="flex min-h-dvh items-center justify-center p-6">
+        <div className="card max-w-sm p-6 text-center">
+          <h1 className="text-xl">Impossibile aprire i dati</h1>
+          <p className="mt-2 text-sm text-ink-400">{errore}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+}
+
+export default function App() {
+  return (
+    <DatabaseGate>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Routes>
+          <Route path="/" element={<Landing />} />
+          <Route element={<AppShell />}>
+            <Route path="/panel" element={<Panel />} />
+            <Route path="/panel/anagrafici" element={<Anagrafici />} />
+            <Route path="/panel/anagrafici/:id" element={<AnagraficoDettaglio />} />
+            <Route path="/panel/relazioni" element={<Relazioni />} />
+            <Route path="/panel/appuntamenti" element={<Appuntamenti />} />
+            <Route path="/panel/impostazioni" element={<Impostazioni />} />
+            <Route path="/panel/sviluppo" element={<DashboardSviluppatore />} />
+          </Route>
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </DatabaseGate>
+  );
+}
