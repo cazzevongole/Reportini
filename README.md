@@ -343,13 +343,19 @@ supabase link --project-ref <ref>
 supabase functions deploy google-token --no-verify-jwt
 supabase secrets set GOOGLE_CLIENT_ID=<client id>
 supabase secrets set GOOGLE_CLIENT_SECRET=<client secret>
-supabase secrets set SUPABASE_URL=<project url>
-supabase secrets set SUPABASE_ANON_KEY=<chiave pubblica>
+supabase secrets set PROGETTO_URL=<project url>
+supabase secrets set PROGETTO_CHIAVE=<chiave pubblica>
 supabase secrets set ORIGINI_AMMESSE=https://cazzevongole.github.io,http://localhost:5173
 ```
 
 5. Metti il **Client ID** (solo quello, non il secret) in `VITE_GOOGLE_CLIENT_ID` nelle
    variabili d'ambiente della web.
+
+I due segreti del progetto si chiamano `PROGETTO_URL` e `PROGETTO_CHIAVE`, non
+`SUPABASE_URL` e `SUPABASE_ANON_KEY`: la CLI rifiuta i nomi che iniziano con `SUPABASE_` perché
+quel prefisso è riservato alle sue variabili interne, e va avanti senza impostarli
+(*Env name cannot start with SUPABASE_, skipping*). Per la funzione non cambia niente: sono due
+etichette, i valori sono quelli che leggi in *Project Settings → API*.
 
 Sul `--no-verify-jwt`: lo scambio avviene *mentre* l'utente sta entrando, quando non ha ancora
 una sessione da cui trarre un JWT, quindi la verifica automatica di Supabase non può

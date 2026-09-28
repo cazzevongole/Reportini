@@ -29,9 +29,14 @@
 //   supabase functions deploy google-token --no-verify-jwt
 //   supabase secrets set GOOGLE_CLIENT_ID=<client id>
 //   supabase secrets set GOOGLE_CLIENT_SECRET=<client secret>
-//   supabase secrets set SUPABASE_URL=<project url>
-//   supabase secrets set SUPABASE_ANON_KEY=<chiave pubblica>
+//   supabase secrets set PROGETTO_URL=<project url>
+//   supabase secrets set PROGETTO_CHIAVE=<chiave pubblica>
 //   supabase secrets set ORIGINI_AMMESSE=https://cazzevongole.github.io,http://localhost:5173
+//
+// Perché `PROGETTO_URL` e non `SUPABASE_URL`: la CLI rifiuta i segreti che
+// iniziano con `SUPABASE_`, perché quel prefisso è riservato alle sue
+// variabili interne ("Env name cannot start with SUPABASE_, skipping") e va
+// avanti senza impostarli. Sono quindi due nomi nostri.
 //
 // Perché `--no-verify-jwt`: lo scambio avviene *durante* l'accesso, quando
 // l'utente non ha ancora una sessione da cui trarre un JWT. Il prezzo è che
@@ -46,8 +51,10 @@ const ORIGINE_REVOCA = "https://oauth2.googleapis.com/revoke";
 interface Env {
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
-  SUPABASE_URL?: string;
-  SUPABASE_ANON_KEY?: string;
+  /** URL del progetto: serve per chiedere a Supabase Auth chi è l'utente. */
+  PROGETTO_URL?: string;
+  /** Chiave pubblica (anon) del progetto, per la stessa interrogazione. */
+  PROGETTO_CHIAVE?: string;
   /** Origini autorizzate, separate da virgola. */
   ORIGINI_AMMESSE?: string;
 }
@@ -95,8 +102,8 @@ function segretiMancanti(env: Env): string[] {
     // Non servono allo scambio, ma senza questi la funzione non può
     // verificare la sessione: meglio dirlo qui che rispondere "401 serve un
     // account" a chi invece ha dimenticato un segreto.
-    env.SUPABASE_URL ? "" : "SUPABASE_URL",
-    env.SUPABASE_ANON_KEY ? "" : "SUPABASE_ANON_KEY",
+    env.PROGETTO_URL ? "" : "PROGETTO_URL",
+    env.PROGETTO_CHIAVE ? "" : "PROGETTO_CHIAVE",
   ].filter(Boolean);
 }
 
@@ -110,11 +117,11 @@ function segretiMancanti(env: Env): string[] {
 async function sessioneVerificata(richiesta: Request, env: Env): Promise<boolean> {
   const portatore = richiesta.headers.get("authorization") ?? "";
   if (!portatore.startsWith("Bearer ")) return false;
-  if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) return false;
-  const risposta = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+  if (!env.PROGETTO_URL || !env.PROGETTO_CHIAVE) return false;
+  const risposta = await fetch(`${env.PROGETTO_URL}/auth/v1/user`, {
     headers: {
       Authorization: portatore,
-      apikey: env.SUPABASE_ANON_KEY,
+      apikey: env.PROGETTO_CHIAVE,
     },
   });
   return risposta.ok;
