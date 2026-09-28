@@ -7,7 +7,7 @@ import {
   UploadIcon,
   UserIcon,
 } from "../components/icons";
-import { Badge, Button, Card, PageHeader } from "../components/ui";
+import { Button, Card, PageHeader } from "../components/ui";
 import { useAvvisi } from "../components/Avvisi";
 import VersioniBackup from "../components/VersioniBackup";
 import { useLiveQuery } from "../hooks/useLiveQuery";
@@ -50,7 +50,6 @@ export default function Impostazioni() {
   const {
     email: accountEmail,
     session,
-    isDeveloper,
     signInWithGoogle: signInAccount,
     signOut: signOutAccount,
   } = useAccount();
@@ -146,7 +145,6 @@ export default function Impostazioni() {
               <dt className="text-ink-400">Account</dt>
               <dd className="flex min-w-0 items-center gap-2">
                 <span className="truncate text-ink-800">{accountEmail ?? "non collegato"}</span>
-                {isDeveloper ? <Badge tone="clay">Sviluppo</Badge> : null}
               </dd>
             </div>
             <div className="flex justify-between gap-4">

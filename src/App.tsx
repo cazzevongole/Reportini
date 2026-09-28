@@ -3,11 +3,11 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import AppShell from "./components/AppShell";
 import { AvvisoProvider } from "./components/Avvisi";
 import RichiedeAccesso from "./components/RichiedeAccesso";
+import SchermataApertura from "./components/SchermataApertura";
 import Accesso from "./pages/Accesso";
 import AnagraficoDettaglio from "./pages/AnagraficoDettaglio";
 import Anagrafici from "./pages/Anagrafici";
 import Appuntamenti from "./pages/Appuntamenti";
-import DashboardSviluppatore from "./pages/DashboardSviluppatore";
 import Impostazioni from "./pages/Impostazioni";
 import Panel from "./pages/Panel";
 import Relazioni from "./pages/Relazioni";
@@ -58,49 +58,52 @@ function DatabaseGate({ children }: { children: ReactNode }) {
 
 export default function App() {
   return (
-    <DatabaseGate>
-      {/* Gli avvisi stanno fuori dal router: un'azione che chiama la rete deve
-          poter parlare anche cambiando pagina (per esempio uscendo). */}
-      <AvvisoProvider>
-        {/* basename: su GitHub Pages l'app vive in /Reportini/. Senza, ogni
-            link punterebbe a /panel e lascerebbe la sottocartella: dopo
-            l'accesso l'utente finiva su una pagina di profilo e poi su un
-            404 al ricaricare. BASE_URL è "/" in locale e "/Reportini/" in
-            produzione, e li mette in fila. */}
-        <BrowserRouter
-          basename={import.meta.env.BASE_URL}
-          future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
-        >
-          <Routes>
-            {/* Unica rotta aperta: senza account non si vede nient'altro. */}
-            <Route path="/accedi" element={<Accesso />} />
-            <Route
-              path="/"
-              element={
-                <RichiedeAccesso>
-                  <Navigate to="/panel" replace />
-                </RichiedeAccesso>
-              }
-            />
-            <Route
-              element={
-                <RichiedeAccesso>
-                  <AppShell />
-                </RichiedeAccesso>
-              }
-            >
-              <Route path="/panel" element={<Panel />} />
-              <Route path="/panel/anagrafici" element={<Anagrafici />} />
-              <Route path="/panel/anagrafici/:id" element={<AnagraficoDettaglio />} />
-              <Route path="/panel/relazioni" element={<Relazioni />} />
-              <Route path="/panel/appuntamenti" element={<Appuntamenti />} />
-              <Route path="/panel/impostazioni" element={<Impostazioni />} />
-              <Route path="/panel/sviluppo" element={<DashboardSviluppatore />} />
-            </Route>
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </BrowserRouter>
-      </AvvisoProvider>
-    </DatabaseGate>
+    // Fuori da tutto, gate del database compreso: l'ospite non deve vedere
+    // il doppio salto fra "saluto" e "apertura dei tuoi dati".
+    <SchermataApertura>
+      <DatabaseGate>
+        {/* Gli avvisi stanno fuori dal router: un'azione che chiama la rete deve
+            poter parlare anche cambiando pagina (per esempio uscendo). */}
+        <AvvisoProvider>
+          {/* basename: su GitHub Pages l'app vive in /Reportini/. Senza, ogni
+              link punterebbe a /panel e lascerebbe la sottocartella: dopo
+              l'accesso l'utente finiva su una pagina di profilo e poi su un
+              404 al ricaricare. BASE_URL è "/" in locale e "/Reportini/" in
+              produzione, e li mette in fila. */}
+          <BrowserRouter
+            basename={import.meta.env.BASE_URL}
+            future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+          >
+            <Routes>
+              {/* Unica rotta aperta: senza account non si vede nient'altro. */}
+              <Route path="/accedi" element={<Accesso />} />
+              <Route
+                path="/"
+                element={
+                  <RichiedeAccesso>
+                    <Navigate to="/panel" replace />
+                  </RichiedeAccesso>
+                }
+              />
+              <Route
+                element={
+                  <RichiedeAccesso>
+                    <AppShell />
+                  </RichiedeAccesso>
+                }
+              >
+                <Route path="/panel" element={<Panel />} />
+                <Route path="/panel/anagrafici" element={<Anagrafici />} />
+                <Route path="/panel/anagrafici/:id" element={<AnagraficoDettaglio />} />
+                <Route path="/panel/relazioni" element={<Relazioni />} />
+                <Route path="/panel/appuntamenti" element={<Appuntamenti />} />
+                <Route path="/panel/impostazioni" element={<Impostazioni />} />
+              </Route>
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </BrowserRouter>
+        </AvvisoProvider>
+      </DatabaseGate>
+    </SchermataApertura>
   );
 }

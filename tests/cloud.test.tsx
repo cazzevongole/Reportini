@@ -1,15 +1,13 @@
 /**
  * Verifica i flussi di account e salvataggio online con un client Supabase finto:
- * non servono credenziali reali per controllare che il login, la sincronizzazione
- * e il gating della dashboard sviluppatore si comportino come previsto.
+ * non servono credenziali reali per controllare che il login e la sincronizzazione
+ * si comportino come previsto.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "fake-indexeddb/auto";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { urlDiRitorno } from "../src/lib/cloud/destinazione";
-
-const CHIAVE = "sviluppo@example.it";
 
 /* ------------------------------ Supabase finto ----------------------------- */
 
@@ -387,7 +385,7 @@ describe("Verifica del bucket", () => {
 
   it("con un account la verifica scrive davvero e poi ripulisce", async () => {
     const { verificaIntegrazione } = await import("../src/lib/cloud/diagnostica");
-    await entraCome("sviluppo@example.it");
+    await entraCome("esempio@esempio.it");
     // Il client finto risponde anche all'endpoint delle impostazioni auth.
     vi.stubGlobal(
       "fetch",
@@ -428,30 +426,18 @@ describe("Verifica del bucket", () => {
   });
 });
 
-describe("Dashboard sviluppatore", () => {
-  it("compare per un account in whitelist", async () => {
-    await entraCome(CHIAVE);
-    await monta("/panel/sviluppo");
-    expect(contenitore.textContent).toContain("Dashboard sviluppatore");
-  });
-
-  it("non compare per un account fuori whitelist e reindirizza al pannello", async () => {
-    await entraCome("esterno@esempio.it");
+describe("Sezione sviluppo", () => {
+  it("non esiste più: la rotta riporta al pannello", async () => {
+    await entraCome("sviluppo@example.it");
     await monta("/panel/sviluppo");
     expect(contenitore.textContent).not.toContain("Dashboard sviluppatore");
     expect(window.location.pathname).toBe("/panel");
   });
 
-  it("non mostra il badge Sviluppo agli account non autorizzati", async () => {
-    await entraCome("esterno@esempio.it");
+  it("le impostazioni non hanno più il badge Sviluppo", async () => {
+    await entraCome("sviluppo@example.it");
     await monta("/panel/impostazioni");
     expect(contenitore.textContent).not.toContain("Sviluppo");
-  });
-
-  it("mostra il badge Sviluppo agli account autorizzati", async () => {
-    await entraCome(CHIAVE);
-    await monta("/panel/impostazioni");
-    expect(contenitore.textContent).toContain("Sviluppo");
   });
 });
 

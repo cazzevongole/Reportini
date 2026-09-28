@@ -12,27 +12,12 @@ import { urlDiRitorno } from "./destinazione";
 import { cloudEnabled, supabase } from "./supabase";
 import { adottaTokenDiSessione, SCOPO_CALENDARIO } from "../google/auth";
 
-/**
- * Email autorizzate a vedere la dashboard di sviluppo, lette dalla variabile
- * d'ambiente VITE_DEV_WHITELIST (separate da virgola).
- *
- * Attenzione: la whitelist vive nel bundle del browser, quindi protegge solo
- * contro accessi casuali. Per una barriera vera va verificata lato server.
- */
-const WHITELIST_RAW = ((import.meta.env.VITE_DEV_WHITELIST as string | undefined) ?? "").trim();
-
-const WHITELIST = WHITELIST_RAW.split(",")
-  .map((email) => email.trim().toLowerCase())
-  .filter(Boolean);
-
 export interface AccountState {
   /** Supabase non configurato: l'app lavora solo in locale. */
   cloudEnabled: boolean;
   session: Session | null;
   loading: boolean;
   email: string | null;
-  /** L'email dell'utente è nella whitelist di sviluppo. */
-  isDeveloper: boolean;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   error: string | null;
@@ -107,7 +92,6 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       session,
       loading,
       email,
-      isDeveloper: Boolean(email && WHITELIST.includes(email.toLowerCase())),
       signInWithGoogle,
       signOut,
       error,
