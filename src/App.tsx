@@ -1,12 +1,13 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import AppShell from "./components/AppShell";
+import RichiedeAccesso from "./components/RichiedeAccesso";
+import Accesso from "./pages/Accesso";
 import AnagraficoDettaglio from "./pages/AnagraficoDettaglio";
 import Anagrafici from "./pages/Anagrafici";
 import Appuntamenti from "./pages/Appuntamenti";
 import DashboardSviluppatore from "./pages/DashboardSviluppatore";
 import Impostazioni from "./pages/Impostazioni";
-import Landing from "./pages/Landing";
 import Panel from "./pages/Panel";
 import Relazioni from "./pages/Relazioni";
 import { initDatabase } from "./lib/sqlite/engine";
@@ -59,8 +60,23 @@ export default function App() {
     <DatabaseGate>
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
-          <Route path="/" element={<Landing />} />
-          <Route element={<AppShell />}>
+          {/* Unica rotta aperta: senza account non si vede nient'altro. */}
+          <Route path="/accedi" element={<Accesso />} />
+          <Route
+            path="/"
+            element={
+              <RichiedeAccesso>
+                <Navigate to="/panel" replace />
+              </RichiedeAccesso>
+            }
+          />
+          <Route
+            element={
+              <RichiedeAccesso>
+                <AppShell />
+              </RichiedeAccesso>
+            }
+          >
             <Route path="/panel" element={<Panel />} />
             <Route path="/panel/anagrafici" element={<Anagrafici />} />
             <Route path="/panel/anagrafici/:id" element={<AnagraficoDettaglio />} />

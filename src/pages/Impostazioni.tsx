@@ -1,23 +1,26 @@
-import { useRef, useState, type ChangeEvent } from "react";
-import GoogleStatus from "../components/GoogleStatus";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import {
   CalendarIcon,
   CheckIcon,
-  CloseIcon,
+  CloudIcon,
   DownloadIcon,
-  InfoIcon,
   SparkIcon,
   UploadIcon,
   UserIcon,
 } from "../components/icons";
-import { Button, Card, PageHeader } from "../components/ui";
+import { Badge, Button, Card, PageHeader } from "../components/ui";
 import { useLiveQuery } from "../hooks/useLiveQuery";
 import { useAccount } from "../lib/cloud/session";
 import { sincronizza } from "../lib/cloud/sync";
 import { cloudEnabled } from "../lib/cloud/supabase";
-import { verificaIntegrazione, type Controllo } from "../lib/cloud/diagnostica";
-import { urlDiRitorno } from "../lib/cloud/destinazione";
-import { connect, disconnect, googleConfigured, readProfile } from "../lib/google/auth";
+import {
+  connect,
+  disconnect,
+  googleConfigured,
+  isConnected,
+  readProfile,
+  type GoogleProfile,
+} from "../lib/google/auth";
 import { scaricaTuttiGliAppuntamenti } from "../lib/google/calendar";
 import { sincronizzaInAttesa } from "../lib/google/sync";
 import { creaBackup, elencaAppuntamenti, ripristinaBackup, type Backup } from "../lib/repo";
@@ -26,35 +29,24 @@ import { flush } from "../lib/sqlite/engine";
 export default function Impostazioni() {
   const fileInput = useRef<HTMLInputElement>(null);
   const [messaggio, setMessaggio] = useState("");
-  const [controlli, setControlli] = useState<Controllo[]>([]);
-  const urlRitorno = urlDiRitorno(window.location.origin, import.meta.env.BASE_URL);
-  const [verificaInCorso, setVerificaInCorso] = useState(false);
   const [occupato, setOccupato] = useState(false);
-  const profilo = readProfile();
+  // Lo stato di collegamento lo decide il token, non il profilo: il profilo
+  // arriva con una richiesta a parte e può arrivare dopo il primo render.
+  const [collegato, setCollegato] = useState(() => isConnected());
+  const [profilo, setProfilo] = useState<GoogleProfile | null>(() => readProfile());
   const appuntamenti = useLiveQuery(() => elencaAppuntamenti());
   const sincronizzati = appuntamenti.filter((a) => a.googleEventId).length;
   const {
     email: accountEmail,
+    isDeveloper,
     signInWithGoogle: signInAccount,
     signOut: signOutAccount,
   } = useAccount();
 
-  async function eseguiVerifica() {
-    setVerificaInCorso(true);
-    try {
-      const esito = await verificaIntegrazione();
-      setControlli(esito.controlli);
-      setMessaggio(
-        esito.tuttiOk
-          ? "Integrazione pronta."
-          : esito.nonVerificati > 0
-            ? "Integrazione quasi pronta: accedi per completare i controlli che da anonimo non si possono concludere."
-            : "Integrazione incompleta: correggi i punti segnalati sopra.",
-      );
-    } finally {
-      setVerificaInCorso(false);
-    }
-  }
+  useEffect(() => {
+    setCollegato(isConnected());
+    setProfilo(readProfile());
+  }, []);
 
   async function esportaCopia() {
     await flush();
@@ -118,7 +110,7 @@ export default function Impostazioni() {
 
   return (
     <div>
-      <PageHeader title="Impostazioni" subtitle="Collegamenti, dati e copie di sicurezza" />
+      <PageHeader title="Impostazioni" subtitle="Il tuo account, i collegamenti e le copie" />
 
       {messaggio ? (
         <p className="mb-5 flex items-start gap-2 rounded-xl border border-ink-100 bg-white px-3.5 py-2.5 text-sm text-ink-600">
@@ -128,21 +120,82 @@ export default function Impostazioni() {
       ) : null}
 
       <section className="mb-5">
-        <GoogleStatus />
+        <Card className="p-5">
+          <h2 className="flex items-center gap-2 text-lg">
+            <UserIcon className="h-5 w-5 text-ink-400" />
+            Il tuo account
+          </h2>
+          <p className="mt-1.5 text-sm text-ink-500">
+            {cloudEnabled
+              ? "Con l'accesso con Google i tuoi dati vengono salvati online dopo ogni modifica e ritrovati su qualsiasi dispositivo."
+              : "L'accesso con Google non è configurato: i dati restano su questo dispositivo."}
+          </p>
+          <dl className="mt-3 space-y-2 text-sm">
+            <div className="flex items-center justify-between gap-4">
+              <dt className="text-ink-400">Account</dt>
+              <dd className="flex min-w-0 items-center gap-2">
+                <span className="truncate text-ink-800">{accountEmail ?? "non collegato"}</span>
+                {isDeveloper ? <Badge tone="clay">Sviluppo</Badge> : null}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-ink-400">Salvataggio online</dt>
+              <dd className="flex items-center gap-1.5 text-ink-800">
+                <CloudIcon className="h-3.5 w-3.5 text-ink-400" />
+                {cloudEnabled ? "attivo" : "disattivato"}
+              </dd>
+            </div>
+          </dl>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {accountEmail ? (
+              <>
+                <Button
+                  variant="secondary"
+                  onClick={async () => {
+                    setOccupato(true);
+                    const esito = await sincronizza(accountEmail);
+                    setMessaggio(esito.messaggio);
+                    setOccupato(false);
+                  }}
+                  disabled={occupato}
+                >
+                  Salva subito online
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    // Il guard delle pagine manda alla schermata di accesso
+                    // appena la sessione sparisce: non serve navigare qui.
+                    void signOutAccount();
+                  }}
+                >
+                  Esci
+                </Button>
+              </>
+            ) : (
+              <Button onClick={() => void signInAccount()} disabled={!cloudEnabled}>
+                Accedi con Google
+              </Button>
+            )}
+          </div>
+        </Card>
+      </section>
+
+      <section className="mb-5">
         <Card className="p-5">
           <h2 className="flex items-center gap-2 text-lg">
             <CalendarIcon className="h-5 w-5 text-ink-400" />
             Google Calendar
           </h2>
           <p className="mt-1.5 text-sm text-ink-500">
-            {profilo
-              ? `Collegato come ${profilo.email}. ${sincronizzati} appuntamenti su ${appuntamenti.length} sono già pubblicati.`
+            {collegato
+              ? `Collegato come ${profilo?.email ?? accountEmail ?? "questo account"}. ${sincronizzati} appuntamenti su ${appuntamenti.length} sono già pubblicati.`
               : googleConfigured
                 ? "Collega il tuo account per pubblicare gli appuntamenti con un tocco."
                 : "L'accesso con Google passa da Supabase: senza, non c'è modo di ottenere un token Calendar."}
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
-            {profilo ? (
+            {collegato ? (
               <>
                 <Button onClick={sincronizzaTutto} disabled={occupato}>
                   {occupato ? "Sincronizzazione…" : "Sincronizza in attesa"}
@@ -151,6 +204,8 @@ export default function Impostazioni() {
                   variant="secondary"
                   onClick={() => {
                     disconnect();
+                    setCollegato(false);
+                    setProfilo(null);
                     setMessaggio("Account Google scollegato.");
                   }}
                 >
@@ -173,130 +228,6 @@ export default function Impostazioni() {
               <DownloadIcon className="h-4 w-4" />
               Esporta .ics
             </Button>
-          </div>
-        </Card>
-      </section>
-
-      <section className="mb-5">
-        <Card className="p-5">
-          <h2 className="flex items-center gap-2 text-lg">
-            <CheckIcon className="h-5 w-5 text-ink-400" />
-            Verifica integrazione
-          </h2>
-          <p className="mt-1.5 text-sm text-ink-500">
-            Controlla che il progetto sia pronto: endpoint, tipo di chiave, accesso con Google e
-            bucket.
-          </p>
-          <div className="mt-4 rounded-xl bg-ink-50 p-3 text-sm">
-            <p className="font-medium text-ink-800">URL di ritorno dopo l&apos;accesso</p>
-            <p className="mt-1 text-xs text-ink-500">
-              Supabase rimanda l&apos;utente qui solo se questo URL è in
-              <span className="font-medium"> Authentication → URL Configuration → Redirect URLs</span>.
-              Se manca, il login finisce sul Site URL e sembra non funzionare.
-            </p>
-            <div className="mt-2 flex items-center gap-2">
-              <code className="min-w-0 flex-1 truncate rounded-lg bg-white px-2.5 py-1.5 text-xs text-ink-700">
-                {urlRitorno}
-              </code>
-              <Button
-                variant="secondary"
-                className="shrink-0"
-                onClick={() => {
-                  void navigator.clipboard
-                    ?.writeText(urlRitorno)
-                    .then(() => setMessaggio("URL di ritorno copiato negli appunti."));
-                }}
-              >
-                Copia
-              </Button>
-            </div>
-          </div>
-          <Button
-            variant="secondary"
-            className="mt-4"
-            onClick={() => void eseguiVerifica()}
-            disabled={verificaInCorso}
-          >
-            {verificaInCorso ? "Verifica in corso…" : "Esegui verifica"}
-          </Button>
-          {controlli.length > 0 ? (
-            <ul className="mt-4 space-y-2.5">
-              {controlli.map((controllo) => (
-                <li key={controllo.nome} className="flex items-start gap-2.5 text-sm">
-                  {controllo.nonVerificato ? (
-                    <InfoIcon className="mt-0.5 h-4 w-4 shrink-0 text-ink-400" />
-                  ) : controllo.ok ? (
-                    <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" />
-                  ) : (
-                    <CloseIcon className="mt-0.5 h-4 w-4 shrink-0 text-clay-600" />
-                  )}
-                  <span>
-                    <span className="font-medium text-ink-800">{controllo.nome}</span>
-                    <span className="block text-xs text-ink-500">{controllo.dettaglio}</span>
-                    {controllo.azione ? (
-                      <span className="mt-1 block rounded-lg bg-ink-50 px-2.5 py-1.5 text-xs text-ink-600">
-                        {controllo.azione}
-                      </span>
-                    ) : null}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </Card>
-      </section>
-
-      <section className="mb-5">
-        <Card className="p-5">
-          <h2 className="flex items-center gap-2 text-lg">
-            <UserIcon className="h-5 w-5 text-ink-400" />
-            Account e salvataggio online
-          </h2>
-          <p className="mt-1.5 text-sm text-ink-500">
-            {cloudEnabled
-              ? "Accedendo con Google i tuoi dati vengono salvati online dopo ogni modifica e ritrovati su qualsiasi dispositivo."
-              : "L'accesso con Google non è configurato: i dati restano su questo dispositivo."}
-          </p>
-          <dl className="mt-3 space-y-2 text-sm">
-            <div className="flex justify-between gap-4">
-              <dt className="text-ink-400">Account</dt>
-              <dd className="truncate text-right text-ink-800">{accountEmail ?? "non collegato"}</dd>
-            </div>
-            <div className="flex justify-between gap-4">
-              <dt className="text-ink-400">Salvataggio online</dt>
-              <dd className="text-ink-800">{cloudEnabled ? "attivo" : "disattivato"}</dd>
-            </div>
-          </dl>
-          <div className="mt-4 flex flex-wrap gap-2">
-            {accountEmail ? (
-              <>
-                <Button
-                  variant="secondary"
-                  onClick={async () => {
-                    setOccupato(true);
-                    const esito = await sincronizza(accountEmail);
-                    setMessaggio(esito.messaggio);
-                    setOccupato(false);
-                  }}
-                  disabled={occupato}
-                >
-                  Salva subito online
-                </Button>
-                <Button
-                  variant="ghost"
-                  onClick={() => {
-                    void signOutAccount();
-                    setMessaggio("Account scollegato.");
-                  }}
-                >
-                  Scollega
-                </Button>
-              </>
-            ) : (
-              <Button onClick={() => void signInAccount()} disabled={!cloudEnabled}>
-                Accedi con Google
-              </Button>
-            )}
           </div>
         </Card>
       </section>

@@ -202,10 +202,14 @@ describe("Accesso con Google", () => {
     }
   });
 
-  it("espone l'email dell'utente dopo l'accesso", async () => {
+  it("espone l'email dell'utente dopo l'accesso, nelle impostazioni", async () => {
     await entraCome("utente@esempio.it");
-    await monta("/panel");
+    await monta("/panel/impostazioni");
     expect(contenitore.textContent).toContain("utente@esempio.it");
+    // Nelle altre pagine l'account non ripete le stesse righe a ogni passaggio.
+    await act(async () => radice.unmount());
+    await monta("/panel");
+    expect(contenitore.textContent).not.toContain("utente@esempio.it");
   });
 
   it("offre l'accesso quando non c'è sessione", async () => {
@@ -410,32 +414,112 @@ describe("Dashboard sviluppatore", () => {
     expect(window.location.pathname).toBe("/panel");
   });
 
-  it("non mostra la voce di menu agli account non autorizzati", async () => {
+  it("non mostra il badge Sviluppo agli account non autorizzati", async () => {
     await entraCome("esterno@esempio.it");
-    await monta("/panel");
+    await monta("/panel/impostazioni");
     expect(contenitore.textContent).not.toContain("Sviluppo");
   });
 
-  it("mostra la voce di menu agli account autorizzati", async () => {
+  it("mostra il badge Sviluppo agli account autorizzati", async () => {
     await entraCome(CHIAVE);
-    await monta("/panel");
+    await monta("/panel/impostazioni");
     expect(contenitore.textContent).toContain("Sviluppo");
   });
 });
 
 describe("Riferimenti rimossi", () => {
-  it("la landing non parla più di database né di dati dimostrativi", async () => {
-    await monta("/");
-    const testo = contenitore.textContent ?? "";
-    expect(testo.toLowerCase()).not.toContain("sqlite");
-    expect(testo.toLowerCase()).not.toContain("database");
-    expect(testo.toLowerCase()).not.toContain("dati di esempio");
+  it("la pagina di accesso non parla di database né di dati dimostrativi", async () => {
+    await monta("/accedi");
+    const testo = (contenitore.textContent ?? "").toLowerCase();
+    expect(testo).not.toContain("sqlite");
+    expect(testo).not.toContain("database");
+    expect(testo).not.toContain("dati di esempio");
   });
 
-  it("le impostazioni non mostrano la sezione del database", async () => {
+  it("le impostazioni non hanno sezioni di sviluppo", async () => {
+    await entraCome("utente@esempio.it");
     await monta("/panel/impostazioni");
     const testo = (contenitore.textContent ?? "").toLowerCase();
     expect(testo).not.toContain("sqlite");
-    expect(testo).toContain("account e salvataggio online");
+    // Controlli tecnici: servivano a chi sviluppa l'app, non a chi la usa.
+    expect(testo).not.toContain("verifica integrazione");
+    expect(testo).not.toContain("url di ritorno");
+    expect(testo).not.toContain("bucket");
+    expect(testo).not.toContain("redirect urls");
+    expect(testo).toContain("il tuo account");
+  });
+
+  it("l'account e l'uscita stanno nelle impostazioni", async () => {
+    await entraCome("utente@esempio.it");
+    await monta("/panel/impostazioni");
+    const testo = contenitore.textContent ?? "";
+    // Profilo: l'email con cui si è entrati.
+    expect(testo).toContain("utente@esempio.it");
+    // Uscita: il pulsante che chiude la sessione.
+    expect(testo).toContain("Esci");
+    // E lo stato del collegamento con Google Calendar, senza duplicarlo.
+    expect(testo).toContain("Google Calendar");
+    expect(testo).toContain("Salvataggio online");
+  });
+});
+
+describe("Accesso obbligatorio", () => {
+  it("la pagina di accesso si vede anche senza sessione", async () => {
+    await monta("/accedi");
+    expect(window.location.pathname).toBe("/accedi");
+    expect(contenitore.textContent).toContain("Accedi con Google");
+  });
+
+  it("senza sessione rimanda alla pagina di accesso", async () => {
+    await monta("/panel/anagrafici");
+    expect(window.location.pathname).toBe("/accedi");
+    // Nessuna schermata dell'app deve comparire nel frattempo.
+    expect(contenitore.textContent).not.toContain("Schede anagrafiche");
+  });
+
+  it("con la sessione le pagine si aprono normalmente", async () => {
+    await entraCome("utente@esempio.it");
+    await monta("/panel");
+    expect(window.location.pathname).toBe("/panel");
+    expect(contenitore.textContent).toContain("La tua scrivania");
+  });
+});
+
+describe("Barra di navigazione", () => {
+  it("ha cinque icone e l'etichetta solo sulla voce attiva", async () => {
+    await entraCome("utente@esempio.it");
+    await monta("/panel");
+
+    const barra = contenitore.querySelector('nav[aria-label="Navigazione principale"]');
+    expect(barra).not.toBeNull();
+    const voci = [...(barra!.querySelectorAll("a") as NodeListOf<HTMLAnchorElement>)];
+    // Cinque voci: Home, Anagrafici, Relazioni, Appuntamenti, Impostazioni.
+    expect(voci).toHaveLength(5);
+    // Le relazioni devono restare raggiungibili dalla barra: sono il
+    // documento che si consegna, non una schermata interna.
+    expect(voci.map((voce) => voce.textContent)).toContain("Relazioni");
+
+    const attive = voci.filter((voce) => voce.getAttribute("aria-current") === "page");
+    expect(attive).toHaveLength(1);
+
+    for (const voce of voci) {
+      const etichetta = voce.querySelector("span:last-child") as HTMLElement;
+      const nascosta = etichetta.querySelector(".invisible") !== null;
+      // L'etichetta si vede solo sulla voce attiva, ma il testo resta nel
+      // posto: è quello che dà il movimento alla barra.
+      expect(nascosta).toBe(voce !== attive[0]);
+      expect(etichetta.textContent?.trim()).toBeTruthy();
+    }
+  });
+
+  it("l'etichetta segue la pagina aperta", async () => {
+    await entraCome("utente@esempio.it");
+    await monta("/panel/appuntamenti");
+
+    const barra = contenitore.querySelector('nav[aria-label="Navigazione principale"]')!;
+    const attiva = barra.querySelector('a[aria-current="page"]')!;
+    expect(attiva.textContent).toContain("Appuntamenti");
+    const etichetta = attiva.querySelector("span:last-child") as HTMLElement;
+    expect(etichetta.querySelector(".invisible")).toBeNull();
   });
 });
