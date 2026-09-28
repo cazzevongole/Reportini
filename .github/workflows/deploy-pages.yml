@@ -19,6 +19,10 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Le variabili VITE_* stanno nell'ambiente "prod": GitHub le rende
+    # disponibili solo ai job che dichiarano quell'ambiente. Senza questa riga
+    # il build le legge vuote e pubblica un'app che non fa entrare nessuno.
+    environment: prod
     steps:
       - uses: actions/checkout@v4
 
@@ -29,13 +33,27 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      # Vite sostituisce le VITE_* nel bundle: se mancano, l'app si pubblica
+      # senza accesso con Google e senza salvataggio online, in silenzio.
+      # Meglio un deploy che fallisce con un messaggio chiaro.
+      - name: Controlla la configurazione
+        run: |
+          if [ -z "$VITE_SUPABASE_URL" ] || [ -z "$VITE_SUPABASE_ANON_KEY" ]; then
+            echo "::error::Mancano VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY nell'ambiente 'prod' (Settings > Secrets and variables > Actions > Variables > prod)."
+            exit 1
+          fi
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+
       - name: Build
         run: bun run build
         env:
           # Assets are served from https://<user>.github.io/Reportini/
           BASE_PATH: /Reportini
-          # Account Google + salvataggio online (Supabase). Facoltativi:
-          # senza questi l'app funziona comunque in locale.
+          # Account Google + salvataggio online (Supabase). Obbligatorie per il
+          # deploy: in locale l'app parte anche senza, ma online resterebbe
+          # chiusa a chiunque.
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
           VITE_DEV_WHITELIST: ${{ vars.VITE_DEV_WHITELIST }}
