@@ -5,6 +5,11 @@
   "private": true,
   "description": "Reportini desktop: relazioni anagrafiche e appuntamenti su Google Calendar",
   "main": "main.cjs",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cazzevongole/Reportini.git"
+  },
+  "author": "Reportini",
   "scripts": {
     "dev": "electron .",
     "start": "electron .",
@@ -19,6 +24,7 @@
     "appId": "app.reportini.desktop",
     "productName": "Reportini",
     "files": ["main.cjs", "preload.cjs", "renderer/**/*"],
+    "publish": null,
     "directories": {
       "output": "release"
     },

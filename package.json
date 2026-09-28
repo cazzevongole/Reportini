@@ -4,6 +4,11 @@
   "version": "0.1.2",
   "type": "module",
   "description": "Gestione delle relazioni anagrafiche e degli appuntamenti su Google Calendar",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cazzevongole/Reportini.git"
+  },
+  "author": "Reportini",
   "scripts": {
     "dev": "vite",
     "build": "vite build && cp dist/index.html dist/404.html",
