@@ -17,6 +17,9 @@ contextBridge.exposeInMainWorld("reportini", {
   revealDb: () => ipcRenderer.invoke("db:reveal"),
   saveText: (suggestedName, contents) =>
     ipcRenderer.invoke("db:choose-export", suggestedName, contents),
+  // Il consenso di Google va visto dal browser di sistema: dentro la
+  // finestra di Electron non viene accettato.
+  apriUrlEsterno: (url) => ipcRenderer.invoke("browser:apri", url),
   // Aggiornamento automatico: il main tiene il stato (controllo, scarico,
   // pronto) e lo ripubblica a ogni finestra. `null` vuol dire "qui gli
   // aggiornamenti non esistono", cioè app aperta dal sorgente.

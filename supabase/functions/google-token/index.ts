@@ -33,6 +33,10 @@
 //   supabase secrets set PROGETTO_CHIAVE=<chiave pubblica>
 //   supabase secrets set ORIGINI_AMMESSE=https://cazzevongole.github.io,http://localhost:5173
 //
+// `ORIGINI_AMMESSE` non c'è bisogno di elencarci la porta del pacchetto
+// desktop: le origini in loopback (127.0.0.1 e localhost, con qualsiasi
+// porta) sono ammesse sempre, perché non sono raggiungibili dalla rete.
+//
 // Perché `PROGETTO_URL` e non `SUPABASE_URL`: la CLI rifiuta i segreti che
 // iniziano con `SUPABASE_`, perché quel prefisso è riservato alle sue
 // variabili interne ("Env name cannot start with SUPABASE_, skipping") e va
@@ -65,6 +69,20 @@ const PREDEFINITE = [
   "http://127.0.0.1:5173",
 ];
 
+/**
+ * L'origine è dentro la macchina?
+ *
+ * Serve per il pacchetto desktop, che si serve da `127.0.0.1` con una porta
+ * prestabilita: metterla in `ORIGINI_AMMESSE` funzionerebbe, ma finirebbe
+ * per essere un segreto da ricordare a chi installa l'app, e un numero di
+ * porta in un elenco di URL non è il posto dove cercare un'installazione
+ * riuscita. Un loopback non è raggiungibile dalla rete, quindi non aggiunge
+ * superficie: qui dentro ci finisce anche in sviluppo, su qualunque porta.
+ */
+function inLocale(origine: string): boolean {
+  return /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i.test(origine);
+}
+
 function originiAmmesse(env: Env): string[] {
   const configurate = (env.ORIGINI_AMMESSE ?? "")
     .split(",")
@@ -80,8 +98,9 @@ function originiAmmesse(env: Env): string[] {
 function intestazioniCors(richiesta: Request, env: Env): Record<string, string> {
   const origine = richiesta.headers.get("origin") ?? "";
   const ammesse = originiAmmesse(env);
+  const accettata = ammesse.includes(origine) || inLocale(origine);
   return {
-    "Access-Control-Allow-Origin": ammesse.includes(origine) ? origine : ammesse[0],
+    "Access-Control-Allow-Origin": accettata ? origine : ammesse[0],
     "Access-Control-Allow-Headers": "authorization,content-type,apikey",
     "Access-Control-Allow-Methods": "POST,OPTIONS",
     "Vary": "Origin",

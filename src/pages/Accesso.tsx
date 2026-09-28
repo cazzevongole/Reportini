@@ -54,8 +54,15 @@ export default function Accesso() {
               className="mt-5 w-full justify-center"
               onClick={() => {
                 void esegui(() => signInWithGoogle(), {
-                  // signInWithGoogle non conclude quasi mai: la pagina viene
-                  // scaricata verso Google. Si arriva qui solo se è fallito.
+                  // Sul desktop la pagina non viene scaricata: il consenso si
+                  // apre nel browser di sistema e l'app resta qui ad aspettare
+                  // che la porta locale la riporti avanti. Senza dire questo
+                  // l'utente preme e vede una schermata immobile, e pensa
+                  // sia andato storto qualcosa.
+                  successo: (esito) =>
+                    esito === "browser"
+                      ? "Ti ho aperto il browser: accetta l'accesso con Google e torna qui."
+                      : "",
                   errore: "Accesso con Google non riuscito",
                 });
               }}
