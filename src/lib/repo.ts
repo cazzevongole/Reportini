@@ -346,7 +346,43 @@ export function eliminaAppuntamento(id: number): void {
   run("DELETE FROM appuntamenti WHERE id = ?", [id]);
 }
 
-/* ---------------------------------- Riepilogo ----------------------------- */
+/* ------------------------------- Preferenze ----------------------------- */
+
+/**
+ * Le preferenze dell'utente, nel database e non in localStorage.
+ *
+ * Il database è quello che sale nel cloud e si ripristina su un altro
+ * dispositivo: un colore scelto qui è una scelta dell'utenza, e seguirlo è
+ * quello che l'utente si aspetta. Ogni valore è validato da chi lo scrive —
+ * qui dentro può arrivare solo quello che l'app scrive, e chi scrive un
+ * colorId deve controllare che stia nella palette prima di chiamare.
+ *
+ * Coppia chiave/valore invece di una colonna per impostazione: aggiungerne
+ * una nuova non deve richiedere una migrazione.
+ *
+ * (Niente backtick in questi commenti: lo smoke test riconosce le query di
+ * questo file proprio dai backtick, e un paio di più nel testo di un commento
+ * gli farebbe catturare e provare fraseggi che non sono SQL.)
+ */
+export function leggiPreferenza(chiave: string): string | null {
+  return get<{ valore: string }>("SELECT valore FROM preferenze WHERE chiave = ?", [chiave])
+    ?.valore ?? null;
+}
+
+/** Upsert: una preferenza scritta due volte vale solo l'ultima. */
+export function scriviPreferenza(chiave: string, valore: string): void {
+  run(
+    `INSERT INTO preferenze (chiave, valore, updatedAt)
+     VALUES (?, ?, ?)
+     ON CONFLICT(chiave) DO UPDATE SET valore = excluded.valore, updatedAt = excluded.updatedAt`,
+    [chiave, valore, now()],
+  );
+}
+
+/** Toglie la preferenza: la chiave torna a non esistere, come non l'avesse mai scelta. */
+export function eliminaPreferenza(chiave: string): void {
+  run("DELETE FROM preferenze WHERE chiave = ?", [chiave]);
+}
 
 export interface Riepilogo {
   anagrafici: number;

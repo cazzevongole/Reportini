@@ -56,6 +56,22 @@ CREATE INDEX IF NOT EXISTS idx_relazioni_anagrafico ON relazioni(anagraficoId);
 CREATE INDEX IF NOT EXISTS idx_appuntamenti_anagrafico ON appuntamenti(anagraficoId);
 CREATE INDEX IF NOT EXISTS idx_appuntamenti_inizio ON appuntamenti(inizio);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_appuntamenti_google ON appuntamenti(googleEventId) WHERE googleEventId IS NOT NULL;
+
+-- Le preferenze dell'utente stanno qui e non in \`localStorage\`: il database è
+-- quello che sale nel cloud e che si ripristina su un altro dispositivo, e un
+-- colore scelto qui è una scelta dell'utenza, non della macchina. La tabella
+-- nasce con \`IF NOT EXISTS\`, quindi su un database che c'era già viene creata
+-- al primo avvio senza bisogno di una migrazione.
+--
+-- Coppia chiave/valore invece di una colonna per impostazione: aggiungerne una
+-- nuova deve poter avvenire senza toccare lo schema, e ogni valore è validato
+-- da chi lo scrive, perché qui dentro può arrivare solo quello che l'app ha
+-- scritto — non c'è \`localStorage\` da modificare a mano.
+CREATE TABLE IF NOT EXISTS preferenze (
+  chiave TEXT PRIMARY KEY NOT NULL,
+  valore TEXT NOT NULL,
+  updatedAt TEXT NOT NULL
+);
 `;
 
 /**

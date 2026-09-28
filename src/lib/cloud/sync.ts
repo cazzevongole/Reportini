@@ -1,4 +1,12 @@
-import { flush, getVersion, replaceDatabase, snapshot, subscribe } from "../sqlite/engine";
+import {
+  flush,
+  getVersion,
+  nonReplicato,
+  replaceDatabase,
+  segnaReplicato,
+  snapshot,
+  subscribe,
+} from "../sqlite/engine";
 import { supabase } from "./supabase";
 
 const BUCKET = "reportini";
@@ -112,9 +120,18 @@ let versioneSincronizzata: number | null = null;
  */
 let versioneAllaPartenza = 0;
 
-/** Il database è cambiato da quando è iniziata la sessione? */
+/**
+ * Il database ha cose che il cloud non ha ancora visto?
+ *
+ * Due fonti, e servono entrambe. `getVersion()` confrontato con la versione
+ * di partenza cattura le scritture di **questa sessione**. Il flag
+ * `nonReplicato()` cattura quello che è successo **prima**: senza, un
+ * appuntamento eliminato e chiusa l'app prima della sincronizzazione tornava
+ * indietro al riavvio, perché il contatore riparte da zero e il cloud, che lo
+ * aveva ancora, sembrava la copia più recente.
+ */
 function ciSonoModificheLocali(): boolean {
-  return getVersion() !== versioneAllaPartenza;
+  return getVersion() !== versioneAllaPartenza || nonReplicato();
 }
 
 /** Dimentica lo stato di sincronizzazione (usato dopo un cambio account). */
@@ -139,6 +156,8 @@ async function caricaLocale(userId: string): Promise<{ scaricato: boolean; messa
   }
   await replaceDatabase(remoto);
   versioneSincronizzata = getVersion();
+  // Il database è adesso quello del cloud: non c'è più niente da replicare.
+  segnaReplicato();
   return { scaricato: true, messaggio: "Dati ripristinati dal cloud" };
 }
 
@@ -151,6 +170,9 @@ async function salvaLocale(userId: string): Promise<{ scaricato: boolean; messag
   );
   await scriviMeta(userId, { updatedAt: new Date().toISOString(), bytes: byte.byteLength });
   versioneSincronizzata = getVersion();
+  // Solo adesso, e non prima: il cloud ha tutto quello che c'era qui, quindi
+  // il flag può spegnersi. Se il caricamento è fallito a metà, resta acceso.
+  segnaReplicato();
   return { scaricato: false, messaggio: "Dati salvati nel cloud" };
 }
 

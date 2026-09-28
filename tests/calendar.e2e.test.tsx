@@ -12,10 +12,12 @@ import {
   aggiornaAppuntamento,
   creaAnagrafico,
   creaAppuntamento,
+  eliminaPreferenza,
   elencaAppuntamenti,
   elencaAnagrafici,
   marcaAppuntamentoSincronizzato,
   ottieniAppuntamento,
+  scriviPreferenza,
 } from "../src/lib/repo";
 import { resetSincronizzazione, sincronizza } from "../src/lib/cloud/sync";
 import {
@@ -94,6 +96,8 @@ interface EventoFinto {
   summary?: string;
   description?: string;
   status?: string;
+  /** ID della palette di Google: nell'API è una stringa, non un numero. */
+  colorId?: string;
   /** Se l'evento occupa la fascia: è come si distingue "in attesa". */
   transparency?: string;
   start?: { dateTime?: string; timeZone?: string };
@@ -586,6 +590,91 @@ describe("Pubblicazione automatica: cosa fa il modulo quando si salva", () => {
 
     // E resta leggibile da una macchina, per chi legge l'evento e non l'app.
     expect(evento()?.extendedProperties?.private?.reportiniStato).toBe("annullato");
+  });
+
+  it("il colore segue lo stato, e le tonalità sono diverse fra loro", async () => {
+    await nuovoDatabase();
+    const { appuntamentoId } = creaSchedaConAppuntamento();
+    const appuntamento = () => ottieniAppuntamento(appuntamentoId)!;
+    const colore = () => [...eventi.values()][0].colorId;
+
+    await pubblicaAppuntamento(appuntamentoId, "primary");
+    const confermato = colore();
+
+    aggiornaAppuntamento(appuntamentoId, { ...appuntamento(), stato: "in-attesa" });
+    await pubblicaAppuntamento(appuntamentoId, "primary");
+    const inAttesa = colore();
+
+    aggiornaAppuntamento(appuntamentoId, { ...appuntamento(), stato: "annullato" });
+    await pubblicaAppuntamento(appuntamentoId, "primary");
+    const annullato = colore();
+
+    // Tre colori distinti: se due stati condividessero la tinta, in una vista
+    // per mese — dove l'evento è solo una macchia — sarebbero indistinguibili,
+    // che è proprio il motivo per cui il colore è stato aggiunto.
+    expect(new Set([confermato, inAttesa, annullato]).size).toBe(3);
+    // E sono della palette reale, non inventati: un ID inesistente
+    // verrebbe rifiutato da Google.
+    for (const id of [confermato, inAttesa, annullato]) {
+      expect(id).toMatch(/^(1|2|3|4|5|6|7|8|9|10|11)$/);
+    }
+    // Stringa, non numero: è così che l'API lo vuole.
+    expect(typeof confermato).toBe("string");
+  });
+
+  it("il colore che l'utente sceglie nelle impostazioni è quello che va su Google", async () => {
+    await nuovoDatabase();
+    const { appuntamentoId } = creaSchedaConAppuntamento();
+    const { scriviColore, ripristinaColori, COLORI_PREDEFINITI } = await import(
+      "../src/lib/google/colori"
+    );
+
+    // L'utente sceglie il blu per "confermato" e lascia gli altri due.
+    scriviColore("confermato", "9");
+    try {
+      await pubblicaAppuntamento(appuntamentoId, "primary");
+      expect([...eventi.values()][0].colorId).toBe("9");
+
+      // E la scelta vale per lo stato che riguarda, non per tutti: un colore
+      // unico per i tre stati sarebbe inutile come scelta.
+      const attuale = ottieniAppuntamento(appuntamentoId)!;
+      aggiornaAppuntamento(appuntamentoId, { ...attuale, stato: "in-attesa" });
+      await pubblicaAppuntamento(appuntamentoId, "primary");
+      expect([...eventi.values()][0].colorId).toBe(COLORI_PREDEFINITI["in-attesa"]);
+    } finally {
+      ripristinaColori();
+    }
+
+    // Tornando ai predefiniti, l'evento torna al suo colore iniziale.
+    aggiornaAppuntamento(appuntamentoId, {
+      ...ottieniAppuntamento(appuntamentoId)!,
+      stato: "confermato",
+    });
+    await pubblicaAppuntamento(appuntamentoId, "primary");
+    expect([...eventi.values()][0].colorId).toBe(COLORI_PREDEFINITI.confermato);
+  });
+
+  it("una preferenza corrotta non fa fallire la pubblicazione", async () => {
+    await nuovoDatabase();
+    const { appuntamentoId } = creaSchedaConAppuntamento();
+
+    // Il tipo sbagliato è l'errore che fa davvero danno: se finisse
+    // nell'evento, Google risponderebbe 400 e l'appuntamento non sarebbe
+    // pubblicato — per un colore che l'utente non ha nemmeno chiesto. La
+    // preferenza ora sta nel database, quindi è una copia ripristinata da un
+    // backup o scritta da una versione diversa a farlo arrivare.
+    scriviPreferenza(
+      "colori-stato",
+      JSON.stringify({ confermato: 6, annullato: "colore-che-non-esiste" }),
+    );
+    try {
+      const esito = await pubblicaAppuntamento(appuntamentoId, "primary");
+
+      expect(esito.ok).toBe(true);
+      expect([...eventi.values()][0].colorId).toMatch(/^(1|2|3|4|5|6|7|8|9|10|11)$/);
+    } finally {
+      eliminaPreferenza("colori-stato");
+    }
   });
 
   it("annullare un appuntamento mai pubblicato non chiama Google", async () => {

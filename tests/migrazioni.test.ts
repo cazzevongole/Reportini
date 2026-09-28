@@ -105,4 +105,24 @@ describe("Migrazioni del database locale", () => {
     expect(colonne(db, "appuntamenti")).toEqual(prima);
     expect(prima).toContain("googleErrore");
   });
+
+  it("la tabella preferenze nasce anche su un database che non ce l'aveva", async () => {
+    const db = await databaseVecchio();
+    expect(colonne(db, "preferenze")).toEqual([]);
+
+    runMigrations(db);
+
+    // C'è, ed è utilizzabile: qui finiscono le preferenze dell'utente — i
+    // colori degli eventi — che devono seguire l'utenza su un altro
+    // dispositivo, e quindi devono stare nel database che sale nel cloud.
+    expect(colonne(db, "preferenze")).toEqual(["chiave", "valore", "updatedAt"]);
+    db.run("INSERT INTO preferenze (chiave, valore, updatedAt) VALUES ('colori-stato', '{}', 'c')");
+    db.run("INSERT INTO preferenze (chiave, valore, updatedAt) VALUES ('colori-stato', '{\"confermato\":\"9\"}', 'd') ON CONFLICT(chiave) DO UPDATE SET valore = excluded.valore");
+    const letta = db.exec("SELECT valore FROM preferenze WHERE chiave = 'colori-stato'");
+    expect(JSON.parse(String(letta[0]?.values[0]?.[0]))).toEqual({ confermato: "9" });
+
+    // E rifare le migrazioni non deve far perdere la riga scritta.
+    expect(() => runMigrations(db)).not.toThrow();
+    expect(db.exec("SELECT COUNT(*) FROM preferenze")[0].values[0][0]).toBe(1);
+  });
 });

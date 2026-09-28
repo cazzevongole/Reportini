@@ -18,6 +18,8 @@ const stato = {
   listener: null as Ascoltatore | null,
   firmati: [] as Array<{ path: string; bytes: Uint8Array }>,
   versione: 0,
+  /** Scritture locali non ancora salite nel cloud: sopravvive al riavvio. */
+  nonReplicato: false,
 };
 
 const supabaseFinto = {
@@ -88,6 +90,13 @@ vi.mock("../src/lib/sqlite/engine", () => ({
   snapshot: vi.fn(() => new Uint8Array([1, 2, 3, 4])),
   replaceDatabase: vi.fn(async () => {}),
   subscribe: vi.fn(() => () => {}),
+  nonReplicato: () => stato.nonReplicato,
+  segnaNonReplicato: vi.fn(() => {
+    stato.nonReplicato = true;
+  }),
+  segnaReplicato: vi.fn(() => {
+    stato.nonReplicato = false;
+  }),
   notifyChange: vi.fn(),
   getVersion: () => stato.versione,
   all: vi.fn(() => []),
@@ -130,6 +139,7 @@ beforeEach(() => {
   stato.firmati = [];
   stato.listener = null;
   stato.versione = 0;
+  stato.nonReplicato = false;
   supabaseFinto.auth.getSession.mockReset();
   supabaseFinto.auth.getSession.mockResolvedValue({ data: { session: null } });
   supabaseFinto.auth.signInWithOAuth.mockClear();
@@ -310,6 +320,63 @@ describe("Salvataggio online", () => {
     expect(vi.mocked(replaceDatabase)).not.toHaveBeenCalled();
     expect(esito.scaricato).toBe(false);
     expect(stato.firmati.map((f) => f.path)).toContain("utente-1/reportini.sqlite");
+  });
+
+  it("un appuntamento eliminato non torna indietro al riavvio", async () => {
+    const { sincronizza, resetSincronizzazione } = await import("../src/lib/cloud/sync");
+    const { replaceDatabase, segnaNonReplicato } = await import("../src/lib/sqlite/engine");
+
+    // La copia online ha ancora l'appuntamento: è la situazione reale, cioè
+    // l'utente ha eliminato qualcosa e l'app si è chiusa prima che la
+    // sincronizzazione partisse.
+    await sincronizza("utente-1");
+    vi.mocked(replaceDatabase).mockClear();
+    stato.firmati = [];
+
+    // L'utente elimina un appuntamento: la scrittura è locale e non è ancora
+    // salita.
+    segnaNonReplicato();
+    stato.versione += 1;
+    expect(stato.nonReplicato).toBe(true);
+
+    // Riavvio dell'app: il contatore di versione riparte da zero, come fa a ogni
+    // avvio, e la sessione non sa niente.
+    stato.versione = 0;
+    resetSincronizzazione();
+
+    const esito = await sincronizza("utente-1");
+
+    // Il cloud è più vecchio e non deve prendersi la precedenza: qui si
+    // sostituirebbe il database e l'appuntamento eliminato **tornerebbe** in
+    // lista, come se non fosse mai stato cancellato.
+    expect(vi.mocked(replaceDatabase)).not.toHaveBeenCalled();
+    expect(esito.scaricato).toBe(false);
+    expect(stato.firmati.map((f) => f.path)).toContain("utente-1/reportini.sqlite");
+    // E una volta salito, il cloud ha davvero tutto: il flag si spegne.
+    expect(stato.nonReplicato).toBe(false);
+  });
+
+  it("scaricando dal cloud il flag si spegne: la copia è la stessa", async () => {
+    const { sincronizza, resetSincronizzazione } = await import("../src/lib/cloud/sync");
+    const { segnaNonReplicato } = await import("../src/lib/sqlite/engine");
+
+    await sincronizza("utente-1");
+    stato.versione = 0;
+    resetSincronizzazione();
+
+    // Dispositivo nuovo, che non ha scritto niente: qui il cloud deve vincere,
+    // altrimenti l'utente che torna su un altro dispositivo resterebbe con una
+    // copia vuota per sempre.
+    const esito = await sincronizza("utente-1");
+    expect(esito.scaricato).toBe(true);
+    expect(stato.nonReplicato).toBe(false);
+
+    // E da quel momento la copia locale è quella del cloud: una scrittura
+    // cambia di nuovo la situazione.
+    segnaNonReplicato();
+    stato.versione += 1;
+    const dopo = await sincronizza("utente-1");
+    expect(dopo.scaricato).toBe(false);
   });
 
   it("carica in locale le modifiche fatte dopo l'ultimo allineamento", async () => {

@@ -49,6 +49,9 @@ esattamente lo stesso danno: l'appuntamento c'è, ma per l'app non esiste.
 - `relazioni` — relazioni con `anagraficoId` e stato (`bozza`, `revisione`, `firmato`, `consegnato`).
 - `appuntamenti` — appuntamenti con `anagraficoId` / `relazioneId`, promemoria e dati Google
   (`googleEventId`, `googleHtmlLink`, `googleSyncAt`, `googleErrore`).
+- `preferenze` — coppia chiave/valore per le scelte dell'utente (per ora i colori degli eventi per
+  stato). Sta nel database perché deve seguire l'utenza nel cloud e sui ripristini; non entra nel
+  backup JSON, che è il patto dei dati.
 
 Le chiavi esterne sono attive (`ON DELETE CASCADE` sulle relazioni, `SET NULL` sugli appuntamenti,
 grazie al `PRAGMA foreign_keys = ON` in `migrations.ts`).
@@ -466,6 +469,37 @@ l'app. E nell'export `.ics` il campo standard `STATUS`, che per "in attesa" è `
 valeva `CONFIRMED` anche per un appuntamento non ancora confermato, e in un calendario importato
 non c'era modo di distinguerlo.
 
+**E il colore segue lo stato**, con `colorId` — la palette globale di Google Calendar (1 Lavender,
+2 Sage, 3 Grape, 4 Flamingo, 5 Banana, 6 Tangerine, 7 Peacock, 8 Graphite, 9 Blueberry, 10 Basil,
+11 Tomato). Le tre tonalità sono scelte per somigliare a quelle che l'app usa già nella sua `TONO`:
+Sage per **confermato**, Tangerine per **in attesa**, Graphite per **annullato**. Così l'agenda e
+l'elenco dicono la stessa cosa con lo stesso colore, e in una vista per mese — dove un evento è una
+macchia e nient'altro — lo stato si legge senza aprire nulla. Un test verifica che i tre colori siano
+distinti e che appartengano alla palette reale: un ID inesistente viene rifiutato da Google.
+
+`colorId` è una **stringa** nell'API, non un numero.
+
+**E la scelta è dell'utente**, in *Impostazioni → Google Calendar*: le undici tonalità sono mostrate
+con il loro nome e il loro campione, una riga per stato (`ColoriStato.tsx`). I predefiniti sono
+quelli qui sopra, scelti per somigliare ai colori dell'app, ma ognuno può cambiarlo.
+
+La preferenza vive **nel database**, in una tabella `preferenze` (coppia chiave/valore): la scelta
+segue l'utenza, non la macchina — la copia cloud e i ripristini su un altro dispositivo la portano
+dietro. Resta **validata in lettura**: un ID che non sta nella palette viene scartato e sostituito
+col predefinito. Non è pignoleria, è il punto in cui un dato corrotto farebbe danno vero:
+`colorId` finito nell'evento fa rispondere 400 a Google e **l'appuntamento non viene pubblicato**,
+per un colore che l'utente non ha nemmeno chiesto. Un test prova esattamente quello, scrivendo nel
+database un numero invece di una stringa — la forma che avrebbe una copia scritta male o da una
+versione diversa.
+
+Le preferenze **non** entrano nel backup JSON: quello è il patto dei dati, e le preferenze sono
+impostazioni. Le porta invece la copia cloud del database, che è il caso che conta — cambiare
+dispositivo.
+
+I colori valgono per le pubblicazioni successive: un evento già in agenda prende il nuovo colore
+quando l'appuntamento viene modificato e ripubblicato. Cambiare il colore non riscrive da solo
+l'agenda di un utente che non l'ha chiesto in quel momento.
+
 L'unico modo di togliere davvero l'evento è **eliminare** l'appuntamento, o
 premere "Su Google" su un appuntamento già pubblicato, che è lo scollegamento
 manuale.
@@ -511,7 +545,7 @@ bun install
 bun run dev        # server di sviluppo su http://localhost:5173
 bun run build      # build statica in dist/ (+ 404.html per GitHub Pages)
 bun run typecheck  # tsc -b --noEmit
-bun run test       # test vitest (175 test) + smoke test dello schema
+bun run test       # test vitest (198 test) + smoke test dello schema
 bun run test:ui    # solo i test vitest
 bun run version:check  # la versione è coerente? (lo usa anche il rilascio)
 bun run version:patch  # alza la versione di un patch, come fa il workflow
