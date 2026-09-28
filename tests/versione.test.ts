@@ -10,11 +10,15 @@ import { readFileSync } from "node:fs";
 
 const versione = (file: string) => JSON.parse(readFileSync(file, "utf8")).version as string;
 
-function controlla(tag?: string): { esito: number; uscita: string } {
+function controlla(ref: { nome: string; tipo: string } | null): { esito: number; uscita: string } {
   try {
     const uscita = execFileSync("node", ["scripts/versione-check.mjs"], {
       encoding: "utf8",
-      env: { ...process.env, GITHUB_REF_NAME: tag ?? "" },
+      env: {
+        ...process.env,
+        GITHUB_REF_NAME: ref?.nome ?? "",
+        GITHUB_REF_TYPE: ref?.tipo ?? "",
+      },
       stdio: ["ignore", "pipe", "pipe"],
     });
     return { esito: 0, uscita };
@@ -30,18 +34,26 @@ describe("Versione del pacchetto", () => {
   });
 
   it("passa quando non c'è un tag da controllare", () => {
-    const { esito, uscita } = controlla();
+    const { esito, uscita } = controlla(null);
+    expect(esito).toBe(0);
+    expect(uscita).toContain(versione("package.json"));
+  });
+
+  it("su un branch non guarda il nome del branch come se fosse un tag", () => {
+    // Il run di versionazione parte da un push su master: senza questa
+    // distinzione ogni merge si bloccherebbe.
+    const { esito, uscita } = controlla({ nome: "master", tipo: "branch" });
     expect(esito).toBe(0);
     expect(uscita).toContain(versione("package.json"));
   });
 
   it("passa quando il tag corrisponde alla versione", () => {
-    const { esito } = controlla(`v${versione("package.json")}`);
+    const { esito } = controlla({ nome: `v${versione("package.json")}`, tipo: "tag" });
     expect(esito).toBe(0);
   });
 
   it("blocca un tag che non corrisponde alla versione", () => {
-    const { esito, uscita } = controlla("v99.0.0");
+    const { esito, uscita } = controlla({ nome: "v99.0.0", tipo: "tag" });
     expect(esito).toBe(1);
     expect(uscita).toContain("v99.0.0");
     expect(uscita).toContain(versione("package.json"));

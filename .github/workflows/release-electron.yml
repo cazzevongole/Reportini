@@ -43,6 +43,9 @@ jobs:
 
       - name: La versione corrisponde al tag
         run: node scripts/versione-check.mjs
+        env:
+          GITHUB_REF_TYPE: tag
+          GITHUB_REF_NAME: ${{ inputs.tag || github.ref_name }}
 
       - name: Dipendenze
         run: bun install --frozen-lockfile
