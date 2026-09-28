@@ -31,7 +31,7 @@
  */
 
 import { supabase } from "../cloud/supabase";
-import { urlDiRitorno } from "../cloud/destinazione";
+import { baseRoutte, urlDiRitorno } from "../cloud/destinazione";
 
 const TOKEN_KEY = "reportini.google.token";
 const PROFILE_KEY = "reportini.google.profile";
@@ -190,7 +190,7 @@ export async function avviaAccessoGoogle(): Promise<void> {
   }
   // Deve combaciare al segno con uno registrato in Google Cloud, altrimenti
   // lo scambio del code si ferma con redirect_uri_mismatch.
-  const redirect = urlDiRitorno(window.location.origin, import.meta.env.BASE_URL);
+  const redirect = urlDiRitorno(window.location.origin, baseRoutte());
   const state = stateCasuale();
   sessionStorage.setItem(RITORNO_KEY, JSON.stringify({ state, redirect } satisfies Ritorno));
 
@@ -258,7 +258,7 @@ async function accessoSupabaseSemplice(): Promise<void> {
   if (!supabase) return;
   const { error } = await supabase.auth.signInWithOAuth({
     provider: "google",
-    options: { redirectTo: urlDiRitorno(window.location.origin, import.meta.env.BASE_URL) },
+    options: { redirectTo: urlDiRitorno(window.location.origin, baseRoutte()) },
   });
   if (error) throw new Error(error.message);
 }

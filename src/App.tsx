@@ -13,6 +13,7 @@ import Panel from "./pages/Panel";
 import Relazioni from "./pages/Relazioni";
 import Sviluppo from "./pages/Sviluppo";
 import { initDatabase } from "./lib/sqlite/engine";
+import { baseRoutte } from "./lib/cloud/destinazione";
 
 /**
  * Il database viene aperto qui, prima di montare le pagine: così ogni vista
@@ -69,10 +70,10 @@ export default function App() {
           {/* basename: su GitHub Pages l'app vive in /Reportini/. Senza, ogni
               link punterebbe a /panel e lascerebbe la sottocartella: dopo
               l'accesso l'utente finiva su una pagina di profilo e poi su un
-              404 al ricaricare. BASE_URL è "/" in locale e "/Reportini/" in
-              produzione, e li mette in fila. */}
+              404 al ricaricare. Nell'app desktop, che si apre da file://, la
+              base è "./" e per il router vale la radice. */}
           <BrowserRouter
-            basename={import.meta.env.BASE_URL}
+            basename={baseRoutte()}
             future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
           >
             <Routes>

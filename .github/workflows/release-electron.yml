@@ -118,8 +118,13 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Build della web
-        # L'app desktop si apre da file://, quindi qui la base è la radice.
+        # ELECTRON=1 forza la base "./": l'app si apre da file://, dove un
+        # percorso assoluto come /assets/app.js punterebbe alla radice del
+        # filesystem e non troverebbe nulla. Con la base relativa il pacchetto
+        # si apre su qualunque disco e per qualunque utente.
         run: bun run build
+        env:
+          ELECTRON: "1"
 
       - name: Copia nel renderer di Electron
         run: node scripts/copia-renderer.mjs

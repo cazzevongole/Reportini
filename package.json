@@ -17,7 +17,7 @@
     "test:ui": "vitest run",
     "preview": "vite preview",
     "electron:install": "cd electron && npm install",
-    "electron:build": "vite build && node scripts/copia-renderer.mjs",
+    "electron:build": "ELECTRON=1 vite build && node scripts/copia-renderer.mjs",
     "electron:dev": "cd electron && npm run dev",
     "electron:pack": "bun run electron:build && cd electron && npm run dist",
     "version:check": "node scripts/versione-check.mjs",

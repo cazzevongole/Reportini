@@ -190,7 +190,11 @@ giorno serviranno). Il commit di versione tocca solo i tre file della versione, 
 Il rilascio si può forzare a mano: *Actions → Versione automatica → Run workflow* scegliendo
 `minor` o `major` invece di `patch`.
 
-La build desktop usa `BASE_PATH` vuoto (l'app si apre da `file://`), e `scripts/copia-renderer.mjs`
+La build desktop usa `BASE_PATH` vuoto e `ELECTRON=1`, che forza la base **relativa**:
+l'app si apre da `file://`, e un percorso assoluto come `/assets/app.js` li punterebbe alla
+radice del filesystem, dove non c'è nulla — il pacchetto si aprirebbe bianco. `baseRoutte()`
+(`src/lib/cloud/destinazione.ts`) traduce la base "./" in radice per il router, che con "./"
+non saprebbe che fare. E `scripts/copia-renderer.mjs`
 sostituisce `rm -rf && cp -R` perché su Windows la shell di GitHub Actions è PowerShell: senza,
 i pacchetti si costruirebbero solo su Linux e macOS.
 
@@ -374,7 +378,7 @@ bun install
 bun run dev        # server di sviluppo su http://localhost:5173
 bun run build      # build statica in dist/ (+ 404.html per GitHub Pages)
 bun run typecheck  # tsc -b --noEmit
-bun run test       # test vitest (119 test) + smoke test dello schema
+bun run test       # test vitest (121 test) + smoke test dello schema
 bun run test:ui    # solo i test vitest
 bun run version:check  # la versione è coerente? (lo usa anche il rilascio)
 bun run version:patch  # alza la versione di un patch, come fa il workflow
