@@ -120,6 +120,38 @@ export function eliminaAnagrafico(id: number): void {
   run("DELETE FROM anagrafici WHERE id = ?", [id]);
 }
 
+/**
+ * Gli appuntamenti che eliminando l'anagrafica porterebbero dietro l'evento su
+ * Google, con i loro ID evento. La pagina raccoglie questa lista **prima** di
+ * cancellare: dopo, le righe non esistono più e gli eventi resterebbero in
+ * agenda orfani, non più raggiungibili da nessuno.
+ */
+export function appuntamentiConEventoDaEliminareAnagrafico(id: number): {
+  id: number;
+  googleEventId: string | null;
+}[] {
+  return all<{ id: number; googleEventId: string | null }>(
+    `SELECT id, googleEventId FROM appuntamenti
+      WHERE anagraficoId = ?
+         OR relazioneId IN (SELECT id FROM relazioni WHERE anagraficoId = ?)`,
+    [id, id],
+  );
+}
+
+/**
+ * Lo stesso per una relazione: gli appuntamenti che, senza di lei, resterebbero
+ * senza nessun riferimento — e i cui eventi su Google sarebbero orfani.
+ */
+export function appuntamentiConEventoDaEliminareRelazione(id: number): {
+  id: number;
+  googleEventId: string | null;
+}[] {
+  return all<{ id: number; googleEventId: string | null }>(
+    "SELECT id, googleEventId FROM appuntamenti WHERE relazioneId = ? AND anagraficoId IS NULL",
+    [id],
+  );
+}
+
 /* --------------------------------- Relazioni ------------------------------ */
 
 export function elencaRelazioni(filtro: {
@@ -211,7 +243,6 @@ export function eliminaRelazione(id: number): void {
   run("DELETE FROM appuntamenti WHERE relazioneId = ? AND anagraficoId IS NULL", [id]);
   run("DELETE FROM relazioni WHERE id = ?", [id]);
 }
-
 /* ------------------------------- Appuntamenti ---------------------------- */
 
 export function elencaAppuntamenti(filtro: {

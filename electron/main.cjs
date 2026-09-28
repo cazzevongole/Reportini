@@ -134,7 +134,7 @@ async function createWindow() {
 }
 
 app.whenReady().then(async () => {
-  avviaAggiornamenti();
+  await avviaAggiornamenti();
   if (!DEV_URL) {
     try {
       serverLocale = await avviaServer({
@@ -166,6 +166,25 @@ app.whenReady().then(async () => {
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
+});
+
+/**
+ * L'uscita dell'app è il momento in cui un aggiornamento rimandato entra.
+ *
+ * Lo gestiamo qui invece di lasciarlo a `autoInstallOnAppQuit` per una
+ * ragione precisa: electron-updater registra il suo gestore di uscita **quando
+ * finisce lo scarico**, e solo se il bandierino è già acceso. Accenderlo dopo,
+ * nel momento in cui l'utente sceglie "alla chiusura", non avrebbe nessun
+ * effetto: il pacchetto resterebbe scaricato e mai installato. Qui la
+ * decisione è nostra e vale in ogni momento.
+ */
+app.on("before-quit", () => {
+  if (!installaAllaChiusura || installaInCorso) return;
+  // "pronto" vuol dire che il pacchetto è scaricato: senza, non c'è nulla da
+  // installare e l'utente che chiude l'app vuol solo chiuderla.
+  if (stato.fase !== "pronto") return;
+  void registra("aggiornamento rimandato: lo installo all'uscita");
+  installaEdEsci(true);
 });
 
 // La porta si chiude con l'app: lasciare in ascolto 127.0.0.1 dopo la chiusura
@@ -246,6 +265,22 @@ let aggiornatore = null;
 let versioneInCorso = null;
 /** @type {{ fase: string, versione?: string, percentuale?: number, messaggio?: string }} */
 let stato = { fase: "idle" };
+/** L'utente ha scelto "alla chiusura": l'aggiornamento entra all'uscita. */
+let installaAllaChiusura = false;
+/** Un tentativo di installazione è già partito: non se ne lancia un secondo. */
+let installaInCorso = false;
+/** @type {{ versione: string, tentativi: number } | null} */
+let inAttesa = null;
+
+const FILE_IN_ATTESA = () => path.join(app.getPath("userData"), "aggiornamento-in-attesa.json");
+/**
+ * Quante volte si può provare a installare da soli, all'avvio, prima di
+ * smettere e chiedere. Serve a non chiudere l'app da soli per sempre: se
+ * l'installazione fallisce, alla terza volta la domanda torna all'utente.
+ */
+const TENTATIVI_MAX = 2;
+/** Quanto l'app resta aperta prima di chiudersi da sola, all'avvio. */
+const ATTESA_PER_INSTALLARE_MS = 10_000;
 
 function inviaStato(nuovo) {
   stato = nuovo;
@@ -254,21 +289,127 @@ function inviaStato(nuovo) {
   }
 }
 
-function avviaAggiornamenti() {
+/**
+ * Cosa resta da un avvio all'altro della scelta "alla chiusura".
+ *
+ * Sta su file perché la scelta deve sopravvivere alla chiusura: se l'app
+ * viene chiusa di colpo, senza passare dall'uscita pulita, al riavvio
+ * l'aggiornamento è ancora quello che l'utente aveva già accettato.
+ */
+async function leggiInAttesa() {
+  try {
+    const dati = JSON.parse(await fs.readFile(FILE_IN_ATTESA(), "utf8"));
+    if (typeof dati?.versione !== "string" || dati.versione === "") return null;
+    return { versione: dati.versione, tentativi: Number(dati.tentativi) || 0 };
+  } catch {
+    return null;
+  }
+}
+
+async function scriviInAttesa(versione, tentativi) {
+  try {
+    await fs.writeFile(FILE_IN_ATTESA(), JSON.stringify({ versione, tentativi }), "utf8");
+  } catch (errore) {
+    await registra(`non riesco a ricordare l'aggiornamento in attesa: ${errore.message}`);
+  }
+}
+
+async function dimenticaInAttesa() {
+  inAttesa = null;
+  try {
+    await fs.rm(FILE_IN_ATTESA(), { force: true });
+  } catch {
+    // Se il file non c'è più, l'unica cosa che si perde è la promessa.
+  }
+}
+
+/**
+ * Installa il pacchetto scaricato e chiude l'app.
+ *
+ * `silenzioso` è per l'aggiornamento automatico: l'utente non sta guardando,
+ * l'installatore non deve aprire finestre e l'app non si riapre (è già chiusa
+ * o sta per chiudersi). Quando invece è lui a premere, l'installatore si vede
+ * e l'app si riapre: è la differenza fra "è successo" e "che cosa sta
+ * succedendo".
+ */
+function installaEdEsci(silenzioso) {
+  if (!aggiornatore || installaInCorso) return false;
+  installaInCorso = true;
+  void dimenticaInAttesa();
+  setImmediate(() => aggiornatore.quitAndInstall(silenzioso, !silenzioso));
+  return true;
+}
+
+/**
+ * L'avvio successivo, se l'utente aveva già scelto l'installazione automatica.
+ *
+ * Non succede subito: l'app si apre, il controllo trova la release, il
+ * pacchetto si scarica, e solo allora l'app si chiude da sola. Il tentativo
+ * viene contato **prima** di installare, così un'installazione che fallisce
+ * non si ripete all'infinito.
+ */
+function programmaInstallazioneAutomatica(versione) {
+  if (!inAttesa) return;
+
+  if (inAttesa.tentativi >= TENTATIVI_MAX) {
+    // La scelta è già stata provata il numero giusto di volte: meglio chiedere
+    // che aprire e richiudere l'app da solo.
+    void dimenticaInAttesa();
+    installaAllaChiusura = false;
+    void registra(`aggiornamento ${versione}: non lo installo più da solo, lo chiedo.`);
+    return;
+  }
+
+  // Una versione diversa da quella rimandata riparte con il conto a zero: è
+  // una richiesta nuova, non un tentativo ripetuto.
+  if (versione && inAttesa.versione !== versione) {
+    inAttesa = { versione, tentativi: 0 };
+  }
+
+  const daInstallare = inAttesa;
+  setTimeout(() => {
+    if (stato.fase !== "pronto" || installaInCorso) return;
+    const prossimo = { versione: daInstallare.versione, tentativi: daInstallare.tentativi + 1 };
+    inAttesa = prossimo;
+    void scriviInAttesa(prossimo.versione, prossimo.tentativi).then(() => {
+      void registra(
+        `aggiornamento ${prossimo.versione}: lo installo da solo come richiesto ` +
+          `(tentativo ${prossimo.tentativi} di ${TENTATIVI_MAX})`,
+      );
+      installaEdEsci(true);
+    });
+  }, ATTESA_PER_INSTALLARE_MS);
+}
+
+async function avviaAggiornamenti() {
   aggiornatore = caricaAggiornatore();
   if (!aggiornatore) return;
 
-  // Lo scarico parte da solo appena l'app è aperta: quando l'utente decide
-  // di installare, il pacchetto è già in arrivo e la finestra non resta
-  // appesa a una barra che avanza.
+  // Lo scarico parte da solo appena l'app è aperta: quando l'utente decide,
+  // il pacchetto è già in arrivo e la finestra non resta appesa a una barra
+  // che avanza.
   aggiornatore.autoDownload = true;
-  // Se l'utente rimanda, l'aggiornamento entra comunque alla chiusura.
-  aggiornatore.autoInstallOnAppQuit = true;
+  // Qui è sempre spento: l'installazione la decidiamo noi, al gestore di
+  // `before-quit` e all'avvio, non alle spalle dell'utente.
+  aggiornatore.autoInstallOnAppQuit = false;
 
-  aggiornatore.on("checking-for-update", () => inviaStato({ fase: "controllo" }));
+  inAttesa = await leggiInAttesa();
+  if (inAttesa) {
+    installaAllaChiusura = true;
+    await registra(
+      `aggiornamento ${inAttesa.versione} in attesa dalla volta scorsa ` +
+        `(${inAttesa.tentativi} tentativi): entra appena è pronto`,
+    );
+  }
+
+  aggiornatore.on("checking-for-update", () => {
+    void registra("controllo se c'è una versione nuova");
+    inviaStato({ fase: "controllo" });
+  });
 
   aggiornatore.on("update-available", (info) => {
     versioneInCorso = info?.version ?? null;
+    void registra(`trovata la versione ${versioneInCorso ?? "nuova"}: la scarico in sottofondo`);
     inviaStato({ fase: "scarico", versione: versioneInCorso ?? undefined, percentuale: 0 });
   });
 
@@ -280,16 +421,28 @@ function avviaAggiornamenti() {
   });
 
   aggiornatore.on("update-downloaded", (info) => {
-    inviaStato({ fase: "pronto", versione: info?.version ?? versioneInCorso ?? undefined });
+    const versione = info?.version ?? versioneInCorso ?? "";
+    inviaStato({ fase: "pronto", versione: versione || undefined });
+    void registra(`versione ${versione || "nuova"} scaricata: pronta da installare`);
+    programmaInstallazioneAutomatica(versione);
   });
 
-  aggiornatore.on("update-not-available", () => inviaStato({ fase: "aggiornato" }));
+  aggiornatore.on("update-not-available", () => {
+    // Non c'è niente da aspettare: la promessa della volta scorsa vale solo
+    // per una versione che ora non esiste più.
+    if (inAttesa) void dimenticaInAttesa();
+    installaAllaChiusura = false;
+    void registra("sei già all'ultima versione");
+    inviaStato({ fase: "aggiornato" });
+  });
 
   aggiornatore.on("error", (errore) => {
-    // Un controllo fallito (rete assente) non è un problema dell'utente: va
-    // tenuto in console e non trasformato in un avviso a ogni avvio.
-    console.warn("Aggiornamento automatico non riuscito:", errore?.message ?? errore);
-    inviaStato({ fase: "errore", messaggio: errore?.message ?? "Aggiornamento non riuscito" });
+    const motivo = errore?.message ?? String(errore);
+    // Un controllo fallito (rete assente) non è un problema dell'utente: nel
+    // log sì, in faccia a lui no. In un'app impacchettata `console.warn` finisce
+    // nel nulla, perché non c'è un terminale ad aprirlo.
+    void registra(`aggiornamento non riuscito: ${motivo}`);
+    inviaStato({ fase: "errore", messaggio: motivo || "Aggiornamento non riuscito" });
   });
 }
 
@@ -302,16 +455,25 @@ ipcMain.handle("update:controlla", async () => {
   try {
     await aggiornatore.checkForUpdates();
   } catch (errore) {
-    console.warn("Controllo aggiornamenti non riuscito:", errore?.message ?? errore);
+    void registra(`controllo non riuscito: ${errore?.message ?? errore}`);
   }
   return stato;
 });
 
-ipcMain.handle("update:installa", () => {
+ipcMain.handle("update:installa", () => installaEdEsci(false));
+
+ipcMain.handle("update:rimanda", async () => {
   if (!aggiornatore) return false;
-  // silent = false: l'installatore mostra quello che sta facendo; l'app si
-  // riapre da sola quando ha finito.
-  setImmediate(() => aggiornatore.quitAndInstall(false, true));
+  const versione = stato.versione ?? versioneInCorso ?? "";
+  installaAllaChiusura = true;
+  if (versione) {
+    inAttesa = { versione, tentativi: 0 };
+    await scriviInAttesa(versione, 0);
+  }
+  void registra(
+    `aggiornamento ${versione || "pronto"} rimandato: entra alla chiusura dell'app, ` +
+      "e da solo al prossimo avvio se l'app viene chiusa di colpo",
+  );
   return true;
 });
 

@@ -90,7 +90,6 @@ const STATO_SU_EVENTO: Record<StatoAppuntamento, string> = {
   annullato: "annullato",
 };
 
-/** `STATUS` dell'iCalendar: `TENTATIVE` è esattamente "non ancora tenuto". */
 const STATO_ICS: Record<StatoAppuntamento, string> = {
   "in-attesa": "TENTATIVE",
   confermato: "CONFIRMED",
@@ -98,21 +97,31 @@ const STATO_ICS: Record<StatoAppuntamento, string> = {
 };
 
 /**
- * Il colore dell'evento non lo decido io: lo sceglie l'utente nelle
- * impostazioni, e la mappa predefinita (Sage per confermato, Tangerine per in
- * attesa, Graphite per annullato) vale solo finché non sceglie. Serve anche
- * `extendedProperties.reportiniStato`, perché un ID di colore non dice quale
- * stato sia ma che lo stato c'è.
+ * Come un annullato si vede su Google Calendar.
  *
- * `colorId` è una **stringa** nell'API, non un numero: inviarla come numero
- * viene rifiutato.
+ * `status: "cancelled"` NON va bene: è il modo in cui l'API **elimina** un
+ * evento, e nell'interfaccia l'evento sparisce — finisce nel cestino, non
+ * compare barrato. Chi guarda l'agenda vede solo che l'appuntamento non c'è
+ * più, senza sapere che era stato annullato.
+ *
+ * Quindi l'annullato resta un evento regolare (`status: "confirmed"`, come gli
+ * altri) e si dichiara dove l'utente lo vede: nel **titolo**, col prefisso
+ * ANNULLATO, e nel colore — Tomato, il rosso della palette, a meno che
+ * l'utente non ne abbia scelto un altro. La riga "Stato: annullato" in
+ * descrizione resta per chi apre l'evento.
  */
 function aEvento(appuntamento: Appuntamento) {
   // Letta qui e non al modulo: la preferenza può cambiare mentre l'app è
   // aperta, e va letta al momento in cui si scrive l'evento.
   const colori = leggiColori();
   return {
-    summary: appuntamento.titolo || "Appuntamento",
+    // L'annullato si dichiara nel titolo: è l'unica cosa che si legge in una
+    // vista per mese, senza aprire l'evento. Senza prefisso, l'evento resta
+    // identico a un confermato e la cancellazione non si vede.
+    summary:
+      appuntamento.stato === "annullato"
+        ? `ANNULLATO: ${appuntamento.titolo || "Appuntamento"}`
+        : appuntamento.titolo || "Appuntamento",
     description: [
       `Stato: ${STATO_SU_EVENTO[appuntamento.stato]}`,
       appuntamento.descrizione,
@@ -121,11 +130,10 @@ function aEvento(appuntamento: Appuntamento) {
       .filter(Boolean)
       .join("\n\n"),
     location: appuntamento.luogo || undefined,
-    // Lo stato dell'appuntamento viaggia con l'evento. Un annullato in Google
-    // Calendar non è sparito: è scritto "Cancelled" nella sua fascia, e
-    // l'app e il calendario dicono la stessa cosa. Cancellarlo del tutto
-    // farebbe sparire la traccia di un appuntamento che è esistito.
-    status: appuntamento.stato === "annullato" ? "cancelled" : "confirmed",
+    // `status: "cancelled"` eliminerebbe l'evento dall'interfaccia (vedi il
+    // commento sopra): l'annullato resta quindi un evento regolare, e la
+    // cancellazione si dichiara nel titolo e nel colore.
+    status: "confirmed",
     // E "in attesa" è un terzo stato, non una sfumatura di "confermato": un
     // appuntamento da confermare non occupa il tempo. Senza questo, passare
     // da in attesa a confermato non cambiava niente su Google Calendar, e non
@@ -142,8 +150,12 @@ function aEvento(appuntamento: Appuntamento) {
     // Il colore è l'ultimo pezzo: con stato e trasparenza l'appuntamento è già
     // distinguibile, ma in una vista per mese riepilogativa — dove un evento è
     // una macchia di colore e nient'altro — era la tonalità dell'app a
-    // comunicare lo stato, e quella di Google era casuale.
-    colorId: colori[appuntamento.stato],
+    // comunicare lo stato, e quella di Google era casuale. Per l'annullato
+    // però il rosso è la scelta di default anche se l'utente ha cambiato il
+    // colore: Tomato è la tinta che la palette mette a disposizione per "non si
+    // terrà", e l'annullato è il caso in cui il colore ha il compito di
+    // urlare, non di accompagnare.
+    colorId: appuntamento.stato === "annullato" ? "11" : colori[appuntamento.stato],
     // Il fuso va dichiarato: senza, Google interpreta l'ora nel fuso del
     // calendario di destinazione e un appuntamento delle 10:00 segnato a Roma
     // finisce a un'ora diversa per chi guarda il calendario da un'altra città.

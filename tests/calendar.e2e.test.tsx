@@ -10,6 +10,7 @@ vi.mock("sql.js/dist/sql-wasm.wasm?url", () => ({
 }));
 import {
   aggiornaAppuntamento,
+  appuntamentiConEventoDaEliminareAnagrafico,
   creaAnagrafico,
   creaAppuntamento,
   eliminaPreferenza,
@@ -22,6 +23,7 @@ import {
 import { resetSincronizzazione, sincronizza } from "../src/lib/cloud/sync";
 import {
   dissociaAppuntamento,
+  eliminaAppuntamentiEEventi,
   eliminaAppuntamentoEEvento,
   pubblicaAppuntamento,
   sincronizzaAppuntamento,
@@ -497,7 +499,7 @@ describe("Pubblicazione automatica: cosa fa il modulo quando si salva", () => {
     expect([...eventi.values()][0].summary).toBe("Ritiro documento (rivisto)");
   });
 
-  it("annullarlo lo segna annullato su Google, invece di cancellarlo", async () => {
+  it("annullarlo lo rende visibile e chiaro su Google, non lo fa sparire", async () => {
     await nuovoDatabase();
     const { appuntamentoId } = creaSchedaConAppuntamento();
     await pubblicaAppuntamento(appuntamentoId, "primary");
@@ -509,10 +511,13 @@ describe("Pubblicazione automatica: cosa fa il modulo quando si salva", () => {
 
     expect(esito.ok).toBe(true);
     expect(esito.messaggio).toMatch(/annullato/i);
-    // L'evento resta, scritto come annullato: è la differenza fra "non si è
-    // più tenuto" e "non è mai esistito".
+    // L'evento resta e si VEDE: `status: "cancelled"` sarebbe la via dell'API
+    // per eliminarlo dall'interfaccia, e chi guarda l'agenda perderebbe la
+    // ragione della fascia vuota. La cancellazione si dichiara nel titolo.
     expect(eventi.size).toBe(1);
-    expect([...eventi.values()][0].status).toBe("cancelled");
+    expect([...eventi.values()][0].status).toBe("confirmed");
+    expect([...eventi.values()][0].summary).toMatch(/^ANNULLATO: /);
+    expect([...eventi.values()][0].colorId).toBe("11"); // Tomato, il rosso
     // Il collegamento resta: senza, la prossima modifica non saprebbe dove
     // scrivere e creerebbe un secondo evento.
     expect(ottieniAppuntamento(appuntamentoId)?.googleEventId).toBe("evt-1");
@@ -557,12 +562,15 @@ describe("Pubblicazione automatica: cosa fa il modulo quando si salva", () => {
     expect(evento()?.transparency).toBe("transparent");
     expect(eventi.size).toBe(1);
 
-    // Annullato: sempre lo stesso evento, segnato annullato, e non occupa più
-    // la fascia: non si è tenuto, quindi non deve prenotare niente.
+    // Annullato: sempre lo stesso evento, che non occupa la fascia e ora
+    // si dichiara nel titolo con il rosso — prima l'evento spariva
+    // dall'interfaccia, e la ragione della fascia vuota con lui.
     aStato("annullato");
     await pubblicaAppuntamento(appuntamentoId, "primary");
-    expect(evento()?.status).toBe("cancelled");
+    expect(evento()?.status).toBe("confirmed");
     expect(evento()?.transparency).toBe("transparent");
+    expect(evento()?.summary).toMatch(/^ANNULLATO: /);
+    expect(evento()?.colorId).toBe("11");
     expect(eventi.size).toBe(1);
   });
 
@@ -677,6 +685,30 @@ describe("Pubblicazione automatica: cosa fa il modulo quando si salva", () => {
     }
   });
 
+  it("tornando confermato il titolo torna normale e il colore con lui", async () => {
+    await nuovoDatabase();
+    const { appuntamentoId } = creaSchedaConAppuntamento();
+    await pubblicaAppuntamento(appuntamentoId, "primary");
+
+    aggiornaAppuntamento(appuntamentoId, {
+      ...ottieniAppuntamento(appuntamentoId)!,
+      stato: "annullato",
+    });
+    await pubblicaAppuntamento(appuntamentoId, "primary");
+    expect([...eventi.values()][0].summary).toMatch(/^ANNULLATO: /);
+
+    // Ripensamento: si conferma di nuovo. L'evento non deve restare per sempre
+    // etichettato annullato — il prefisso è una dichiarazione dello stato, non
+    // una cicatrice.
+    aggiornaAppuntamento(appuntamentoId, {
+      ...ottieniAppuntamento(appuntamentoId)!,
+      stato: "confermato",
+    });
+    await pubblicaAppuntamento(appuntamentoId, "primary");
+    expect([...eventi.values()][0].summary).toBe("Ritiro documento");
+    expect([...eventi.values()][0].colorId).not.toBe("11");
+  });
+
   it("annullare un appuntamento mai pubblicato non chiama Google", async () => {
     await nuovoDatabase();
     const { appuntamentoId } = creaSchedaConAppuntamento();
@@ -775,6 +807,40 @@ describe("Eliminare un appuntamento toglie anche l'evento", () => {
     expect([...eventi.values()][0].summary).toBe("Ritiro documento (rivisto)");
     // E il collegamento è tornato a puntare a qualcosa che esiste.
     expect(ottieniAppuntamento(appuntamentoId)?.googleEventId).toBeTruthy();
+  });
+
+  it("eliminare un'anagrafica porta via anche gli eventi su Google", async () => {
+    await nuovoDatabase();
+    const { anagraficoId, appuntamentoId } = creaSchedaConAppuntamento();
+    await pubblicaAppuntamento(appuntamentoId, "primary");
+    expect(eventi.size).toBe(1);
+
+    // La cascata: gli ID evento si raccolgono prima che le righe spariscano,
+    // poi l'eliminazione passa da Google prima di toccare il database.
+    const conEvento = appuntamentiConEventoDaEliminareAnagrafico(anagraficoId);
+    expect(conEvento.map((a) => a.id)).toContain(appuntamentoId);
+    const esito = await eliminaAppuntamentiEEventi(conEvento.map((a) => a.id));
+
+    expect(esito.falliti).toEqual([]);
+    expect(esito.riusciti).toContain(appuntamentoId);
+    expect(eventi.size).toBe(0);
+    expect(ottieniAppuntamento(appuntamentoId)).toBeNull();
+  });
+
+  it("se Google non risponde nella cascata, la riga locale resta e si può riprovare", async () => {
+    await nuovoDatabase();
+    const { anagraficoId, appuntamentoId } = creaSchedaConAppuntamento();
+    await pubblicaAppuntamento(appuntamentoId, "primary");
+    fetchFinto.mockImplementationOnce(async () => risposta({ error: "rateLimitExceeded" }, 429));
+
+    const conEvento = appuntamentiConEventoDaEliminareAnagrafico(anagraficoId);
+    const esito = await eliminaAppuntamentiEEventi(conEvento.map((a) => a.id));
+
+    // L'appuntamento resta: cancellarlo comunque lascerebbe l'evento orfano
+    // in agenda, non più raggiungibile da nessuno.
+    expect(esito.falliti).toHaveLength(1);
+    expect(esito.falliti[0].id).toBe(appuntamentoId);
+    expect(ottieniAppuntamento(appuntamentoId)?.googleEventId).toBe("evt-1");
   });
 
   it("se Google non risponde l'appuntamento resta: meglio che lasciare un evento orfano", async () => {

@@ -12,9 +12,12 @@ import {
   TrashIcon,
 } from "../components/icons";
 import { Badge, Button, Card, Sheet } from "../components/ui";
+import { useAvvisi } from "../components/Avvisi";
+import { eliminaAppuntamentiEEventi } from "../lib/google/sync";
 import { useLiveQuery } from "../hooks/useLiveQuery";
 import { dataLunga, durata, ora, relativo } from "../lib/date";
 import {
+  appuntamentiConEventoDaEliminareAnagrafico,
   effettoEliminazioneAnagrafica,
   eliminaAnagrafico,
   elencaAppuntamenti,
@@ -35,6 +38,7 @@ const TONO: Record<StatoRelazione, "neutral" | "brand" | "clay" | "muted"> = {
 export default function AnagraficoDettaglio() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { esegui } = useAvvisi();
   const anagraficoId = Number(id);
   const [modificaAnagrafico, setModificaAnagrafico] = useState(false);
   const [foglio, setFoglio] = useState<"relazione" | "appuntamento" | null>(null);
@@ -120,17 +124,28 @@ export default function AnagraficoDettaglio() {
                 : "",
             ].filter(Boolean);
             if (
-              confirm(
+              !confirm(
                 `Eliminare ${nomeCompleto(anagrafico)}?${
                   extra.length > 0
                     ? ` Verranno eliminati anche: ${extra.join(" e ")}.`
                     : ""
                 }`,
               )
-            ) {
+            )
+              return;
+            void (async () => {
+              // Gli ID evento vanno raccolti PRIMA di cancellare: dopo, le
+              // righe non esistono più e gli eventi su Google resterebbero
+              // orfani in agenda per sempre.
+              const conEvento = appuntamentiConEventoDaEliminareAnagrafico(anagrafico.id);
+              const esito = await esegui(
+                () => eliminaAppuntamentiEEventi(conEvento.map((a) => a.id)),
+                { errore: "Eliminazione di alcuni appuntamenti non riuscita" },
+              );
+              if (!esito) return; // errore di rete: le righe restano, si può riprovare
               eliminaAnagrafico(anagrafico.id);
               navigate("/panel/anagrafici");
-            }
+            })();
           }}
         >
           <TrashIcon className="h-4 w-4" />

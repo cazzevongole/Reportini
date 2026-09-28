@@ -9,10 +9,13 @@ import {
   TrashIcon,
 } from "../components/icons";
 import { Badge, Button, EmptyState, Input, PageHeader, Select, Sheet } from "../components/ui";
+import { useAvvisi } from "../components/Avvisi";
+import { eliminaAppuntamentiEEventi } from "../lib/google/sync";
 import { useLiveQuery } from "../hooks/useLiveQuery";
 import { scaricaTesto } from "../lib/google/calendar";
 import { dataBreve } from "../lib/date";
 import {
+  appuntamentiConEventoDaEliminareRelazione,
   effettoEliminazioneRelazione,
   elencaRelazioni,
   eliminaRelazione,
@@ -36,6 +39,7 @@ const TONO: Record<StatoRelazione, "neutral" | "brand" | "clay" | "muted"> = {
 };
 
 export default function Relazioni() {
+  const { esegui } = useAvvisi();
   const [ricerca, setRicerca] = useState("");
   const [stato, setStato] = useState<StatoRelazione | "">("");
   const [aperto, setAperto] = useState(false);
@@ -156,7 +160,7 @@ export default function Relazioni() {
                   onClick={() => {
                     const effetto = effettoEliminazioneRelazione(relazione.id);
                     if (
-                      confirm(
+                      !confirm(
                         `Eliminare la relazione “${relazione.titolo}”?${
                           effetto.appuntamenti > 0
                             ? ` Verranno eliminati anche ${effetto.appuntamenti} ${
@@ -167,9 +171,19 @@ export default function Relazioni() {
                             : ""
                         }`,
                       )
-                    ) {
+                    )
+                      return;
+                    void (async () => {
+                      // Gli ID evento prima della cancellazione: dopo, gli
+                      // eventi resterebbero orfani su Google Calendar.
+                      const conEvento = appuntamentiConEventoDaEliminareRelazione(relazione.id);
+                      const esito = await esegui(
+                        () => eliminaAppuntamentiEEventi(conEvento.map((a) => a.id)),
+                        { errore: "Eliminazione di alcuni appuntamenti non riuscita" },
+                      );
+                      if (!esito) return; // errore di rete: le righe restano
                       eliminaRelazione(relazione.id);
-                    }
+                    })();
                   }}
                 >
                   <TrashIcon className="h-4 w-4" />
