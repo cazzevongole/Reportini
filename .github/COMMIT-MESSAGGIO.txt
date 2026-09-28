@@ -1,31 +1,25 @@
-Il menù dell'aggiornamento prometteva un file che non esisteva
+Lo stato "in attesa" ora si vede sull'evento
 
-Scaricando l'aggiornamento su Windows si finiva in un 404: il `latest.yml`
-prometteva `Reportini-Setup-0.1.24.exe` e l'allegato si chiamava
-`Reportini.Setup.0.1.24.exe`. Un trattino contro un punto.
+Passare da in attesa a confermato non cambiava niente su Google Calendar, e non
+perché la pubblicazione non partiva: partiva e mandava due volte lo stesso
+evento. `status` sapeva solo dire "annullato" o "no", quindi i tre stati
+dell'app ne avevano due rappresentazioni, e due di loro erano identiche.
 
-Non è un caso: electron-builder ricava in due posti diversi il nome che finisce
-nel file e quello che finisce nel menù — `artifactName` per l'uno,
-`generateGitHubInstallerName()` per l'altro — e con il nome NSIS di default
-("Reportini Setup 0.1.24") i due non coincidono. Su mac e Linux coincidono,
-quindi il difetto stava in un sistema solo e ogni controllo fatto a occhio o
-sull'uno dei due nomi passava.
+Ora vale `transparency`: prenota solo lo stato "confermato". In attesa e
+annullato mandano `transparent`, l'evento resta in agenda ma non blocca la
+fascia, e chi guarda l'agenda vede la differenza.
 
-Due cose, quindi.
+La regola è "prenota solo se confermato" e non "libero se in attesa" perché
+un annullato scritto *Cancelled* che occupasse il tempo continuerebbe a
+bloccare la fascia di chi lo cerca. Me lo ha fatto vedere il test: la mia
+prima versione lasciava passare quello, e l'avevo scritto come se fosse
+giusto.
 
-**`win.artifactName` esplicito**, uguale al nome che electron-builder scrive
-nel menù. Il file si chiama come il menù promette, e non può più succedere.
-
-**`scripts/verifica-menu-aggiornamento.mjs`**, che il job `pubblica` esegue
-prima di `gh release create`: legge ogni `url` e ogni `path` dei tre menù e
-fallisce se il file non è fra gli allegati. Un aggiornamento che non si può
-scaricare non si pubblica, perché il sintomo — "l'app non si aggiorna" — non
-dà nessun errore e non si collega a niente.
-
-Lo script è in `scripts/` e ha il suo test (`tests/menu-aggiornamento.test.ts`,
-169 in tutto) invece di essere una riga nel workflow: i casi sono quello reale
-sulla differenza trattino/punto, un allegato mancante su un solo sistema, un
-menù assente, e il caso in cui il controllo non deve diventare rumoroso,
-perché `sha512` e `size` nel yml sembrano nomi e non lo sono.
+Il test che copre i tre stati esisteva già, e diceva di coprirli: asseriva
+che in attesa e confermato dessero entrambi `confirmed`, cioè documentava il
+buco come se fosse voluto, e il commento "l'evento lo dice" non era vero.
+Ora verifica anche `transparency`, in entrambe le direzioni, e il primo caso è
+ripartito da uno stato coerente: l'appuntamento di prova è confermato, non in
+attesa come il test lasciava intendere.
 
 169 test verdi.

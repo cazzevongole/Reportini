@@ -437,6 +437,13 @@ che dice l'app. Un annullato in Google Calendar non è sparito, è scritto
 contraddirebbero. Il collegamento all'evento resta anche quando l'appuntamento
 è annullato, così la prossima modifica non crea un secondo evento.
 
+E **solo lo stato "confermato" occupa la fascia** (`transparency: opaque`); in attesa e
+annullato mandano `transparent`, cioè l'evento resta in agenda ma non blocca il tempo. Non è una
+decorazione: senza, passare da in attesa a confermato non cambiava **niente** su Google Calendar —
+i due stati producevano lo stesso identico evento, e la sola traccia era la parola "(in attesa)"
+nell'avviso dell'app. Un appuntamento da confermare che occupa il tempo mente sul fatto che non
+è ancora tenuto, e un annullato che occupa la fascia blocca chi cerca lo slot.
+
 L'unico modo di togliere davvero l'evento è **eliminare** l'appuntamento, o
 premere "Su Google" su un appuntamento già pubblicato, che è lo scollegamento
 manuale.
