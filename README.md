@@ -29,12 +29,26 @@ La sincronizzazione distingue due casi, ed è importante conoscerli:
   copia locale non li sovrascrive (è il caso di chi cambia dispositivo);
 - **sessione già allineata** — contano le modifiche locali non ancora replicate.
 
+**Ma il cloud vince solo se l'utente non ha ancora scritto niente.** Il ripristino sostituisce
+l'intero database, quindi applicarlo a un database modificato **cancella il lavoro locale**. Il
+controllo è su due livelli, ed entrambi servono: prima del download e **di nuovo dopo**, perché
+il download è una richiesta in rete e l'utente, in quei secondi, può salvare un appuntamento. Il
+sintomo di questa corsia era un appuntamento appena creato che spariva, con la pubblicazione che
+si fermava su «L'appuntamento non esiste più» — e non accadeva sempre, perché dipendeva da se la
+scrittura capitava dentro la finestra del download. Se in quella finestra ci sono state scritture,
+si **carica** il locale e il log lo dice.
+
+Per lo stesso motivo `insert()` in `sqlite/engine.ts` legge `last_insert_rowid()` **prima** di
+`notifyChange()`: quel valore vale solo per l'ultimo inserimento riuscito, e dopo aver avvisato gli
+ascoltatori un inserimento fatto da uno di loro cambierebbe la risposta. Un id sbagliato fa
+esattamente lo stesso danno: l'appuntamento c'è, ma per l'app non esiste.
+
 ### Modello dei dati
 
 - `anagrafici` — scheda anagrafica (nome, cognome, documento, nascita, domicilio, contatti).
 - `relazioni` — relazioni con `anagraficoId` e stato (`bozza`, `revisione`, `firmato`, `consegnato`).
 - `appuntamenti` — appuntamenti con `anagraficoId` / `relazioneId`, promemoria e dati Google
-  (`googleEventId`, `googleHtmlLink`, `googleSyncAt`).
+  (`googleEventId`, `googleHtmlLink`, `googleSyncAt`, `googleErrore`).
 
 Le chiavi esterne sono attive (`ON DELETE CASCADE` sulle relazioni, `SET NULL` sugli appuntamenti,
 grazie al `PRAGMA foreign_keys = ON` in `migrations.ts`).
@@ -444,9 +458,34 @@ i due stati producevano lo stesso identico evento, e la sola traccia era la paro
 nell'avviso dell'app. Un appuntamento da confermare che occupa il tempo mente sul fatto che non
 è ancora tenuto, e un annullato che occupa la fascia blocca chi cerca lo slot.
 
+**Lo stato è scritto in chiaro sull'evento**, in tre punti. La riga `Stato: in attesa di
+conferma` (o `confermato`, o `annullato`) in cima alla descrizione: `transparency` e `status`
+sono proprietà che si vedono solo aprendo l'evento, quindi due appuntamenti identici in elenco
+sembravano uguali. Poi `extendedProperties.private.reportiniStato`, per chi legge l'evento e non
+l'app. E nell'export `.ics` il campo standard `STATUS`, che per "in attesa" è `TENTATIVE` — prima
+valeva `CONFIRMED` anche per un appuntamento non ancora confermato, e in un calendario importato
+non c'era modo di distinguerlo.
+
 L'unico modo di togliere davvero l'evento è **eliminare** l'appuntamento, o
 premere "Su Google" su un appuntamento già pubblicato, che è lo scollegamento
 manuale.
+
+**Un evento che l'utente ha cancellato da Google Calendar non è un errore.** L'evento sparisso
+fa rispondere `404` o `410 Gone` a ogni operazione, e quelle risposte non sono guasti: sono Google
+che conferma che l'evento non è più in agenda, cioè che **l'operazione che l'utente ha chiesto è
+già stata fatta**. Per questo `ErroreGoogle` porta con sé il codice HTTP ed `eventoMancante()` lo
+riconosce, e in tutti e tre i punti in cui può capitare vale la regola "l'evento non c'è, quindi
+quello che volevo ottenere è ottenuto":
+
+- **eliminare** l'appuntamentoElimina la riga locale e va avanti. Prima l'appuntamento restava
+  in lista e ogni nuovo tentativo riceveva lo stesso `410`, quindi non era eliminabile;
+- **scollegare** ripulisce i marcatori locali. Senza, il collegamento a un evento che non esiste
+  non poteva più essere tolto, e restava lì per sempre;
+- **modificare** l'appuntamento ricrea l'evento. Altrimenti ogni salvataggio successivo riceveva
+  lo stesso `404` e l'appuntamento rimaneva bloccato, con un collegamento a un evento morto.
+
+Un fallimento vero — rete, quota, permessi — si comporta come prima: l'appuntamento resta in
+lista con il collegamento, e premere Elimina di nuovo riprova.
 
 Due dettagli che contano più di quanto sembrino:
 
@@ -472,7 +511,7 @@ bun install
 bun run dev        # server di sviluppo su http://localhost:5173
 bun run build      # build statica in dist/ (+ 404.html per GitHub Pages)
 bun run typecheck  # tsc -b --noEmit
-bun run test       # test vitest (169 test) + smoke test dello schema
+bun run test       # test vitest (175 test) + smoke test dello schema
 bun run test:ui    # solo i test vitest
 bun run version:check  # la versione è coerente? (lo usa anche il rilascio)
 bun run version:patch  # alza la versione di un patch, come fa il workflow

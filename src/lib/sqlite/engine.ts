@@ -119,9 +119,14 @@ export function insert(table: string, values: Record<string, SqlValue>): number 
     .map(() => "?")
     .join(", ")})`;
   getDatabase().run(sql, keys.map((key) => values[key]));
+  // `last_insert_rowid()` vale per l'ultimo inserimento riuscito: va letto
+  // subito, prima di avvisare gli ascoltatori. Dopo `notifyChange()` un
+  // ascoltatore che scrivesse a sua volta farebbe cambiare la risposta, e
+  // `inserisci` restituirebbe l'id di una riga appena creata da qualcun
+  // altro: un appuntamento appena salvato risulterebbe inesistente.
+  const result = get<{ id: number }>(`SELECT last_insert_rowid() AS id`);
   schedulePersist();
   notifyChange();
-  const result = get<{ id: number }>(`SELECT last_insert_rowid() AS id`);
   return result?.id ?? 0;
 }
 
