@@ -1,7 +1,5 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { CalendarIcon, HomeIcon, SettingsIcon, UsersIcon } from "./icons";
-import AccountBar from "./AccountBar";
-import GoogleStatus from "./GoogleStatus";
 
 /**
  * Quattro voci: abbastanza per orientarsi, poche per non far accavallare le
@@ -42,14 +40,11 @@ export default function AppShell() {
             {label}
           </NavLink>
         ))}
-        <div className="mt-6">
-          <GoogleStatus compatto />
-        </div>
       </aside>
 
+      {/* Account e collegamenti stanno nelle impostazioni: sopra ogni pagina
+          finirebbero solo per ripetere le stesse righe a ogni passaggio. */}
       <main className="min-w-0 flex-1">
-        <AccountBar />
-        <GoogleStatus />
         <Outlet />
       </main>
 

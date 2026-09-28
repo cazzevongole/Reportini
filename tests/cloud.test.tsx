@@ -202,10 +202,14 @@ describe("Accesso con Google", () => {
     }
   });
 
-  it("espone l'email dell'utente dopo l'accesso", async () => {
+  it("espone l'email dell'utente dopo l'accesso, nelle impostazioni", async () => {
     await entraCome("utente@esempio.it");
-    await monta("/panel");
+    await monta("/panel/impostazioni");
     expect(contenitore.textContent).toContain("utente@esempio.it");
+    // Nelle altre pagine l'account non ripete le stesse righe a ogni passaggio.
+    await act(async () => radice.unmount());
+    await monta("/panel");
+    expect(contenitore.textContent).not.toContain("utente@esempio.it");
   });
 
   it("offre l'accesso quando non c'è sessione", async () => {
@@ -410,15 +414,15 @@ describe("Dashboard sviluppatore", () => {
     expect(window.location.pathname).toBe("/panel");
   });
 
-  it("non mostra la voce di menu agli account non autorizzati", async () => {
+  it("non mostra il badge Sviluppo agli account non autorizzati", async () => {
     await entraCome("esterno@esempio.it");
-    await monta("/panel");
+    await monta("/panel/impostazioni");
     expect(contenitore.textContent).not.toContain("Sviluppo");
   });
 
-  it("mostra la voce di menu agli account autorizzati", async () => {
+  it("mostra il badge Sviluppo agli account autorizzati", async () => {
     await entraCome(CHIAVE);
-    await monta("/panel");
+    await monta("/panel/impostazioni");
     expect(contenitore.textContent).toContain("Sviluppo");
   });
 });
@@ -442,7 +446,20 @@ describe("Riferimenti rimossi", () => {
     expect(testo).not.toContain("url di ritorno");
     expect(testo).not.toContain("bucket");
     expect(testo).not.toContain("redirect urls");
-    expect(testo).toContain("account e salvataggio online");
+    expect(testo).toContain("il tuo account");
+  });
+
+  it("l'account e l'uscita stanno nelle impostazioni", async () => {
+    await entraCome("utente@esempio.it");
+    await monta("/panel/impostazioni");
+    const testo = contenitore.textContent ?? "";
+    // Profilo: l'email con cui si è entrati.
+    expect(testo).toContain("utente@esempio.it");
+    // Uscita: il pulsante che chiude la sessione.
+    expect(testo).toContain("Esci");
+    // E lo stato del collegamento con Google Calendar, senza duplicarlo.
+    expect(testo).toContain("Google Calendar");
+    expect(testo).toContain("Salvataggio online");
   });
 });
 

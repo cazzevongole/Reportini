@@ -87,9 +87,9 @@ solo i propri file, perché il percorso nel bucket è `<user-id>/reportini.sqlit
 
 ### Dashboard sviluppatore
 
-Gli account la cui email è in `VITE_DEV_WHITELIST` vedono un badge *Sviluppo* e possono aprire
-`/panel/sviluppo`, con stato dei dati, controllo della sincronizzazione e azioni di manutenzione.
-Non c'è una voce di menu: si arriva alla pagina con l'indirizzo.
+Gli account la cui email è in `VITE_DEV_WHITELIST` vedono un badge *Sviluppo* nelle impostazioni e
+possono aprire `/panel/sviluppo`, con stato dei dati, controllo della sincronizzazione e azioni di
+manutenzione. Non c'è una voce di menu: si arriva alla pagina con l'indirizzo.
 
 > La whitelist viene compilata nel bundle del browser: protegge contro accessi casuali, **non** è
 > un controllo di sicurezza. Per una barriera vera va verificata lato server.
@@ -123,7 +123,7 @@ bun install
 bun run dev        # server di sviluppo su http://localhost:5173
 bun run build      # build statica in dist/ (+ 404.html per GitHub Pages)
 bun run typecheck  # tsc -b --noEmit
-bun run test       # test vitest (47 test) + smoke test dello schema
+bun run test       # test vitest (48 test) + smoke test dello schema
 bun run test:ui    # solo i test vitest
 ```
 
@@ -136,7 +136,8 @@ I test vitest coprono quattro file:
 - `tests/cloud.test.tsx` verifica con un client Supabase finto l'accesso con Google, il
   caricamento e il ripristino della copia online, l'auto-salvataggio dopo ogni modifica, il
   gating della dashboard sviluppatore per whitelist, il controllo del bucket, la barra di
-  navigazione e l'assenza di sezioni di sviluppo nelle impostazioni.
+  navigazione, l'assenza di sezioni di sviluppo nelle impostazioni e la presenza di account e
+  uscita sempre lì, e non in cima alle pagine.
 - `tests/google.test.tsx` copre il token Calendar che arriva sulla sessione Supabase: custodia,
   scadenza con un'ora di margine, revoca allo scollegamento e i parametri OAuth richiesti.
 - `tests/calendar.e2e.test.tsx` crea un appuntamento, esce e rientra, e verifica che non venga
