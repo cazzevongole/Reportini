@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import {
   CalendarIcon,
-  CheckIcon,
   CloudIcon,
   DownloadIcon,
   SparkIcon,
@@ -9,6 +8,7 @@ import {
   UserIcon,
 } from "../components/icons";
 import { Badge, Button, Card, PageHeader } from "../components/ui";
+import { useAvvisi } from "../components/Avvisi";
 import { useLiveQuery } from "../hooks/useLiveQuery";
 import { useSalvataggioCloud } from "../hooks/useSalvataggioCloud";
 import { useAccount } from "../lib/cloud/session";
@@ -38,7 +38,7 @@ function orario(iso: string): string {
 
 export default function Impostazioni() {
   const fileInput = useRef<HTMLInputElement>(null);
-  const [messaggio, setMessaggio] = useState("");
+  const { notifica, esegui } = useAvvisi();
   const [occupato, setOccupato] = useState(false);
   // Lo stato di collegamento lo decide il token, non il profilo: il profilo
   // arriva con una richiesta a parte e può arrivare dopo il primo render.
@@ -64,17 +64,24 @@ export default function Impostazioni() {
   }, []);
 
   async function esportaCopia() {
-    await flush();
-    const copia = creaBackup();
-    const blob = new Blob([JSON.stringify(copia, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `reportini-${new Date().toISOString().slice(0, 10)}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
-    setMessaggio(
-      `Copia esportata: ${copia.anagrafici.length} anagrafici, ${copia.relazioni.length} relazioni, ${copia.appuntamenti.length} appuntamenti.`,
+    await esegui(
+      async () => {
+        await flush();
+        const copia = creaBackup();
+        const blob = new Blob([JSON.stringify(copia, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `reportini-${new Date().toISOString().slice(0, 10)}.json`;
+        link.click();
+        URL.revokeObjectURL(url);
+        return copia;
+      },
+      {
+        successo: (c) =>
+          `Copia esportata: ${c.anagrafici.length} anagrafiche, ${c.relazioni.length} relazioni, ${c.appuntamenti.length} appuntamenti.`,
+        errore: "Esportazione non riuscita",
+      },
     );
   }
 
@@ -85,54 +92,42 @@ export default function Impostazioni() {
       event.target.value = "";
       return;
     }
-    try {
-      const copia = JSON.parse(await file.text()) as Backup;
-      if (!Array.isArray(copia.anagrafici) || !Array.isArray(copia.appuntamenti)) {
-        throw new Error("Il file non ha il formato atteso");
-      }
-      ripristinaBackup(copia);
-      setMessaggio("Copia ripristinata correttamente.");
-    } catch (error) {
-      setMessaggio(error instanceof Error ? error.message : "Impossibile leggere la copia");
-    } finally {
-      event.target.value = "";
-    }
+    await esegui(
+      async () => {
+        const copia = JSON.parse(await file.text()) as Backup;
+        if (!Array.isArray(copia.anagrafici) || !Array.isArray(copia.appuntamenti)) {
+          throw new Error("Il file non ha il formato atteso");
+        }
+        ripristinaBackup(copia);
+      },
+      { successo: "Copia ripristinata correttamente.", errore: "" },
+    );
+    event.target.value = "";
   }
 
   async function collegaGoogle() {
     setOccupato(true);
-    setMessaggio("");
-    try {
-      const account = await connect();
-      setMessaggio(`Collegato come ${account.email}.`);
-    } catch (error) {
-      setMessaggio(error instanceof Error ? error.message : "Collegamento non riuscito");
-    } finally {
-      setOccupato(false);
-    }
+    // connect() lascia la pagina verso Google: qui si arriva solo se è
+    // fallito, e la riga di errore è l'unica cosa che resta.
+    await esegui(() => connect(), {
+      successo: (account) => `Collegato come ${account.email}.`,
+      errore: "Collegamento a Google Calendar non riuscito",
+    });
+    setOccupato(false);
   }
 
   async function sincronizzaTutto() {
     setOccupato(true);
-    setMessaggio("");
-    try {
-      const risultato = await sincronizzaInAttesa();
-      setMessaggio(risultato.messaggio);
-    } finally {
-      setOccupato(false);
-    }
+    await esegui(() => sincronizzaInAttesa(), {
+      successo: (r) => r.messaggio,
+      errore: "Sincronizzazione degli appuntamenti non riuscita",
+    });
+    setOccupato(false);
   }
 
   return (
     <div>
       <PageHeader title="Impostazioni" subtitle="Il tuo account, i collegamenti e le copie" />
-
-      {messaggio ? (
-        <p className="mb-5 flex items-start gap-2 rounded-xl border border-ink-100 bg-white px-3.5 py-2.5 text-sm text-ink-600">
-          <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" />
-          {messaggio}
-        </p>
-      ) : null}
 
       <section className="mb-5">
         <Card className="p-5">
@@ -182,27 +177,19 @@ export default function Impostazioni() {
                   variant="secondary"
                   onClick={async () => {
                     if (!userId) {
-                      setMessaggio("Non riesco a riconoscere l'utente: esci e rientra.");
+                      notifica("errore", "Non riesco a riconoscere l'utente: esci e rientra.");
                       return;
                     }
                     setOccupato(true);
-                    setMessaggio("");
-                    try {
-                      // "solo_upload": il pulsante manda i dati locali al cloud.
-                      // Con la sincronizzazione completa una copia vuota su un
-                      // dispositivo nuovo verrebbe riscaricata al posto di quella
-                      // appena scritta.
-                      const esito = await sincronizza(userId, "solo_upload");
-                      setMessaggio(esito.messaggio);
-                    } catch (errore) {
-                      setMessaggio(
-                        errore instanceof Error
-                          ? `Salvataggio online non riuscito: ${errore.message}`
-                          : "Salvataggio online non riuscito",
-                      );
-                    } finally {
-                      setOccupato(false);
-                    }
+                    // "solo_upload": il pulsante manda i dati locali al cloud.
+                    // Con la sincronizzazione completa una copia vuota su un
+                    // dispositivo nuovo verrebbe riscaricata al posto di quella
+                    // appena scritta.
+                    await esegui(() => sincronizza(userId, "solo_upload"), {
+                      successo: (r) => r.messaggio,
+                      errore: "Salvataggio online non riuscito",
+                    });
+                    setOccupato(false);
                   }}
                   disabled={occupato || !userId}
                 >
@@ -210,10 +197,14 @@ export default function Impostazioni() {
                 </Button>
                 <Button
                   variant="ghost"
-                  onClick={() => {
+                  onClick={async () => {
                     // Il guard delle pagine manda alla schermata di accesso
-                    // appena la sessione sparisce: non serve navigare qui.
-                    void signOutAccount();
+                    // appena la sessione sparisce: non serve navigare qui, e
+                    // l'avviso resta visibile perché vive fuori dal router.
+                    await esegui(() => signOutAccount(), {
+                      successo: "Sessione chiusa",
+                      errore: "Uscita non riuscita",
+                    });
                   }}
                 >
                   Esci
@@ -249,11 +240,18 @@ export default function Impostazioni() {
                 </Button>
                 <Button
                   variant="secondary"
-                  onClick={() => {
-                    disconnect();
+                  onClick={async () => {
+                    // disconnect() revoca il consenso via API: se la revoca
+                    // fallisce l'utente deve saperlo, perché l'app resta
+                    // autorizzata su myaccount.google.com/permissions.
+                    await esegui(() => disconnect(), {
+                      successo: (r) =>
+                        r.revocato
+                          ? "Account Google scollegato."
+                          : "Token rimosso, ma la revoca su Google non è riuscita: l'app resta autorizzata su myaccount.google.com/permissions.",
+                    });
                     setCollegato(false);
                     setProfilo(null);
-                    setMessaggio("Account Google scollegato.");
                   }}
                 >
                   Scollega
@@ -268,7 +266,7 @@ export default function Impostazioni() {
               variant="secondary"
               onClick={() => {
                 scaricaTuttiGliAppuntamenti(appuntamenti);
-                setMessaggio(`${appuntamenti.length} appuntamenti esportati in formato .ics.`);
+                notifica("ok", `${appuntamenti.length} appuntamenti esportati in formato .ics.`);
               }}
               disabled={appuntamenti.length === 0}
             >

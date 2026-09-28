@@ -12,6 +12,7 @@ import {
   TrashIcon,
 } from "../components/icons";
 import { Badge, Button, EmptyState, PageHeader, Sheet } from "../components/ui";
+import { useAvvisi } from "../components/Avvisi";
 import { useLiveQuery } from "../hooks/useLiveQuery";
 import { dataLunga, giornoISO, durata, ora, relativo } from "../lib/date";
 import { isConnected } from "../lib/google/auth";
@@ -38,7 +39,7 @@ export default function Appuntamenti() {
   const [filtro, setFiltro] = useState<StatoAppuntamento | "tutti" | "prossimi">("prossimi");
   const [aperto, setAperto] = useState(false);
   const [inModifica, setInModifica] = useState<Appuntamento | null>(null);
-  const [avviso, setAvviso] = useState("");
+  const { notifica, esegui } = useAvvisi();
   const googlePronto = isConnected();
 
   const appuntamenti = useLiveQuery(() => {
@@ -63,20 +64,22 @@ export default function Appuntamenti() {
 
   function apriNuovo() {
     setInModifica(null);
-    setAvviso("");
     setAperto(true);
   }
 
   async function sincronizza(appuntamento: Appuntamento) {
-    setAvviso(`Sincronizzazione di “${appuntamento.titolo}”…`);
-    const risultato = await sincronizzaAppuntamento(appuntamento.id);
-    setAvviso(risultato.messaggio);
+    notifica("info", `Sincronizzo “${appuntamento.titolo}” con Google Calendar…`);
+    await esegui(() => sincronizzaAppuntamento(appuntamento.id), {
+      successo: (r) => r.messaggio,
+      errore: "Sincronizzazione con Google Calendar non riuscita",
+    });
   }
 
   async function dissocia(appuntamento: Appuntamento) {
-    setAvviso(`Scollegamento di “${appuntamento.titolo}”…`);
-    const risultato = await dissociaAppuntamento(appuntamento.id);
-    setAvviso(risultato.messaggio);
+    await esegui(() => dissociaAppuntamento(appuntamento.id), {
+      successo: (r) => r.messaggio,
+      errore: "Scollegamento dall'evento non riuscito",
+    });
   }
 
   return (
@@ -108,13 +111,6 @@ export default function Appuntamenti() {
           </button>
         ))}
       </div>
-
-      {avviso ? (
-        <p className="mb-4 flex items-center gap-2 rounded-xl border border-ink-100 bg-white px-3.5 py-2.5 text-xs text-ink-500">
-          <CheckIcon className="h-4 w-4 shrink-0 text-brand-600" />
-          {avviso}
-        </p>
-      ) : null}
 
       {appuntamenti.length === 0 ? (
         <EmptyState
@@ -207,7 +203,14 @@ export default function Appuntamenti() {
                           Apri
                         </a>
                       ) : null}
-                      <Button size="sm" variant="ghost" onClick={() => scaricaIcs(appuntamento)}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          scaricaIcs(appuntamento);
+                          notifica("ok", `File .ics di “${appuntamento.titolo}” scaricato`);
+                        }}
+                      >
                         <DownloadIcon className="h-4 w-4" />
                         .ics
                       </Button>

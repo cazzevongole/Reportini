@@ -1,6 +1,7 @@
 import { Navigate, useLocation } from "react-router-dom";
 import { CalendarIcon, FileTextIcon, UsersIcon } from "../components/icons";
 import { Button } from "../components/ui";
+import { useAvvisi } from "../components/Avvisi";
 import { useAccount } from "../lib/cloud/session";
 import { problemaConfigurazione } from "../lib/cloud/supabase";
 
@@ -28,7 +29,8 @@ const PERCHE = [
 ];
 
 export default function Accesso() {
-  const { email, loading, signInWithGoogle, error } = useAccount();
+  const { email, loading, signInWithGoogle } = useAccount();
+  const { esegui } = useAvvisi();
   const posizione = useLocation();
   const da = (posizione.state as { da?: string } | null)?.da ?? "/panel";
 
@@ -50,15 +52,17 @@ export default function Accesso() {
 
             <Button
               className="mt-5 w-full justify-center"
-              onClick={() => void signInWithGoogle()}
+              onClick={() => {
+                void esegui(() => signInWithGoogle(), {
+                  // signInWithGoogle non conclude quasi mai: la pagina viene
+                  // scaricata verso Google. Si arriva qui solo se è fallito.
+                  errore: "Accesso con Google non riuscito",
+                });
+              }}
               disabled={loading}
             >
               {loading ? "Accesso in corso…" : "Accedi con Google"}
             </Button>
-
-            {error ? (
-              <p className="mt-3 rounded-xl bg-clay-50 px-3 py-2 text-xs text-clay-900">{error}</p>
-            ) : null}
 
             {problemaConfigurazione ? (
               <p className="mt-3 rounded-xl bg-clay-50 px-3 py-2 text-xs text-clay-900">
