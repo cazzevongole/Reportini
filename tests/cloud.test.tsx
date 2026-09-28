@@ -345,16 +345,20 @@ describe("L'indirizzo di rientro deve essere una pagina web", () => {
     const { motivoRientroNonValido } = await import("../src/lib/cloud/destinazione");
     expect(motivoRientroNonValido("https://cazzevongole.github.io/Reportini")).toBe("");
     expect(motivoRientroNonValido("http://localhost:5173")).toBe("");
+    // Il pacchetto desktop: si serve da 127.0.0.1 e ha quindi un'origine
+    // vera, proprio per poter essere riportato qui da Google.
+    expect(motivoRientroNonValido("http://127.0.0.1:42720")).toBe("");
   });
 
-  it("da file:// dice perché non può funzionare", async () => {
+  it("senza origine dice cosa è andato storto", async () => {
     const { motivoRientroNonValido } = await import("../src/lib/cloud/destinazione");
-    // È quello che succede sul pacchetto desktop: `file://` non ha origine,
-    // window.location.origin restituisce la stringa "null" e l'indirizzo di
-    // rientro che finisce a Google è la parola "null".
+    // Da `file://` window.location.origin restituisce la stringa "null" e
+    // l'indirizzo di rientro che finisce a Google è la parola "null". Sul
+    // pacchetto non dovrebbe più capitare, ma se la frase compare vuol dire
+    // che il server locale non è partito, e quello sì va detto.
     const motivo = motivoRientroNonValido("null");
     expect(motivo).toContain("non è una pagina web");
-    expect(motivo).toContain("file://");
+    expect(motivo).toContain("127.0.0.1");
     expect(motivoRientroNonValido("file:///C:/Program%20Files/Reportini/index.html")).toContain(
       "non è una pagina web",
     );

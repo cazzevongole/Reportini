@@ -77,10 +77,10 @@ test, dove un guasto lo blocca prima di arrivare in giro.
 2. In **Authentication → Providers → Google** abilita Google e incolla il Client ID e il Client
    Secret del tuo progetto Google Cloud. Per il calendario ne serve uno **solo**: è lo stesso
    client che va in `VITE_GOOGLE_CLIENT_ID` (vedi la sezione sotto).
-3. In **Authentication → URL Configuration** aggiungi in *Redirect URLs* `http://localhost:5173`
-   e l'URL delle GitHub Pages. Con il workflow di questo repository l'app è pubblicata in una
-   sottocartella, quindi gli URL sono `https://cazzevongole.github.io/Reportini/` e
-   `https://cazzevongole.github.io/Reportini/**`.
+3. In **Authentication → URL Configuration** aggiungi in *Redirect URLs* `http://localhost:5173`,
+   `http://127.0.0.1:42720` (il pacchetto desktop) e l'URL delle GitHub Pages. Con il workflow di
+   questo repository l'app è pubblicata in una sottocartella, quindi gli URL sono
+   `https://cazzevongole.github.io/Reportini/` e `https://cazzevongole.github.io/Reportini/**`.
 4. Crea il bucket e le relative politiche RLS: apri `supabase/setup.sql`, copialo tutto ed
    eseguilo nel **SQL Editor** del progetto Supabase (sidebar → *SQL Editor* → *New query* → *Run*).
    È idempotente, quindi puoi rieseguirlo. In fondo ci sono le due query di verifica.
@@ -343,7 +343,9 @@ l'app non potrebbe rinnovare niente.
 2. Nei *URI di reindirizzamento autorizzati* metti:
    - l'URL di callback di Supabase (lo trovi in *Authentication → Providers → Google*),
    - `https://cazzevongole.github.io/Reportini`,
-   - `http://localhost:5173`.
+   - `http://localhost:5173`,
+   - `http://127.0.0.1:42720`, che è l'indirizzo a cui il pacchetto desktop fa tornare
+     l'utente: non serve un secondo client OAuth.
 3. In Supabase, *Authentication → Providers → Google*: incolla **lo stesso** Client ID e Client
    Secret del passo 1.
 4. Pubblica la funzione e carica i segreti:
@@ -437,7 +439,7 @@ bun install
 bun run dev        # server di sviluppo su http://localhost:5173
 bun run build      # build statica in dist/ (+ 404.html per GitHub Pages)
 bun run typecheck  # tsc -b --noEmit
-bun run test       # test vitest (140 test) + smoke test dello schema
+bun run test       # test vitest (153 test) + smoke test dello schema
 bun run test:ui    # solo i test vitest
 bun run version:check  # la versione è coerente? (lo usa anche il rilascio)
 bun run version:patch  # alza la versione di un patch, come fa il workflow
@@ -513,9 +515,10 @@ bun run electron:build     # compila la web e la copia in electron/renderer
 bun run electron:pack      # impacchetta (dmg / nsis / AppImage)
 ```
 
-`electron/main.cjs` apre `electron/renderer/index.html` ed espone via IPC solo quattro operazioni:
-leggere il file SQLite, scriverlo, mostrarlo nel file manager e chiedere lo stato
-dell'aggiornamento automatico. Il renderer gira con `contextIsolation` e senza accesso a Node.
+`electron/main.cjs` serve `electron/renderer/` da `127.0.0.1` e espone via IPC cinque operazioni:
+leggere il file SQLite, scriverlo, mostrarlo nel file manager, chiedere lo stato
+dell'aggiornamento automatico e aprire un indirizzo nel browser di sistema. Il renderer gira con
+`contextIsolation` e senza accesso a Node.
 
 **Due reti di sicurezza, perché una pagina bianca non serve a nessuno.** Nell'app impacchettata
 non esiste una console: quello che il renderer scrive finisce nei devtools, che nessuno apre. Quindi
@@ -542,15 +545,42 @@ variabili, infatti, il pacchetto si apre su una schermata di accesso che non pu�
 Supabase non è collegato, e senza account l'app non mostra niente. Meglio un pacchetto che non
 viene costruito che uno che sembra funzionante e non lo è.
 
-**Un limite che resta, e che è nelle mani di chi decide**: il rientro da Google. Le URL `file://`
-non hanno un'origine — `window.location.origin` restituisce la stringa `null` — quindi l'indirizzo
-di rientro che l'app manderebbe a Google sarebbe la parola `null`, che Google e Supabase non
-accettano. L'app non lo fa più in silenzio: `motivoRientroNonValido()` controlla l'indirizzo prima
-di partire, scrive il motivo sia a schermo sia nel `renderer.log`, e spiega che serve un rientro
-vero. Per collegarlo bisogna scegliere come: un **protocollo proprio** (`reportini://`, che
-richiede un client OAuth di tipo "Applicazione desktop" su Google e quindi un secondo client, in
-conflitto con quello che Supabase usa per `signInWithIdToken`), oppure far entrare il desktop
-**dalla web** e tenere sul desktop solo l'uso locale dei dati.
+**Un server locale su `127.0.0.1`, perché l'accesso con Google ha bisogno di un'origine.** Da `file://`
+non esiste un'origine: `window.location.origin` restituisce la stringa `null`, e un indirizzo di
+rientro senza origine non è un indirizzo che Google accetta. Quindi l'app impacchettata non si
+apre da un file: `electron/main.cjs` alza un server su `127.0.0.1:42720` che serve
+`electron/renderer/` e da cui la finestra si carica. L'origine è vera e sicura — resta sulla
+macchina, non è in ascolto sulla rete — e l'accesso con Google è esattamente quello della web.
+Il server accetta richieste solo con `Host` localhost, non lascia uscire da `electron/renderer/`, e
+si chiude con l'app.
+
+**Tre pezzi, e ognuno serve a qualcosa.** Il consenso si apre nel **browser di sistema** e non nella
+finestra: Google rifiuta l'accesso dai browser incorporati, quindi aperto dentro Electron si
+raggiunge "This browser or app may not be secure". Da qui il ponte `apriUrlEsterno` nel preload, che
+accetta solo `https` e `http` verso la macchina stessa. Il ritorno arriva a `127.0.0.1:42720` e
+**nessuno lo ascolterebbe**: l'ha aperto un altro programma, quindi è il main process a vederlo,
+a ripulire i parametri e a riportare la finestra all'indirizzo col `code`. Da lì il renderer fa lo
+scambio come sulla web. Il `code` non finisce nel `renderer.log`.
+
+**Perché una porta fissa e non una libera.** L'indirizzo di rientro va registrato *prima*, in Google e
+in Supabase, e un numero che cambia a ogni avvio non si può registrare. Se la porta è occupata se ne
+prende una vicina — la testata nel log dice quale, e quella va registrata al suo posto.
+
+Cosa registrare, una volta sola:
+
+- **Google Cloud → Client OAuth 2.0** del client già esistente: aggiungi
+  `http://127.0.0.1:42720` fra i *Authorized redirect URIs*. Non serve un secondo client.
+- **Supabase → Authentication → URL Configuration → Redirect URLs**: aggiungi
+  `http://127.0.0.1:42720`. Serve al percorso di riserva, quello col solo profilo e senza calendario.
+- **La funzione `google-token`**: nulla. Le origini in loopback sono ammesse a prescindere da
+  `ORIGINI_AMMESSE`, perché non sono raggiungibili dalla rete — e così nessun numero di porta
+  finisce in un segreto da ricordare.
+
+Sviluppando l'app con `bun run dev` il server locale non parte: c'è già quello di Vite, la sua
+origine è `127.0.0.1:5173` ed è già registrata.
+
+`motivoRientroNonValido()` resta, come rete di sicurezza: se la frase compare, il server locale non
+è partito, e il messaggio dice di leggere il `renderer.log` invece di lasciare il pulsante muto.
 
 ---
 

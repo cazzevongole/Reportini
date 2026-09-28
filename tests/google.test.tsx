@@ -105,6 +105,9 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  // Il ponte desktop si mette e si toglie qui: un test che lo lascia dietro
+  // farebbe fallire tutti quelli dopo, che si aspettano la navigazione.
+  delete (window as unknown as { reportini?: unknown }).reportini;
 });
 
 function scriveToken(accessToken: string, refreshToken: string | null, scadeFra: number) {
@@ -148,6 +151,29 @@ describe("Accesso con Google, calendario incluso", () => {
   it("dichiara gli scope attesi dal modulo", () => {
     expect(SCOPO_CALENDARIO).toBe("https://www.googleapis.com/auth/calendar.events");
     expect(SCOPO_PROFILO).toBe("openid email profile");
+  });
+
+  it("sul desktop apre il consenso nel browser di sistema, non nella finestra", async () => {
+    // Google rifiuta l'accesso dai browser incorporati: aperto nella finestra
+    // di Electron il consenso risponde "This browser or app may not be
+    // secure". Quindi sul desktop la pagina non deve navigare, e l'app deve
+    // restare viva ad aspettare che il ritorno arrivi dalla porta locale.
+    const aperte: string[] = [];
+    (window as unknown as { reportini: unknown }).reportini = {
+      apriUrlEsterno: async (url: string) => {
+        aperte.push(url);
+        return true;
+      },
+    };
+
+    const esito = await avviaAccessoGoogle();
+
+    expect(esito).toBe("browser");
+    // Navigare sarebbe finito nella pagina di blocco di Google: qui la
+    // finestra deve restare dov'è.
+    expect(assegnata).toBeNull();
+    expect(aperte[0]).toBeTruthy();
+    expect(new URL(aperte[0]).origin).toBe("https://accounts.google.com");
   });
 
   it("il redirect dichiarato a Google è quello che verrà usato nello scambio", async () => {

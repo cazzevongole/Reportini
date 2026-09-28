@@ -10,7 +10,12 @@ import {
 import type { Session } from "@supabase/supabase-js";
 import { baseRoutte, motivoRientroNonValido, urlDiRitorno } from "./destinazione";
 import { cloudEnabled, supabase } from "./supabase";
-import { avviaAccessoGoogle, completaAccesso, googleConfigured } from "../google/auth";
+import {
+  avviaAccessoGoogle,
+  completaAccesso,
+  googleConfigured,
+  type EsitoAvvio,
+} from "../google/auth";
 import { resettaRuolo } from "../sviluppo/richieste";
 
 export interface AccountState {
@@ -19,7 +24,7 @@ export interface AccountState {
   session: Session | null;
   loading: boolean;
   email: string | null;
-  signInWithGoogle: () => Promise<void>;
+  signInWithGoogle: () => Promise<EsitoAvvio>;
   signOut: () => Promise<void>;
   error: string | null;
 }
@@ -76,7 +81,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const signInWithGoogle = useCallback(async () => {
+  const signInWithGoogle = useCallback(async (): Promise<EsitoAvvio> => {
     if (!supabase) {
       const messaggio =
         "Collega l'accesso con Google dalle variabili d'ambiente (VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY).";
@@ -84,7 +89,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       // sparisce e non sa che l'app non è collegata a nulla.
       console.error("accesso: Supabase non è configurato —", messaggio);
       setError(messaggio);
-      return;
+      return "navigazione";
     }
     setError(null);
     // Con il backend configurato l'accesso passa da Google **con** lo scope
@@ -93,30 +98,47 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     // dicono cosa manca.
     if (googleConfigured) {
       try {
-        await avviaAccessoGoogle();
+        return await avviaAccessoGoogle();
       } catch (causa) {
         setError(causa instanceof Error ? causa.message : "Accesso non riuscito");
+        return "navigazione";
       }
-      return;
     }
     // Su GitHub Pages l'app vive in una sottocartella (/Reportini/): tornare
     // all'origine finirebbe sulla pagina del profilo, non sull'app.
     const rientro = urlDiRitorno(window.location.origin, baseRoutte());
-    // Stessa guardia del percorso con il calendario: da file:// non esiste
-    // un'origine utilizzabile, e senza controllo l'accesso fallisce in
-    // silenzio. Qui la frase la dice l'utente, nel log la dice anche chi
+    // Stessa guardia del percorso con il calendario: senza un'origine
+    // utilizzabile non c'è dove tornare, e senza controllo l'accesso fallisce
+    // in silenzio. Qui la frase la dice l'utente, nel log la dice anche chi
     // deve sistemare.
     const motivo = motivoRientroNonValido(rientro);
     if (motivo) {
       console.error("accesso: rientro non utilizzabile —", motivo);
       setError(motivo);
-      return;
+      return "navigazione";
     }
-    const { error: errore } = await supabase.auth.signInWithOAuth({
+    const { data, error: errore } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: rientro },
+      options: { redirectTo: rientro, skipBrowserRedirect: true },
     });
-    if (errore) setError(errore.message);
+    if (errore) {
+      setError(errore.message);
+      return "navigazione";
+    }
+    if (!data?.url) {
+      setError("Supabase non ha indicato l'indirizzo di accesso.");
+      return "navigazione";
+    }
+    // Sul desktop l'indirizzo si apre nel browser di sistema; sulla web si
+    // naviga come sempre. La stessa distinzione del percorso col calendario.
+    const ponte = (window as { reportini?: { apriUrlEsterno?: (u: string) => Promise<boolean> } })
+      .reportini;
+    if (ponte?.apriUrlEsterno) {
+      await ponte.apriUrlEsterno(data.url);
+      return "browser";
+    }
+    window.location.assign(data.url);
+    return "navigazione";
   }, []);
 
   const signOut = useCallback(async () => {

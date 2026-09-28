@@ -179,22 +179,51 @@ function stateCasuale(): string {
 }
 
 /**
+ * Apre un indirizzo dove l'utente può davvero vedere cosa sta accadendo.
+ *
+ * Sul desktop è il browser di sistema: Google non accetta il consenso da un
+ * browser incorporato, quindi aprire la pagina dentro la finestra di Electron
+ * finirebbe con "This browser or app may not be secure". Nella web — e in
+ * sviluppo, dove l'origine è già quella del dev server — si naviga come
+ * sempre.
+ */
+function apriIndirizzo(url: string): boolean {
+  const ponte = (window as { reportini?: { apriUrlEsterno?: (u: string) => Promise<boolean> } })
+    .reportini;
+  if (ponte?.apriUrlEsterno) {
+    void ponte.apriUrlEsterno(url);
+    return true;
+  }
+  window.location.assign(url);
+  return false;
+}
+
+/**
+ * Dove l'utente è stato mandato a fare il consenso.
+ *
+ * "browser" significa che l'app è ancora viva e aspetta: il ritorno arriva
+ * dalla porta locale e la riporta avanti. "navigazione" significa che la
+ * pagina stessa sta per essere scaricata, e chi chiama non deve aspettare
+ * niente.
+ */
+export type EsitoAvvio = "browser" | "navigazione";
+
+/**
  * Porta all'authorize di Google chiedendo profilo **e** calendario.
  *
  * È un flusso che lascia la pagina: l'utente vede il consenso e torna, e a
- * quel punto chiama `completaAccesso()`. Per questo non restituisce nulla.
+ * quel punto chiama `completaAccesso()`.
  */
-export async function avviaAccessoGoogle(): Promise<void> {
+export async function avviaAccessoGoogle(): Promise<EsitoAvvio> {
   if (!clientId) {
     throw new Error("Manca VITE_GOOGLE_CLIENT_ID: senza il client Google l'accesso passa da Supabase.");
   }
   // Deve combaciare al segno con uno registrato in Google Cloud, altrimenti
   // lo scambio del code si ferma con redirect_uri_mismatch.
   const redirect = urlDiRitorno(window.location.origin, baseRoutte());
-  // Su file:// non c'è un'origine utilizzabile. Meglio fermarsi qui con una
-  // frase che spiega, che mandare l'utente da Google con un indirizzo di
-  // rientro che non potrà mai funzionare. Il messaggio finisce anche nel
-  // log del desktop, così non è più un pulsante che non fa niente.
+  // Senza un'origine utilizzabile non c'è indirizzo di rientro, e mandare
+  // l'utente da Google con un indirizzo che non può funzionare è solo una
+  // promessa non mantenuta. Il messaggio finisce anche nel log del desktop.
   const motivo = motivoRientroNonValido(redirect);
   if (motivo) {
     console.error("google-token: accesso non avviato —", motivo);
@@ -217,9 +246,7 @@ export async function avviaAccessoGoogle(): Promise<void> {
   url.searchParams.set("include_granted_scopes", "true");
   url.searchParams.set("state", state);
 
-  window.location.assign(url.toString());
-  // La pagina viene scaricata: nessuno aspetta oltre.
-  return new Promise<void>(() => undefined);
+  return apriIndirizzo(url.toString()) ? "browser" : "navigazione";
 }
 
 /* --------------------------------- backend -------------------------------- */
@@ -265,11 +292,17 @@ async function chiamaBackend<T>(corpo: Record<string, unknown>): Promise<T> {
 /** Come entrava prima: profilo e basta, senza calendario. */
 async function accessoSupabaseSemplice(): Promise<void> {
   if (!supabase) return;
-  const { error } = await supabase.auth.signInWithOAuth({
+  const rientro = urlDiRitorno(window.location.origin, baseRoutte());
+  // `skipBrowserRedirect` fa restare l'URL a noi invece di navigare: serve
+  // perché sul desktop l'indirizzo va aperto nel browser di sistema, dove
+  // dentro la finestra finirebbe con la pagina "browser non sicuro" di
+  // Google. Sulla web `apriIndirizzo` naviga, quindi il risultato non cambia.
+  const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
-    options: { redirectTo: urlDiRitorno(window.location.origin, baseRoutte()) },
+    options: { redirectTo: rientro, skipBrowserRedirect: true },
   });
   if (error) throw new Error(error.message);
+  if (data?.url) apriIndirizzo(data.url);
 }
 
 export type EsitoAccesso = "calendario" | "solo-account" | "nessuno";

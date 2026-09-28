@@ -1,0 +1,36 @@
+L'accesso col calendario non può più funzionare da file://
+
+Senza un'origine non c'è indirizzo di rientro: da `file://` la parola che
+finisce a Google è `window.location.origin`, cioè la stringa "null", e Google
+non la accetterebbe mai. Finché l'app si apriva da un file, il login col
+calendario era impossibile per costruzione, non per un difetto.
+
+L'app desktop ora si serve da `127.0.0.1:42720` invece di aprire un file. Tre
+pezzi, e serve tutti e tre:
+
+1. il consenso si apre nel **browser di sistema**, perché Google rifiuta
+   l'accesso ai browser incorporati e dentro la finestra di Electron si
+   arriva a "This browser or app may not be secure". Da qui il ponte
+   `apriUrlEsterno` nel preload, che accetta solo `https` e `http` verso la
+   macchina;
+2. il ritorno arriva a `127.0.0.1:42720` e **nessuno lo ascolterebbe**,
+   perché l'ha aperto un altro programma: lo intercetta il main process, che
+   tiene i soli parametri che Google usa e riporta la finestra all'indirizzo
+   col `code`;
+3. l'indirizzo di rientro è una **porta fissa**, perché va registrato prima
+   in Google e in Supabase e un numero che cambia a ogni avvio non si può
+   registrare.
+
+Sul server: accetta richieste solo con `Host` localhost (difesa base contro il
+DNS rebinding), non lascia uscire da `electron/renderer/`, scrive nel log senza
+il `code` e si chiude con l'app.
+
+La funzione `google-token` ammette adesso le origini in loopback a prescindere
+da `ORIGINI_AMMESSE`: sono sulla macchina, non in rete, e così nessun numero di
+porta finisce in un segreto da ricordare a chi installa l'app.
+
+Resta `motivoRientroNonValido()` come rete di sicurezza: se la sua frase
+compare vuol dire che il server locale non è partito, e ora dice anche dove
+guardare.
+
+153 test verdi.

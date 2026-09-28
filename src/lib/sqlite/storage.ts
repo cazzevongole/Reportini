@@ -9,6 +9,11 @@ export interface DesktopBridge {
   /** Percorso assoluto del file SQLite, risolto dal preload script. */
   dbPath: string;
   platform: string;
+  /**
+   * Apre un indirizzo nel browser di sistema. Serve per il consenso di
+   * Google, che dentro la finestra di Electron non viene accettato.
+   */
+  apriUrlEsterno?(url: string): Promise<boolean>;
   /** Aggiornamento automatico: assente se non c'è niente da aggiornare. */
   aggiornamento?: PonteAggiornamento;
 }

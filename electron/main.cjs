@@ -1,10 +1,27 @@
 const { app, BrowserWindow, ipcMain, shell, dialog } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs/promises");
+const { avviaServer } = require("./server-locale.cjs");
 
 const DB_FILE = () => path.join(app.getPath("userData"), "reportini.sqlite");
 const LOG_FILE = () => path.join(app.getPath("userData"), "renderer.log");
 const DEV_URL = process.env.VITE_DEV_SERVER_URL;
+
+/**
+ * La porta su cui l'app si mette in ascolto, e l'origine che ne nasce.
+ *
+ * **Perché un server e non `file://`.** Da `file://` non esiste un'origine:
+ * `window.location.origin` è la stringa "null", e un indirizzo di rientro
+ * senza origine non è un indirizzo che Google accetta. Servendo l'app da
+ * `127.0.0.1` si ha un'origine vera — sicura, perché resta sulla macchina e
+ * non sulla rete — e l'accesso con Google è lo stesso della web.
+ *
+ * Perché una porta fissa e non una libera: l'indirizzo di rientro va
+ * registrato prima, in Google e in Supabase, e un numero che cambia a ogni
+ * avvio non si può registrare. Se la porta è occupata se ne prende una
+ * vicina, ma quella va registrata al suo posto: il log dice quale.
+ */
+const PORTA_ACCESSO = 42720;
 
 /**
  * Scrive una riga nel log accanto ai dati.
@@ -25,6 +42,30 @@ async function registra(riga) {
 
 /** @type {BrowserWindow | null} */
 let ventana = null;
+/** @type {import("node:http").Server | null} */
+let serverLocale = null;
+/** Dove l'app è in ascolto, per il log e per la schermata di accesso. */
+let origineLocale = "";
+
+/**
+ * Porta a casa il rientro di Google: la finestra dell'app si riporta
+ * all'indirizzo con il `code`, e da lì il renderer fa il resto.
+ *
+ * La query è già stata ripulita dal server, che ha tenuto solo i parametri
+ * che Google usa davvero: questa porta è raggiungibile da qualunque
+ * programma sulla macchina e non è il posto dove far arrivare un indirizzo di
+ * scelta altrui.
+ */
+async function riportaRitorno(query) {
+  for (const finestra of BrowserWindow.getAllWindows()) {
+    if (finestra.isDestroyed()) continue;
+    if (finestra.isMinimized()) finestra.restore();
+    finestra.show();
+    finestra.focus();
+    await finestra.webContents.loadURL(`${origineLocale}/?${query}`);
+    return;
+  }
+}
 
 async function createWindow() {
   ventana = new BrowserWindow({
@@ -51,10 +92,11 @@ async function createWindow() {
   // "non ho log" non distingue un'app muta da un log che non c'è. Qui si
   // vede subito quale versione è partita, su cosa, e dove sta il database.
   registra(
-    `Reportini ${app.getVersion()} su ${process.platform} — dati in ${DB_FILE()} — log in ${LOG_FILE()}`,
+    `Reportini ${app.getVersion()} su ${process.platform} — dati in ${DB_FILE()} — log in ${LOG_FILE()}` +
+      (origineLocale ? ` — ascolto su ${origineLocale}` : ""),
   );
 
-  // Quello che il renderer scrive, su file. Le due forme del evento sono
+  // Quello che il renderer scrive, su file. Le due forme dell'evento sono
   // entrambe gestite: Electron 31 passa ancora i parametri posizionali, le
   // versioni più recenti un oggetto.
   ventana.webContents.on("console-message", (...argomenti) => {
@@ -82,14 +124,39 @@ async function createWindow() {
   });
 
   if (DEV_URL) {
+    // In sviluppo c'è già un server, quello di Vite, e la sua origine
+    // 127.0.0.1:5173 è già registrata: niente da avviare.
     await ventana.loadURL(DEV_URL);
   } else {
-    await ventana.loadFile(path.join(__dirname, "renderer", "index.html"));
+    await ventana.loadURL(`${origineLocale}/`);
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   avviaAggiornamenti();
+  if (!DEV_URL) {
+    try {
+      serverLocale = await avviaServer({
+        porta: PORTA_ACCESSO,
+        radice: path.join(__dirname, "renderer"),
+        alRitorno: riportaRitorno,
+        alLog: registra,
+      });
+      origineLocale = `http://127.0.0.1:${serverLocale.address().port}`;
+    } catch (errore) {
+      // Senza un'origine non c'è accesso con Google, e aprire l'app da
+      // `file://` significherebbe ripartire da una pagina bianca: meglio
+      // dirlo e non partire.
+      dialog.showErrorBox(
+        "Reportini non può aprire la sua porta locale",
+        `L'accesso con Google torna a 127.0.0.1:${PORTA_ACCESSO} e le porte vicine sono occupate.\n\n` +
+          "Chiudi le applicazioni che le occupano e riapri Reportini.\n\n" +
+          errore.message,
+      );
+      app.quit();
+      return;
+    }
+  }
   createWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -98,6 +165,43 @@ app.whenReady().then(() => {
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
+});
+
+// La porta si chiude con l'app: lasciare in ascolto 127.0.0.1 dopo la chiusura
+// non serve a nessuno e su un computer acceso giorno e notte è solo una porta
+// aperta.
+app.on("will-quit", () => {
+  serverLocale?.close();
+  serverLocale = null;
+});
+
+/* -------------------------- Apertura nel browser ------------------------- */
+
+/**
+ * Apre un indirizzo nel browser vero, non dentro la finestra.
+ *
+ * **Perché non basta navigare.** Google rifiuta l'accesso dai browser
+ * incorporati: aperta nella finestra di Electron, la schermata di consenso
+ * risponde "This browser or app may not be secure" e non si passa. Il consenso
+ * va visto dal browser di sistema, quindi serve un ponte.
+ *
+ * Si accetta solo `https`, e `http` solo verso la macchina stessa: il renderer
+ * è l'app, ma un ponte che apre qualunque URL sarebbe un altro modo per
+ * aprire qualunque cosa.
+ */
+ipcMain.handle("browser:apri", async (_event, url) => {
+  let destinazione;
+  try {
+    destinazione = new URL(String(url));
+  } catch {
+    return false;
+  }
+  const inLocale = destinazione.hostname === "127.0.0.1" || destinazione.hostname === "localhost";
+  if (destinazione.protocol !== "https:" && !(destinazione.protocol === "http:" && inLocale)) {
+    return false;
+  }
+  await shell.openExternal(destinazione.toString());
+  return true;
 });
 
 /* ------------------------- Ponte per il file SQLite ----------------------- */
