@@ -3,14 +3,17 @@
  *
  * Il processo principale fa il lavoro meccanico; quello che si sbaglia è
  * sempre la decisione: mostrare un errore per un controllo che nessuno ha
- * chiesto, o far sparire "più tardi" e lasciare la barra per sempre. Quindi
- * qui il ponte è finto e si guida come arriva dal main.
+ * chiesto, chiedere due volte la stessa cosa, o lasciare un pop-up che non si
+ * può chiudere. Quindi qui il ponte è finto e si guida come arriva dal main.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import Aggiornamento from "../src/components/Aggiornamento";
 import {
+  INTERVALLO_CONTROLLO_MS,
+  RITARDO_PRIMO_CONTROLLO_MS,
+  avviaControlliAutomatici,
   controllaAggiornamenti,
   descrizioneAggiornamento,
   resettaAggiornamenti,
@@ -24,6 +27,8 @@ interface PonteFinto extends PonteAggiornamento {
   quanteVolteEStatoChiesto(): number;
   quanteVolteHannoControllato(): number;
   quanteVolteHannoInstallato(): number;
+  /** Quante volte è stato scelto "alla chiusura dell'app". */
+  quanteVolteHannoRimandatoAllaChiusura(): number;
   fallisciControllo( messaggio: string | null): void;
 }
 
@@ -33,6 +38,7 @@ function ponteFinto(statoIniziale: StatoAggiornamento = { fase: "idle" }): Ponte
   let statoRichiesti = 0;
   let controlli = 0;
   let installazioni = 0;
+  let rimande = 0;
   let errore: string | null = null;
 
   return {
@@ -52,6 +58,10 @@ function ponteFinto(statoIniziale: StatoAggiornamento = { fase: "idle" }): Ponte
       installazioni += 1;
       return true;
     },
+    async rimandaAllaChiusura() {
+      rimande += 1;
+      return true;
+    },
     onCambio(ascolta) {
       ascoltatore = ascolta;
       return () => {
@@ -65,6 +75,7 @@ function ponteFinto(statoIniziale: StatoAggiornamento = { fase: "idle" }): Ponte
     quanteVolteEStatoChiesto: () => statoRichiesti,
     quanteVolteHannoControllato: () => controlli,
     quanteVolteHannoInstallato: () => installazioni,
+    quanteVolteHannoRimandatoAllaChiusura: () => rimande,
     fallisciControllo(messaggio) {
       errore = messaggio;
     },
@@ -97,6 +108,12 @@ async function monta() {
 
 function testo() {
   return contenitore.textContent ?? "";
+}
+
+function pulsante(nome: string): HTMLButtonElement | undefined {
+  return [...contenitore.querySelectorAll("button")].find((b) =>
+    b.textContent?.includes(nome),
+  ) as HTMLButtonElement | undefined;
 }
 
 async function aggiorna(azione: () => void) {
@@ -148,9 +165,39 @@ describe("Aggiornamento automatico", () => {
     expect(descrizioneAggiornamento({ fase: "scarico" }, true)).toBe(
       "Sto scaricando l'aggiornamento…",
     );
-    expect(descrizioneAggiornamento({ fase: "pronto", versione: "0.1.6" }, true)).toContain(
-      "0.1.6",
-    );
+    const pronto = descrizioneAggiornamento({ fase: "pronto", versione: "0.1.6" }, true);
+    expect(pronto).toContain("0.1.6");
+    // Le due vie sono annunciate già nella barra: la domanda non arriva a
+    // sorpresa.
+    expect(pronto).toContain("alla chiusura");
+  });
+
+  it("cerca una versione nuova più spesso: subito e poi ogni mezz'ora", () => {
+    vi.useFakeTimers();
+    try {
+      const ponte = ponteFinto();
+      montaDesktop(ponte);
+      const smetti = avviaControlliAutomatici();
+      expect(ponte.quanteVolteHannoControllato()).toBe(0);
+
+      vi.advanceTimersByTime(RITARDO_PRIMO_CONTROLLO_MS);
+      expect(ponte.quanteVolteHannoControllato()).toBe(1);
+
+      vi.advanceTimersByTime(INTERVALLO_CONTROLLO_MS);
+      expect(ponte.quanteVolteHannoControllato()).toBe(2);
+
+      // Sei ore erano l'intervallo di prima: chi apriva l'app al mattino restava
+      // sulla versione di ieri per tutta la giornata.
+      expect(INTERVALLO_CONTROLLO_MS).toBe(30 * 60 * 1000);
+      expect(INTERVALLO_CONTROLLO_MS).toBeLessThan(60 * 60 * 1000);
+
+      // E la pulizia funziona: smontato il componente i controlli finiscono.
+      smetti();
+      vi.advanceTimersByTime(INTERVALLO_CONTROLLO_MS);
+      expect(ponte.quanteVolteHannoControllato()).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("un controllo automatico fallito lascia la barra in pace", async () => {
@@ -164,7 +211,7 @@ describe("Aggiornamento automatico", () => {
     expect(testo()).toBe("");
   });
 
-  it("mostra la barra appena il pacchetto è pronto e la installa", async () => {
+  it("scarica in silenzio e poi chiede, anche se nessuno ha chiesto il controllo", async () => {
     const ponte = ponteFinto();
     montaDesktop(ponte);
     await monta();
@@ -174,38 +221,68 @@ describe("Aggiornamento automatico", () => {
     expect(testo()).toBe("");
 
     await aggiorna(() => ponte.emetti({ fase: "scarico", versione: "0.1.6", percentuale: 80 }));
+    // Durante lo scarico si guarda, ma non si sceglie: la barra è informazione.
     expect(testo()).toContain("80%");
+    expect(pulsante("Aggiorna adesso")).toBeUndefined();
 
     await aggiorna(() => ponte.emetti({ fase: "pronto", versione: "0.1.6" }));
-    expect(testo()).toContain("Aggiorna ora");
-
-    const pulsante = [...contenitore.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Aggiorna ora"),
-    );
-    expect(pulsante).toBeTruthy();
-    await aggiorna(() => pulsante?.click());
-    expect(ponte.quanteVolteHannoInstallato()).toBe(1);
+    // Il pop-up, non una striscia: è una domanda, e la barra non è il posto
+    // giusto per farla.
+    const dialogo = contenitore.querySelector('[role="dialog"]');
+    expect(dialogo?.textContent).toContain("C'è una versione nuova");
+    expect(testo()).toContain("0.1.6");
+    expect(pulsante("Aggiorna adesso")).toBeTruthy();
+    expect(pulsante("Alla chiusura dell'app")).toBeTruthy();
   });
 
-  it("«più tardi» nasconde quella versione, non le successive", async () => {
+  it("«aggiorna adesso» installa e chiude l'app", async () => {
+    const ponte = ponteFinto();
+    montaDesktop(ponte);
+    await monta();
+    await aggiorna(() => ponte.emetti({ fase: "pronto", versione: "0.1.6" }));
+
+    await aggiorna(() => pulsante("Aggiorna adesso")?.click());
+    expect(ponte.quanteVolteHannoInstallato()).toBe(1);
+    // Scegliere "adesso" non è anche un "rimanda": un solo canale.
+    expect(ponte.quanteVolteHannoRimandatoAllaChiusura()).toBe(0);
+  });
+
+  it("«alla chiusura» non installa, lo dice al main e non chiede più", async () => {
     const ponte = ponteFinto();
     montaDesktop(ponte);
     await monta();
 
     await aggiorna(() => ponte.emetti({ fase: "pronto", versione: "0.1.6" }));
-    const rimanda = [...contenitore.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Più tardi"),
-    );
-    await aggiorna(() => rimanda?.click());
+    await aggiorna(() => pulsante("Alla chiusura dell'app")?.click());
+    expect(ponte.quanteVolteHannoRimandatoAllaChiusura()).toBe(1);
+    expect(ponte.quanteVolteHannoInstallato()).toBe(0);
     expect(testo()).toBe("");
 
-    // Stessa versione: continua a stare zitta.
+    // Stessa versione: continua a stare zitta, l'utente ha già risposto.
     await aggiorna(() => ponte.emetti({ fase: "pronto", versione: "0.1.6" }));
     expect(testo()).toBe("");
 
-    // Versione nuova: la domanda si ripete.
+    // Versione nuova: la domanda si ripete, perché è una richiesta nuova.
     await aggiorna(() => ponte.emetti({ fase: "pronto", versione: "0.1.7" }));
     expect(testo()).toContain("0.1.7");
+  });
+
+  it("il pop-up non ha una terza via: niente X, Esc non lo chiude", async () => {
+    const ponte = ponteFinto();
+    montaDesktop(ponte);
+    await monta();
+    await aggiorna(() => ponte.emetti({ fase: "pronto", versione: "0.1.6" }));
+
+    expect(contenitore.querySelector('[aria-label="Chiudi"]')).toBeNull();
+    await aggiorna(() => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    });
+    // Le due scelte sono le due uniche: chiudere il pop-up senza scegliere
+    // lascerebbe l'utente con un aggiornamento scaricato e la stessa domanda
+    // al prossimo riavvio.
+    expect(pulsante("Aggiorna adesso")).toBeTruthy();
+    expect(ponte.quanteVolteHannoInstallato()).toBe(0);
+    expect(ponte.quanteVolteHannoRimandatoAllaChiusura()).toBe(0);
   });
 
   it("nel browser non c'è barra né errori", async () => {

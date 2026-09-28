@@ -226,6 +226,11 @@ export function Stat({
  * Bottom sheet sui telefoni, dialog centrato da `sm` in su.
  * Usato da tutti i form di creazione/modifica per tenere le azioni principali
  * vicine al pollice.
+ *
+ * `onClose` è facoltativo: quando manca il dialog non si chiude con la X, con
+ * Esc né toccando lo sfondo. Serve alle domande che hanno una risposta per
+ * entrambe le vie — come "aggiorni adesso o alla chiusura?" — dove una X
+ * sarebbe una terza opzione che non esiste.
  */
 export function Sheet({
   open,
@@ -238,12 +243,12 @@ export function Sheet({
   open: boolean;
   title: string;
   description?: string;
-  onClose: () => void;
+  onClose?: () => void;
   children: ReactNode;
   footer?: ReactNode;
 }) {
   useEffect(() => {
-    if (!open) return;
+    if (!open || !onClose) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };
@@ -277,14 +282,16 @@ export function Sheet({
               <p className="mt-1 text-sm text-ink-400">{description}</p>
             ) : null}
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Chiudi"
-            className="-mr-1 rounded-full p-2 text-ink-400 transition-colors hover:bg-ink-100 hover:text-ink-800"
-          >
-            <CloseIcon className="h-5 w-5" />
-          </button>
+          {onClose ? (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Chiudi"
+              className="-mr-1 rounded-full p-2 text-ink-400 transition-colors hover:bg-ink-100 hover:text-ink-800"
+            >
+              <CloseIcon className="h-5 w-5" />
+            </button>
+          ) : null}
         </div>
         <div className="flex-1 overflow-y-auto p-5">{children}</div>
         {footer ? (

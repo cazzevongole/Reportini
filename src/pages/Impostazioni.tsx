@@ -347,7 +347,7 @@ export default function Impostazioni() {
           <h2 className="text-lg">Aggiornamenti</h2>
           <p className="mt-1.5 text-sm text-ink-500">
             {aggiornamento.disponibile
-              ? "L'app controlla da sola se c'è una versione nuova e la scarica in sottofondo. Quando è pronta la trovi in alto, e un clic la installa."
+              ? "L'app controlla da sola, ogni mezz'ora, se c'è una versione nuova e la scarica in sottofondo. Quando è pronta ti chiede se installarla adesso chiudendo l'app o se farla entrare alla chiusura."
               : "Qui Reportini gira nel browser: non c'è niente da installare, ogni volta che torni basta ricaricare la pagina per avere l'ultima versione."}
           </p>
           <p className="mt-3 text-sm text-ink-400">
@@ -368,12 +368,21 @@ export default function Impostazioni() {
                 Controlla adesso
               </Button>
               {aggiornamento.pronto ? (
-                <Button
-                  onClick={() => void aggiornamento.installa()}
-                  disabled={aggiornamento.occupato}
-                >
-                  {aggiornamento.occupato ? "Installo…" : "Installa l'aggiornamento"}
-                </Button>
+                <>
+                  <Button
+                    onClick={() => void aggiornamento.installa()}
+                    disabled={aggiornamento.occupato}
+                  >
+                    {aggiornamento.occupato ? "Installo…" : "Aggiorna adesso"}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => void aggiornamento.rimanda()}
+                    disabled={aggiornamento.occupato}
+                  >
+                    Alla chiusura dell'app
+                  </Button>
+                </>
               ) : null}
             </div>
           ) : null}

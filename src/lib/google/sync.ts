@@ -178,6 +178,49 @@ export async function dissociaAppuntamento(
 }
 
 /**
+ * Cancella una lista di appuntamenti e, se c'era, anche l'evento su Google.
+ *
+ * È la versione plurale di `eliminaAppuntamentoEEvento`, e serve alla
+ * cancellazione a cascata: chi elimina un'anagrafica o una relazione elimina
+ * con lei gli appuntamenti collegati, e quegli eventi su Google resterebbero
+ * in agenda per sempre — orfani, non più raggiungibili dall'app. L'ordine è
+ * quello di sempre: prima l'evento, poi la riga locale.
+ *
+ * Un evento che non c'è più (404/410) non è un fallimento: la cancellazione
+ * che l'utente ha chiesto è già stata fatta. Un fallimento vero invece **non
+ * cancella la riga locale**: l'appuntamento resta in lista e si può
+ * riprovare, invece di lasciare un orfano.
+ */
+export async function eliminaAppuntamentiEEventi(
+  ids: number[],
+): Promise<{ riusciti: number[]; falliti: Array<{ id: number; messaggio: string }> }> {
+  const riusciti: number[] = [];
+  const falliti: Array<{ id: number; messaggio: string }> = [];
+  for (const id of ids) {
+    const salvato = ottieniAppuntamento(id);
+    // Già sparito: è un successo, la lista locale e quella di Google
+    // concordano già.
+    if (!salvato) {
+      riusciti.push(id);
+      continue;
+    }
+    try {
+      if (salvato.googleEventId) {
+        await eliminaEvento(salvato.googleEventId, salvato.googleCalendarId ?? "primary");
+      }
+    } catch (error) {
+      if (!eventoMancante(error)) {
+        falliti.push({ id, messaggio: spiega(error) });
+        continue;
+      }
+    }
+    eliminaAppuntamento(id);
+    riusciti.push(id);
+  }
+  return { riusciti, falliti };
+}
+
+/**
  * Cancella l'appuntamento e, se c'era, anche l'evento che ne era stato creato.
  *
  * L'ordine è quello che sembra controintuitivo e non lo è: prima l'evento,

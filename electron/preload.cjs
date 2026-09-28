@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld("reportini", {
     versione: () => ipcRenderer.invoke("update:versione"),
     controlla: () => ipcRenderer.invoke("update:controlla"),
     installa: () => ipcRenderer.invoke("update:installa"),
+    rimandaAllaChiusura: () => ipcRenderer.invoke("update:rimanda"),
     onCambio: (ascoltatore) => {
       const ascolta = (_evento, nuovo) => ascoltatore(nuovo);
       ipcRenderer.on("aggiornamento:stato", ascolta);

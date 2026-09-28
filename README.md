@@ -231,18 +231,48 @@ L'app **installata** si aggiorna da sola: non va riscaricata a mano.
 
 Il meccanismo è `electron-updater`, montato in `electron/main.cjs`. Al primo avvio — otto
 secondi dopo, per non occupare la rete mentre l'app si apre — cerca una versione nuova sulle
-release GitHub, la scarica in sottofondo e, quando il pacchetto è pronto, lo dice: una barra in
-alto con **Aggiorna ora**. Se l'utente preferisce rimandare, l'aggiornamento entra comunque alla
-chiusura dell'app. Nelle impostazioni c'è anche **Controlla adesso**, che risponde anche quando
-non c'è niente da aggiornare.
+release GitHub, e da quel momento **ripete il controllo ogni mezz'ora**: sei ore erano troppe per
+un'app che si usa tutto il giorno, e chi apriva Reportini al mattino restava sulla versione di
+ieri fino alla sera.
+
+Quando trova una versione nuova **la scarica da sola, in sottofondo**, senza chiedere: il
+pacchetto ci mette qualche minuto, e l'utente può continuare a lavorare. Durante lo scarico c'è
+solo una **barra** in alto con la percentuale (niente domande: è un'informazione). Quando il
+pacchetto è pronto parte un **pop-up** con le due strade, e sono soltanto due:
+
+| Scelta | Cosa succede |
+| --- | --- |
+| **Aggiorna adesso** | l'app si chiude, l'installatore si vede, e Reportini si riapre già nuova. I dati restano dove sono |
+| **Alla chiusura dell'app** | l'utente continua a lavorare; l'aggiornamento entra quando chiude l'app, e **da solo al prossimo avvio** se l'app viene chiusa di colpo |
+
+Il pop-up non ha una X e non si chiude con Esc: sono le due risposte previste, una terza non
+esiste. Dopo «alla chiusura» la domanda non torna per quella versione — l'utente ha già
+risposto — ma si ripete se ne arriva un'altra. Nelle impostazioni c'è anche **Controlla adesso**,
+che risponde anche quando non c'è niente da aggiornare, e le stesse due scelte.
+
+Tre dettagli che sembrano secondari e non lo sono:
+
+- **`autoInstallOnAppQuit` è spento, e l'installazione all'uscita è nostra.** electron-updater
+  registra il suo gestore di uscita **quando finisce lo scarico**, e solo se il bandierino è
+  già acceso: accenderlo dopo, quando l'utente sceglie «alla chiusura», non avrebbe nessun
+  effetto e il pacchetto resterebbe scaricato e mai installato. In `electron/main.cjs` c'è il
+  nostro `before-quit`, che installa solo se l'utente ha davvero scelto quella strada.
+- **La scelta «alla chiusura» resta sul disco** (`aggiornamento-in-attesa.json` nella cartella
+  dati di Electron, accanto al database): è l'unico modo che l'aggiornamento entri anche al
+  prossimo avvio dopo una chiusura di colpo. I tentativi sono contati e fermati a due, così
+  un'installazione che fallisce non lascia l'app che si apre e si richiude da sola per sempre.
+- **Ogni passo finisce in `renderer.log`.** Nell'app impacchettata non esiste una console:
+  quello che il main scriveva con `console.warn` finiva nel nulla. Controllo, versione trovata,
+  pacchetto pronto, scelta dell'utente, errori: tutto leggibile accanto ai dati.
 
 | Dove | Cosa fa |
 | --- | --- |
 | `electron/package.json` (`build.publish`) | dice a electron-updater dove cercare: GitHub, repository `cazzevongole/Reportini` |
-| `electron/main.cjs` | avvia i controlli, tiene lo stato e lo manda a ogni finestra via IPC |
-| `electron/preload.cjs` | espone `window.reportini.aggiornamento` (stato, controlla, installa, eventi) |
-| `src/lib/aggiornamento.ts` | store condiviso e decisione su cosa mostrare |
-| `src/components/Aggiornamento.tsx` | la barra in alto |
+| `electron/main.cjs` | tiene lo stato, lo manda a ogni finestra via IPC, scrive il log, installa all'uscita e al primo avvio successivo |
+| `electron/preload.cjs` | espone `window.reportini.aggiornamento` (stato, controlla, installa, rimanda alla chiusura, eventi) |
+| `src/lib/aggiornamento.ts` | intervalli dei controlli, store condiviso e decisione su cosa mostrare |
+| `src/components/Aggiornamento.tsx` | la barra durante lo scarico e il pop-up con le due scelte |
+| `tests/ponte-aggiornamento.test.ts` | confronta i file che scrivono il ponte: nessun canale senza gestore e nessun metodo dichiarato e assente |
 
 Due dettagli che sembrano secondari e non lo sono:
 
@@ -429,7 +459,7 @@ Cosa succede a seconda della situazione, deciso in `pubblicaAppuntamento()`
 | --- | --- |
 | Appuntamento nuovo | crea l'evento e salva il collegamento sull'appuntamento |
 | Appuntamento già pubblicato, ora modificato | **aggiorna** l'evento esistente, non ne crea un secondo |
-| Appuntamento portato ad "annullato" | **segnal annullato** sull'evento, che resta in agenda scritto *Cancelled* |
+| Appuntamento portato ad "annullato" | **l'evento resta in agenda e si dichiara**: titolo `ANNULLATO: …` e colore rosso |
 | Appuntamento **eliminato** | **toglie** l'evento dal calendario di Google |
 | Spunta disattivata | salva solo in locale, Google non viene toccato |
 | **Google risponde con un errore** | l'appuntamento resta salvato, e sulla scheda compare **perché** non è stato pubblicato, con il pulsato per riprovare |
@@ -448,11 +478,21 @@ la colonna si svuota, perché un appuntamento finito in agenda non deve continua
 ad accusare un errore che non c'è più.
 
 Lo stato segue l'appuntamento, quindi l'evento dice sempre la stessa cosa
-che dice l'app. Un annullato in Google Calendar non è sparito, è scritto
-*Cancelled* nella sua fascia: è la differenza fra "non si è più tenuto" e
-"non è mai esistito", e senza quell'informazione l'app e il calendario si
-contraddirebbero. Il collegamento all'evento resta anche quando l'appuntamento
-è annullato, così la prossima modifica non crea un secondo evento.
+che dice l'app. Un annullato resta in agenda e si **dichiara**: titolo `ANNULLATO: …` e colore
+rosso. `status: "cancelled"` non si usa — è il modo in cui l'API **elimina** un evento, e
+nell'interfaccia l'evento sparisce nel cestino invece di comparire barrato: chi guarda l'agenda
+vedrebbe solo una fascia vuota, senza la ragione. La differenza fra "non si è più tenuto" e "non è
+mai esistito" sta proprio in questo. Il collegamento all'evento resta anche quando l'appuntamento
+è annullato, così la prossima modifica non crea un secondo evento — e tornando confermati il
+titolo e il colore tornano normali: il prefisso è una dichiarazione dello stato, non una cicatrice.
+
+E **la cancellazione a cascata pulisce anche Google**. Eliminare un'anagrafica o una relazione
+elimina con lei gli appuntamenti collegati: gli ID evento vengono raccolti **prima** che le righe
+spariscano (`appuntamentiConEventoDaEliminare*`), poi ogni evento viene tolto da Google e solo alla
+fine si cancella la riga locale (`eliminaAppuntamentiEEventi`). Se Google non risponde per uno degli
+appuntamenti, le righe restano nel database e si può riprovare — meglio di un evento orfano in
+agenda, non più raggiungibile da nessuno. Un evento già sparito (404/410) non blocca: la
+cancellazione richiesta è già stata fatta.
 
 E **solo lo stato "confermato" occupa la fascia** (`transparency: opaque`); in attesa e
 annullato mandano `transparent`, cioè l'evento resta in agenda ma non blocca il tempo. Non è una
@@ -526,10 +566,11 @@ Due dettagli che contano più di quanto sembrino:
 - **Prima il locale, poi Google.** Il salvataggio nell'app non dipende dalla rete: se Google è
   irraggiungibile l'appuntamento è salvo lo stesso e l'avviso dice che non è stato pubblicato. Si
   riprova con **Invia a Google** nella lista appuntamenti, senza riscriverlo.
-- **Un appuntamento annullato non può restare in agenda senza dirlo.** L'evento non viene
-  cancellato, viene segnato annullato: Google Calendar accetta `status: "cancelled"` e lo
-  mostra come *Cancelled*. Sarebbe più semplice sparirlo del tutto, ma si perderebbe la traccia
-  di un appuntamento che è esistito, e il calendario direbbe una cosa diversa dall'app.
+- **Un appuntamento annullato non può restare in agenda senza dirlo.** L'evento resta con titolo
+  `ANNULLATO: …` e colore rosso. `status: "cancelled"`, che sembrava la via giusta, in realtà è il
+  modo in cui l'API elimina un evento: nell'interfaccia sparisce, e con lui la ragione della
+  fascia vuota. Il prefisso nel titolo è l'unica cosa che si legge in una vista per mese senza
+  aprire l'evento.
 - **Il contesto dell'anagrafico vive solo nell'evento.** All'evento viene aggiunto
   `Anagrafico: …`, `Documento: …` e `Relazione: …`; la descrizione che l'utente scrive resta quella
   nel database e nel modulo di modifica. Scollegare l'evento tocca **solo** i marcatori di Google
@@ -545,13 +586,13 @@ bun install
 bun run dev        # server di sviluppo su http://localhost:5173
 bun run build      # build statica in dist/ (+ 404.html per GitHub Pages)
 bun run typecheck  # tsc -b --noEmit
-bun run test       # test vitest (198 test) + smoke test dello schema
+bun run test       # test vitest (208 test) + smoke test dello schema
 bun run test:ui    # solo i test vitest
 bun run version:check  # la versione è coerente? (lo usa anche il rilascio)
 bun run version:patch  # alza la versione di un patch, come fa il workflow
 ```
 
-I test vitest coprono dodici file:
+I test vitest coprono tredici file:
 
 - `tests/app.test.tsx` monta l'app reale in jsdom con un IndexedDB finto: è la rete che
   intercetta i crash a runtime (per esempio un dereferenziamento di `window.reportini` fatto al
@@ -598,9 +639,16 @@ I test vitest coprono dodici file:
   (nome, documento, relazione) finisca **solo** nell'evento e non nella descrizione salvata: è la
   duplicazione che si vedeva a ogni modifica.
 - `tests/aggiornamento.test.tsx` guida l'aggiornamento automatico con un ponte finto (Electron
-  non serve): verifica che un controllo automatico fallito resti silenzioso, che quello chiesto a
-  mano risponda, che l'avanzamento e il pacchetto pronto si vedano, che «più tardi» nasconda solo
-  quella versione e  che nel browser non compaia niente.
+  non serve): verifica che i controlli automatici partano presto e si ripetano **ogni mezz'ora**
+  (e che la pulizia li fermi), che un controllo fallito resti silenzioso, che quello chiesto a mano
+  risponda, che durante lo scarico ci sia la barra e **nessuna domanda**, che il pacchetto pronto
+  apra il pop-up con le due scelte, che «aggiorna adesso» installi, che «alla chiusura» chieda al
+  processo principale di installare all'uscita e tacca per quella versione, che il pop-up non si
+  chiuda con Esc, e che nel browser non compaia niente.
+- `tests/ponte-aggiornamento.test.ts` legge `electron/preload.cjs` e `electron/main.cjs` e li
+  confronta: un canale che il preload invoca e il main non gestisce — o un gestore che nessuno
+  chiama — non dà nessun errore a runtime, l'aggiornamento semplicemente non succede. Qui si
+  accorge prima.
 - `tests/richieste.test.tsx` prova "Chiedilo allo sviluppatore" con un Supabase finto che
   applica la stessa regola del database (un utente vede solo le proprie richieste, lo
   sviluppatore tutte): l'email viene dalla sessione, il titolo vuoto non parte, lo stato

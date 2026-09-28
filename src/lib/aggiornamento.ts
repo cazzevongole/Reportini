@@ -39,6 +39,8 @@ export interface PonteAggiornamento {
   versione(): Promise<string>;
   controlla(): Promise<StatoAggiornamento | null>;
   installa(): Promise<boolean>;
+  /** L'aggiornamento entra alla chiusura dell'app, o da solo al prossimo avvio. */
+  rimandaAllaChiusura(): Promise<boolean>;
   onCambio(ascoltatore: (stato: StatoAggiornamento) => void): () => void;
 }
 
@@ -48,9 +50,15 @@ const NIENTE: StatoAggiornamento = { fase: "idle" };
  * Quanto si aspetta prima del primo controllo e ogni quanto si controlla.
  * L'avvio ritardato tiene libero ilTelefono e il portatile: la rete serve
  * dopo che l'app è usata, non mentre si apre.
+ *
+ * L'intervallo è volutamente stretto: sei ore erano troppe per un'app che si
+ * usa tutto il giorno, e chi apriva Reportini al mattino restava sulla
+ * versione di ieri fino alla sera. Mezz'ora è una richiesta leggera — un file
+ * di testo piccolo; il pacchetto grosso si scarica solo se c'è qualcosa di
+ * nuovo, e resta in attesa della scelta dell'utente.
  */
 export const RITARDO_PRIMO_CONTROLLO_MS = 8000;
-export const INTERVALLO_CONTROLLO_MS = 6 * 60 * 60 * 1000;
+export const INTERVALLO_CONTROLLO_MS = 30 * 60 * 1000;
 
 /** Quanto resta la risposta a un controllo chiesto a mano. */
 const DURATA_RISPOSTA_MANUALE_MS = 20_000;
@@ -150,7 +158,23 @@ export async function installaAggiornamento(): Promise<void> {
   }
 }
 
-export function rimandaAggiornamento(): void {
+/**
+ * «Non adesso»: l'aggiornamento entra comunque, alla chiusura dell'app.
+ *
+ * Non è un "non me ne importa", quindi non è un semplice nascondere: si dice
+ * al processo principale di installare all'uscita, e lui lo ricorda anche
+ * su disco, così un avvio successivo lo installa da solo. Dopo questa scelta
+ * la domanda tace per quella versione: l'utente ha già risposto.
+ */
+export async function rimandaAggiornamento(): Promise<void> {
+  const collegamento = ponte();
+  if (!collegamento) return;
+  try {
+    await collegamento.rimandaAllaChiusura();
+  } catch {
+    // Se il ponte non risponde resta comunque valido il silenzio: il
+    // pacchetto è scaricato e l'utente può riprovare da Impostazioni.
+  }
   scrivi({
     rimandato: true,
     versioneRimandata: istante.stato.versione ?? null,
@@ -201,7 +225,7 @@ export function descrizioneAggiornamento(
       return `Sto scaricando ${cosa}…${percentuale}`;
     }
     case "pronto":
-      return `Reportini ${stato.versione ?? "nuova"} è pronto: si installa con un clic.`;
+      return `Reportini ${stato.versione ?? "nuova"} è pronto: puoi installarlo adesso o lasciare che entri alla chiusura dell'app.`;
     case "aggiornato":
       return manuale ? "Sei già all'ultima versione." : null;
     case "errore":
@@ -237,9 +261,11 @@ export interface AggiornamentoApi {
   /** Versione dell'app in esecuzione, vuota nel browser. */
   versione: string;
   occupato: boolean;
+  /** Il pacchetto è scaricato e l'utente non ha ancora scelto. */
+  daDecidere: boolean;
   controlla(): Promise<void>;
   installa(): Promise<void>;
-  rimanda(): void;
+  rimanda(): Promise<void>;
 }
 
 export function useAggiornamento(): AggiornamentoApi {
@@ -286,6 +312,7 @@ export function useAggiornamento(): AggiornamentoApi {
       corrente.rimandato,
     ),
     pronto: corrente.stato.fase === "pronto" && !corrente.rimandato,
+    daDecidere: corrente.stato.fase === "pronto" && !corrente.rimandato && !corrente.installando,
     disponibile: Boolean(ponte()),
     versione: corrente.versione,
     occupato: corrente.installando,
