@@ -173,22 +173,32 @@ La versione non sta in una discussione: sale da sola.
 | --- | --- |
 | `scripts/version.mjs` | alza la versione in `package.json` e in `electron/package.json` e scrive il `CHANGELOG.md` |
 | `scripts/versione-check.mjs` | controlla che le due versioni coincidano e che il tag sia quello giusto |
-| `.github/workflows/auto-version.yml` | a ogni merge su `master` alza la versione (patch) e crea il tag `v<versione>` |
-| `.github/workflows/release-electron.yml` | costruisce i pacchetti desktop (mac, Windows, Linux) e pubblica la release come **latest** |
+| `.github/workflows/release-electron.yml` | **un unico workflow**: a ogni merge su `master` alza la versione, crea il tag, costruisce i pacchetti (mac, Windows, Linux) e pubblica la release come **latest** |
 
-Il rilascio parte sia da un tag `v*` spinto a mano, sia da un push su `master`: in quest'ultimo
-caso il workflow prende la versione da `package.json`, crea il tag se manca e non fa niente se
-quella versione è già stata rilasciata. Il motivo è che **un workflow non ne innesca un altro
-quando usa `GITHUB_TOKEN`**: se il tag lo spingesse solo il workflow di versione, la release non
-partirebbe mai.
+Versionare e rilasciare stanno **nello stesso workflow**, ed è voluto. Erano due, e la corsa fra
+loro era la ragione per cui la release era sempre un numero indietro:
 
-In pratica: si mergea su `master`, il commit di versione sale da solo, il tag scatta da solo e
-la release desktop viene pubblicata come **latest** (le prerelease restano fuori dal latest, se un
-giorno serviranno). Il commit di versione tocca solo i tre file della versione, e per quello
-`paths-ignore` impedisce al workflow di rilanciarsi da solo all'infinito.
+1. al merge partivano insieme, perché uno sul `push` e l'altro sul tag che il primo non aveva
+   ancora spinto;
+2. il rilascio leggeva la versione da `package.json` **prima** che il versionamento la alzasse, e
+   costruiva e pubblicava una release con il numero vecchio;
+3. il commit di versione ripartiva il rilascio, che rifaceva tutto da capo con il numero giusto.
 
-Il rilascio si può forzare a mano: *Actions → Versione automatica → Run workflow* scegliendo
-`minor` o `major` invece di `patch`.
+Il risultato erano **due release per ogni merge**, una delle quali marcata *latest* con dentro i
+pacchetti di un'altra versione — e un `latest.yml` che non corrispondeva al proprio pacchetto, che
+è esattamente il file che `electron-updater` usa per capire se c'è qualcosa di nuovo.
+
+Adesso chi decide il numero è la stessa esecuzione che costruisce, e i pacchetti si compilano dal
+**tag** (`ref:` nel checkout), non dal commit che ha fatto partire il workflow: il tag è l'unico
+punto in cui i due fatti sono coerenti per costruzione.
+
+Il rilascio parte anche da un tag `v*` spinto a mano, che rilascia quella versione così com'è senza
+alzarla, e non fa niente se la release esiste già. Il commit di versione tocca solo i tre file
+della versione, e per quello `paths-ignore` impedisce al workflow di rilanciarsi da solo
+all'infinito.
+
+Il rilascio si può forzare a mano: *Actions → Versione e rilascio desktop → Run workflow*,
+scegliendo `minor` o `major` invece di `patch`, oppure indicando un `tag` da rilasciare.
 
 La build desktop usa `BASE_PATH` vuoto e `ELECTRON=1`, che forza la base **relativa**:
 l'app si apre da `file://`, e un percorso assoluto come `/assets/app.js` li punterebbe alla
