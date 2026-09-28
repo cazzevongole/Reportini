@@ -4,6 +4,9 @@ dist-ssr
 electron/node_modules
 electron/renderer
 electron/release
+# Il progetto usa bun (bun.lock): un package-lock.json qui è un artefatto di
+# qualche comando npm, non il lockfile del progetto.
+package-lock.json
 *.local
 .DS_Store
 
