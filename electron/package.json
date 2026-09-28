@@ -1,7 +1,7 @@
 {
   "name": "reportini-desktop",
   "productName": "Reportini",
-  "version": "0.1.18",
+  "version": "0.1.19",
   "private": true,
   "description": "Reportini desktop: relazioni anagrafiche e appuntamenti su Google Calendar",
   "main": "main.cjs",
