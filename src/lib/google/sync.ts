@@ -62,13 +62,51 @@ export async function sincronizzaAppuntamento(
   }
 }
 
+/**
+ * Pubblicazione automatica, quella che fa il modulo a ogni salvataggio.
+ *
+ * Non è un semplice `sincronizzaAppuntamento`: qui si decide *cosa* fare
+ * guardando lo stato. Un appuntamento già pubblicato viene aggiornato e non
+ * duplicato, e uno annullato perde l'evento che aveva — lasciarlo sul
+ * calendario di Google sarebbe l'unico caso in cui l'app e il calendario
+ * racconterebbero due storie diverse.
+ */
+export async function pubblicaAppuntamento(
+  id: number,
+  calendarId = "primary",
+): Promise<SyncResult> {
+  const salvato = ottieniAppuntamento(id);
+  if (!salvato) return { ok: false, messaggio: "L'appuntamento non esiste più" };
+  if (salvato.stato === "annullato") {
+    if (!salvato.googleEventId) {
+      return { ok: true, messaggio: "Appuntamento annullato: non era su Google Calendar" };
+    }
+    return dissociaAppuntamento(id, calendarId);
+  }
+  const esito = await sincronizzaAppuntamento(id, calendarId);
+  return {
+    ...esito,
+    messaggio: esito.ok
+      ? salvato.googleEventId
+        ? "Appuntamento aggiornato su Google Calendar"
+        : "Appuntamento pubblicato su Google Calendar"
+      : esito.messaggio,
+  };
+}
+
 /** Rimuove l'evento remoto e pulisce i marcatori di sincronizzazione locali. */
-export async function dissociaAppuntamento(id: number): Promise<SyncResult> {
+export async function dissociaAppuntamento(
+  id: number,
+  calendarId = "primary",
+): Promise<SyncResult> {
   const salvato = ottieniAppuntamento(id);
   if (!salvato) return { ok: false, messaggio: "L'appuntamento non esiste più" };
   try {
     if (salvato.googleEventId) {
-      await eliminaEvento(salvato.googleEventId, salvato.googleCalendarId ?? "primary");
+      await eliminaEvento(
+        salvato.googleEventId,
+        salvato.googleCalendarId ?? calendarId,
+      );
     }
     aggiornaAppuntamento(salvato.id, {
       ...aSincronizzabile(salvato),

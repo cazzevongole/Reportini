@@ -375,6 +375,30 @@ impostazioni dicono cosa manca.
 Senza backend l'app funziona lo stesso: ogni appuntamento si esporta in formato `.ics`, e
 l'area Calendar resta semplicemente non collegata.
 
+### La pubblicazione è automatica
+
+Con Google Calendar collegato, **salvare un appuntamento lo pubblica**: non c'è un secondo passo da
+ricordare e non un pulsante da premere. Nel modulo c'è la spunta **Pubblica su Google Calendar**,
+accesa di default, da disattivare solo per l'appuntamento per cui serve il contrario.
+
+Cosa succede a seconda della situazione, deciso in `pubblicaAppuntamento()`
+(`src/lib/google/sync.ts`):
+
+| Situazione | Cosa fa |
+| --- | --- |
+| Appuntamento nuovo | crea l'evento e salva il collegamento sull'appuntamento |
+| Appuntamento già pubblicato, ora modificato | **aggiorna** l'evento esistente, non ne crea un secondo |
+| Appuntamento portato ad "annullato" | **toglie** l'evento dal calendario di Google |
+| Spunta disattivata | salva solo in locale, Google non viene toccato |
+
+Due dettagli che contano più di quanto sembrino:
+
+- **Prima il locale, poi Google.** Il salvataggio nell'app non dipende dalla rete: se Google è
+  irraggiungibile l'appuntamento è salvo lo stesso e l'avviso dice che non è stato pubblicato. Si
+  riprova con **Invia a Google** nella lista appuntamenti, senza riscriverlo.
+- **Un appuntamento annullato non può restare in agenda.** È l'unico caso in cui l'app e il
+  calendario direbbero due cose diverse, quindi l'evento viene cancellato, non solo ignorato.
+
 ---
 
 ## Script
@@ -384,7 +408,7 @@ bun install
 bun run dev        # server di sviluppo su http://localhost:5173
 bun run build      # build statica in dist/ (+ 404.html per GitHub Pages)
 bun run typecheck  # tsc -b --noEmit
-bun run test       # test vitest (121 test) + smoke test dello schema
+bun run test       # test vitest (127 test) + smoke test dello schema
 bun run test:ui    # solo i test vitest
 bun run version:check  # la versione è coerente? (lo usa anche il rilascio)
 bun run version:patch  # alza la versione di un patch, come fa il workflow
@@ -421,8 +445,12 @@ I test vitest coprono dodici file:
   apre la sessione su Supabase, il rinnovo in silenzio — incluso il caso di due chiamate
   contemporanee che ne fanno una sola — e i due ripieghi: backend senza segreti e `audience`
   sbagliata lasciano comunque entrare l'utente, dicendo che il calendario manca.
-- `tests/calendar.e2e.test.tsx` crea un appuntamento, esce e rientra, e verifica che non venga
-  pubblicato due volte.
+- `tests/calendar.e2e.test.tsx` gira sul motore vero e copre il calendario: pubblica un
+  appuntamento, esce e rientra e verifica che non venga pubblicato due volte, che lo scollegamento
+  elimini l'evento remoto e che un errore di Google non lasci marcatori falsi. Verifica anche la
+  **pubblicazione automatica**: che cosa fa il modulo quando si salva — evento nuovo, aggiornamento
+  di quello esistente, rimozione se l'appuntamento viene annullato — e che la spunta disattivata
+  salvi in locale senza toccare Google.
 - `tests/aggiornamento.test.tsx` guida l'aggiornamento automatico con un ponte finto (Electron
   non serve): verifica che un controllo automatico fallito resti silenzioso, che quello chiesto a
   mano risponda, che l'avanzamento e il pacchetto pronto si vedano, che «più tardi» nasconda solo

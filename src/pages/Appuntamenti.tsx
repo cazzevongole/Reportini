@@ -116,7 +116,7 @@ export default function Appuntamenti() {
         <EmptyState
           icon={<CalendarIcon className="h-9 w-9" />}
           title="Nessun appuntamento in questa vista"
-          description="Fissa un appuntamento e pubblicalo su Google Calendar per non perderlo di vista."
+          description="Fissa un appuntamento: se Google Calendar è collegato lo pubblichi senza pensarci."
           action={
             <Button onClick={apriNuovo}>
               <PlusIcon className="h-4 w-4" />
@@ -185,7 +185,7 @@ export default function Appuntamenti() {
                           {appuntamento.googleEventId ? (
                             <>
                               <CheckIcon className="h-4 w-4" />
-                              Sincronizzato
+                              Su Google
                             </>
                           ) : (
                             "Invia a Google"
@@ -259,7 +259,7 @@ export default function Appuntamenti() {
         open={aperto}
         onClose={() => setAperto(false)}
         title={inModifica ? "Modifica appuntamento" : "Nuovo appuntamento"}
-        description="Dopo averlo salvato potrai sincronizzarlo con Google Calendar."
+        description="Con Google Calendar collegato l'appuntamento viene pubblicato appena lo salvi."
       >
         <AppuntamentoForm
           appuntamento={inModifica}
