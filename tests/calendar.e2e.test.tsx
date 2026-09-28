@@ -1,5 +1,5 @@
 import "fake-indexeddb/auto";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initDatabase } from "../src/lib/sqlite/engine";
 
 // In un ambiente jsdom sotto vitest sql.js carica il wasm da filesystem, non
@@ -9,6 +9,7 @@ vi.mock("sql.js/dist/sql-wasm.wasm?url", () => ({
   default: `${process.cwd()}/node_modules/sql.js/dist/sql-wasm.wasm`,
 }));
 import {
+  aggiornaAppuntamento,
   creaAnagrafico,
   creaAppuntamento,
   elencaAppuntamenti,
@@ -17,7 +18,15 @@ import {
   ottieniAppuntamento,
 } from "../src/lib/repo";
 import { resetSincronizzazione, sincronizza } from "../src/lib/cloud/sync";
-import { dissociaAppuntamento, sincronizzaAppuntamento } from "../src/lib/google/sync";
+import {
+  dissociaAppuntamento,
+  pubblicaAppuntamento,
+  sincronizzaAppuntamento,
+} from "../src/lib/google/sync";
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { AvvisoProvider } from "../src/components/Avvisi";
+import AppuntamentoForm from "../src/components/AppuntamentoForm";
 
 /* --------------------------- cloud finto (in memoria) --------------------- */
 
@@ -332,3 +341,152 @@ async function aggiornaTitolo(id: number, titolo: string) {
   const attuale = ottieniAppuntamento(id)!;
   aggiornaAppuntamento(id, { ...attuale, titolo });
 }
+
+/* ------------------- pubblicazione automatica dal modulo -------------------- */
+
+describe("Pubblicazione automatica: cosa fa il modulo quando si salva", () => {
+  it("un appuntamento nuovo viene pubblicato e resta collegato all'evento", async () => {
+    await nuovoDatabase();
+    const { appuntamentoId } = creaSchedaConAppuntamento();
+
+    const esito = await pubblicaAppuntamento(appuntamentoId, "primary");
+
+    expect(esito.ok).toBe(true);
+    expect(esito.messaggio).toMatch(/pubblicato/i);
+    expect(eventi.size).toBe(1);
+    const salvato = ottieniAppuntamento(appuntamentoId);
+    expect(salvato?.googleEventId).toBe("evt-1");
+  });
+
+  it("modificarlo aggiorna l'evento esistente invece di crearne un secondo", async () => {
+    await nuovoDatabase();
+    const { appuntamentoId } = creaSchedaConAppuntamento();
+    await pubblicaAppuntamento(appuntamentoId, "primary");
+
+    await aggiornaTitolo(appuntamentoId, "Ritiro documento (rivisto)");
+    const esito = await pubblicaAppuntamento(appuntamentoId, "primary");
+
+    expect(esito.ok).toBe(true);
+    expect(esito.messaggio).toMatch(/aggiornato/i);
+    expect(eventi.size).toBe(1);
+    expect([...eventi.values()][0].summary).toBe("Ritiro documento (rivisto)");
+  });
+
+  it("annullarlo toglie l'evento dal calendario di Google", async () => {
+    await nuovoDatabase();
+    const { appuntamentoId } = creaSchedaConAppuntamento();
+    await pubblicaAppuntamento(appuntamentoId, "primary");
+    expect(eventi.size).toBe(1);
+
+    const attuale = ottieniAppuntamento(appuntamentoId)!;
+    aggiornaAppuntamento(appuntamentoId, { ...attuale, stato: "annullato" });
+    const esito = await pubblicaAppuntamento(appuntamentoId, "primary");
+
+    expect(esito.ok).toBe(true);
+    expect(eventi.size).toBe(0);
+    expect(ottieniAppuntamento(appuntamentoId)?.googleEventId).toBeNull();
+  });
+
+  it("annullare un appuntamento mai pubblicato non chiama Google", async () => {
+    await nuovoDatabase();
+    const { appuntamentoId } = creaSchedaConAppuntamento();
+    const attuale = ottieniAppuntamento(appuntamentoId)!;
+    aggiornaAppuntamento(appuntamentoId, { ...attuale, stato: "annullato" });
+    chiamate.length = 0;
+
+    const esito = await pubblicaAppuntamento(appuntamentoId, "primary");
+
+    expect(esito.ok).toBe(true);
+    expect(esito.messaggio).toMatch(/non era su Google Calendar/i);
+    expect(chiamate).toHaveLength(0);
+  });
+});
+
+/* -------------- il modulo: salvare deve pubblicare, senza toccare nulla ---- */
+
+describe("Il modulo dell'appuntamento", () => {
+  let contenitore: HTMLDivElement;
+  let radice: Root | null = null;
+
+  async function monta() {
+    radice = createRoot(contenitore);
+    await act(async () => {
+      radice?.render(
+        <AvvisoProvider>
+          <AppuntamentoForm onSaved={() => {}} onCancel={() => {}} />
+        </AvvisoProvider>,
+      );
+    });
+  }
+
+  function perEtichetta(nome: string): HTMLElement {
+    const campi = [
+      ...contenitore.querySelectorAll<HTMLElement>("input, button, select, textarea"),
+    ];
+    const trovato = campi.find((c) => c.textContent?.includes(nome) || c.getAttribute("aria-label") === nome);
+    if (!trovato) throw new Error(`elemento non trovato: ${nome}`);
+    return trovato;
+  }
+
+  beforeEach(() => {
+    contenitore = document.createElement("div");
+    document.body.appendChild(contenitore);
+  });
+
+  afterEach(async () => {
+    if (radice) {
+      await act(async () => {
+        radice?.unmount();
+      });
+      radice = null;
+    }
+    contenitore.remove();
+  });
+
+  it("salvando crea l'evento su Google Calendar e avvisa", async () => {
+    await nuovoDatabase();
+    creaSchedaConAppuntamento(); // almeno un anagrafico, come nella pagina reale
+    await monta();
+
+    const spunta = contenitore.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    expect(spunta).not.toBeNull();
+    expect(spunta!.checked).toBe(true);
+    expect(contenitore.textContent).toContain("Pubblica su Google Calendar");
+
+    await act(async () => {
+      perEtichetta("Crea appuntamento").click();
+    });
+
+    expect(eventi.size).toBe(1);
+    expect([...eventi.values()][0].summary).toBe("Appuntamento allo sportello");
+    // C'è anche l'appuntamento della scheda di prova: conta quello del modulo.
+    const salvato = elencaAppuntamenti({}).find(
+      (a) => a.titolo === "Appuntamento allo sportello",
+    );
+    expect(salvato?.googleEventId).toBe("evt-1");
+  });
+
+  it("con la spunta disattivata salva in locale e non tocca Google", async () => {
+    await nuovoDatabase();
+    creaSchedaConAppuntamento();
+    await monta();
+
+    const spunta = contenitore.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+    await act(async () => {
+      spunta.click();
+    });
+    expect(spunta.checked).toBe(false);
+
+    await act(async () => {
+      perEtichetta("Crea appuntamento").click();
+    });
+
+    expect(eventi.size).toBe(0);
+    expect(chiamate.some((c) => c.metodo === "POST")).toBe(false);
+    const salvato = elencaAppuntamenti({}).find(
+      (a) => a.titolo === "Appuntamento allo sportello",
+    );
+    expect(salvato).toBeTruthy();
+    expect(salvato?.googleEventId).toBeNull();
+  });
+});

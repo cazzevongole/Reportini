@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from "react";
+import { useAvvisi } from "./Avvisi";
 import { aInputDateTime, aggiungiMinuti, daInputDateTime } from "../lib/date";
 import { isConnected } from "../lib/google/auth";
+import { pubblicaAppuntamento } from "../lib/google/sync";
 import {
   aggiornaAppuntamento,
   creaAppuntamento,
@@ -10,7 +12,7 @@ import {
   type AppuntamentoInput,
 } from "../lib/repo";
 import type { Appuntamento, StatoAppuntamento } from "../lib/types";
-import { Button, Field, Input, Select, Textarea } from "./ui";
+import { Button, Checkbox, Field, Input, Select, Textarea } from "./ui";
 
 const DURATE = [15, 30, 45, 60, 90];
 const PROMEMORIE = [0, 10, 30, 60, 1440];
@@ -34,7 +36,12 @@ export default function AppuntamentoForm({
   );
   const relazioni = elencaRelazioni({ anagraficoId });
   const googlePronto = isConnected();
+  const { notifica, esegui } = useAvvisi();
   const [errore, setErrore] = useState("");
+  const [inCorso, setInCorso] = useState(false);
+  // La pubblicazione è il comportamento normale, non un extra: la spunta
+  // parte accesa e serve solo a chi la vuole disattivata per un appuntamento.
+  const [pubblica, setPubblica] = useState(isConnected);
 
   const [form, setForm] = useState<AppuntamentoInput>(() => {
     if (appuntamento) {
@@ -80,19 +87,35 @@ export default function AppuntamentoForm({
     setForm((precedente) => ({ ...precedente, fine: aggiungiMinuti(precedente.inizio, minuti) }));
   }
 
-  function submit(event: FormEvent) {
+  async function submit(event: FormEvent) {
     event.preventDefault();
+    if (inCorso) return;
     if (new Date(form.fine) <= new Date(form.inizio)) {
       setErrore("L'ora di fine deve essere successiva a quella di inizio.");
       return;
     }
     const dati = { ...form, anagraficoId };
+    // Prima il salvataggio in locale, sempre: se Google è irraggiungibile
+    // l'appuntamento non deve perdersi, e l'errore di rete non deve
+    // cancellare quello che l'utente aveva scritto.
+    let id: number;
     if (appuntamento) {
       aggiornaAppuntamento(appuntamento.id, dati);
-      onSaved(appuntamento.id);
+      id = appuntamento.id;
     } else {
-      onSaved(creaAppuntamento(dati));
+      id = creaAppuntamento(dati);
     }
+
+    if (googlePronto && pubblica) {
+      setInCorso(true);
+      notifica("info", "Salvo e pubblico su Google Calendar…");
+      await esegui(() => pubblicaAppuntamento(id), {
+        successo: (r) => r.messaggio,
+        errore: "Appuntamento salvato, ma non pubblicato su Google Calendar",
+      });
+      setInCorso(false);
+    }
+    onSaved(id);
   }
 
   return (
@@ -214,18 +237,31 @@ export default function AppuntamentoForm({
 
       {errore ? <p className="text-sm text-clay-600">{errore}</p> : null}
 
-      <p className="rounded-xl bg-ink-50 px-3.5 py-3 text-xs leading-relaxed text-ink-500">
-        {googlePronto
-          ? "Dopo aver salvato potrai inviarlo a Google Calendar con un tocco."
-          : "Senza Google Calendar collegato puoi esportare l'appuntamento in formato .ics."}
-      </p>
+      {googlePronto ? (
+        <div className="rounded-xl border border-ink-100 bg-ink-50 px-3.5 py-3">
+          <Checkbox
+            label="Pubblica su Google Calendar"
+            hint={
+              appuntamento?.googleEventId
+                ? "L'evento già creato viene aggiornato con queste modifiche."
+                : "L'evento viene creato appena salvi. Se lo annulli, sparisce anche dal calendario."
+            }
+            checked={pubblica}
+            onChange={(event) => setPubblica(event.target.checked)}
+          />
+        </div>
+      ) : (
+        <p className="rounded-xl bg-ink-50 px-3.5 py-3 text-xs leading-relaxed text-ink-500">
+          Senza Google Calendar collegato puoi esportare l'appuntamento in formato .ics.
+        </p>
+      )}
 
       <div className="flex justify-end gap-2 pt-1">
-        <Button type="button" variant="secondary" onClick={onCancel}>
+        <Button type="button" variant="secondary" onClick={onCancel} disabled={inCorso}>
           Annulla
         </Button>
-        <Button type="submit">
-          {appuntamento ? "Salva le modifiche" : "Crea appuntamento"}
+        <Button type="submit" disabled={inCorso}>
+          {inCorso ? "Pubblico…" : appuntamento ? "Salva le modifiche" : "Crea appuntamento"}
         </Button>
       </div>
     </form>

@@ -81,6 +81,31 @@ export function Textarea({
   return <textarea className={`field-input min-h-28 resize-y ${className}`} {...props} />;
 }
 
+/**
+ * Casella di spunta con etichetta. Serve per le scelte che si possono
+ * disattivare: il colore d'accento è il verde del brand, non il blu di sistema.
+ */
+export function Checkbox({
+  label,
+  hint,
+  className = "",
+  ...props
+}: InputHTMLAttributes<HTMLInputElement> & { label: string; hint?: string }) {
+  return (
+    <label className={`flex cursor-pointer items-start gap-2.5 ${className}`}>
+      <input
+        type="checkbox"
+        className="mt-0.5 h-4 w-4 shrink-0 rounded border-ink-300 accent-brand-500"
+        {...props}
+      />
+      <span className="min-w-0">
+        <span className="block text-sm font-medium text-ink-800">{label}</span>
+        {hint ? <span className="mt-0.5 block text-xs text-ink-400">{hint}</span> : null}
+      </span>
+    </label>
+  );
+}
+
 export function Select({
   className = "",
   children,

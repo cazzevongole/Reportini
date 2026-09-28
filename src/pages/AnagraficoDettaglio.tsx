@@ -270,7 +270,7 @@ export default function AnagraficoDettaglio() {
         open={foglio === "appuntamento"}
         onClose={() => setFoglio(null)}
         title="Nuovo appuntamento"
-        description="Puoi pubblicarlo su Google Calendar dalla sezione Appuntamenti."
+        description="Se Google Calendar è collegato, l'appuntamento viene pubblicato appena lo salvi."
       >
         <AppuntamentoForm
           anagraficoIdIniziale={anagrafico.id}
