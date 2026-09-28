@@ -62,6 +62,19 @@ function aEvento(appuntamento: Appuntamento) {
     // l'app e il calendario dicono la stessa cosa. Cancellarlo del tutto
     // farebbe sparire la traccia di un appuntamento che è esistito.
     status: appuntamento.stato === "annullato" ? "cancelled" : "confirmed",
+    // E "in attesa" è un terzo stato, non una sfumatura di "confermato": un
+    // appuntamento da confermare non occupa il tempo. Senza questo, passare
+    // da in attesa a confermato non cambiava niente su Google Calendar, e non
+    // perché la pubblicazione non partiva: partiva e mandava due volte lo
+    // stesso evento.
+    //
+    // `transparent` è il modo normale di dirlo: l'evento resta in agenda ma
+    // non blocca la fascia, e chi guarda l'agenda vede subito la differenza.
+    //
+    // Prenota solo lo stato "confermato": un annullato scritto *Cancelled* che
+    // occupasse il tempo continuerebbe a bloccare la fascia di chi lo cerca,
+    // e sarebbe una contraddizione.
+    transparency: appuntamento.stato === "confermato" ? "opaque" : "transparent",
     // Il fuso va dichiarato: senza, Google interpreta l'ora nel fuso del
     // calendario di destinazione e un appuntamento delle 10:00 segnato a Roma
     // finisce a un'ora diversa per chi guarda il calendario da un'altra città.

@@ -93,6 +93,8 @@ interface EventoFinto {
   summary?: string;
   description?: string;
   status?: string;
+  /** Se l'evento occupa la fascia: è come si distingue "in attesa". */
+  transparency?: string;
   start?: { dateTime?: string; timeZone?: string };
   end?: { dateTime?: string; timeZone?: string };
 }
@@ -490,30 +492,47 @@ describe("Pubblicazione automatica: cosa fa il modulo quando si salva", () => {
   it("in attesa, confermato e annullato si leggono dall'evento", async () => {
     await nuovoDatabase();
     const { appuntamentoId } = creaSchedaConAppuntamento();
-    const stato = () => [...eventi.values()][0]?.status;
-
-    // Nato in attesa: l'evento lo dice.
-    await pubblicaAppuntamento(appuntamentoId, "primary");
-    expect(stato()).toBe("confirmed");
+    const evento = () => [...eventi.values()][0];
     const appuntamento = () => ottieniAppuntamento(appuntamentoId)!;
-    aggiornaAppuntamento(appuntamentoId, { ...appuntamento(), stato: "in-attesa" });
-    expect((await pubblicaAppuntamento(appuntamentoId, "primary")).messaggio).toMatch(
-      /in attesa/i,
-    );
-    expect(stato()).toBe("confirmed");
+    const aStato = (nuovo: "in-attesa" | "confermato" | "annullato") =>
+      aggiornaAppuntamento(appuntamentoId, { ...appuntamento(), stato: nuovo });
 
-    // Confermato: stesso evento, stato confermato.
-    aggiornaAppuntamento(appuntamentoId, { ...appuntamento(), stato: "confermato" });
+    // L'appuntamento di prova è confermato: occupa la fascia.
+    await pubblicaAppuntamento(appuntamentoId, "primary");
+    expect(evento()?.status).toBe("confirmed");
+    expect(evento()?.transparency).toBe("opaque");
+
+    // In attesa: resta in agenda ma non occupa il tempo. È l'unico modo che
+    // Google Calendar ha per dire "non ancora tenuto", ed è quello che rende
+    // visibile la differenza: prima i due stati mandavano lo stesso evento e
+    // passare da uno all'altro non cambiava niente.
+    aStato("in-attesa");
+    const inAttesa = await pubblicaAppuntamento(appuntamentoId, "primary");
+    expect(inAttesa.messaggio).toMatch(/in attesa/i);
+    expect(evento()?.status).toBe("confirmed");
+    expect(evento()?.transparency).toBe("transparent");
+    expect(eventi.size).toBe(1);
+
+    // Confermato: torna a occupare davvero la fascia.
+    aStato("confermato");
     const confermato = await pubblicaAppuntamento(appuntamentoId, "primary");
     expect(confermato.messaggio).toMatch(/aggiornato/i);
     expect(confermato.messaggio).not.toMatch(/in attesa/i);
-    expect(stato()).toBe("confirmed");
+    expect(evento()?.transparency).toBe("opaque");
     expect(eventi.size).toBe(1);
 
-    // Annullato: sempre lo stesso evento, segnato annullato.
-    aggiornaAppuntamento(appuntamentoId, { ...appuntamento(), stato: "annullato" });
+    // E tornare indietro funziona: non è una modifica che si fa una volta sola.
+    aStato("in-attesa");
     await pubblicaAppuntamento(appuntamentoId, "primary");
-    expect(stato()).toBe("cancelled");
+    expect(evento()?.transparency).toBe("transparent");
+    expect(eventi.size).toBe(1);
+
+    // Annullato: sempre lo stesso evento, segnato annullato, e non occupa più
+    // la fascia: non si è tenuto, quindi non deve prenotare niente.
+    aStato("annullato");
+    await pubblicaAppuntamento(appuntamentoId, "primary");
+    expect(evento()?.status).toBe("cancelled");
+    expect(evento()?.transparency).toBe("transparent");
     expect(eventi.size).toBe(1);
   });
 
