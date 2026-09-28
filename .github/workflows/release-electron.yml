@@ -1,0 +1,98 @@
+name: Release desktop
+
+# I pacchetti di Electron si costruiscono qui, a partire dai tag
+# "v<versione>" creati dal workflow di versionazione: la release pubblicata
+# su GitHub è quella marcata come latest, quindi chi scarica "ultima
+# versione" prende sempre l'ultima reale e non una prerelease.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag da rilasciare
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  impacchetta:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            nome: mac
+          - os: windows-latest
+            nome: win
+          - os: ubuntu-latest
+            nome: linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: La versione corrisponde al tag
+        run: node scripts/versione-check.mjs
+
+      - name: Dipendenze
+        run: bun install --frozen-lockfile
+
+      - name: Build della web
+        # L'app desktop si apre da file://, quindi qui la base è la radice.
+        run: bun run build
+
+      - name: Copia nel renderer di Electron
+        run: node scripts/copia-renderer.mjs
+
+      - name: Dipendenze di Electron
+        working-directory: electron
+        run: npm install
+
+      - name: electron-builder
+        working-directory: electron
+        run: npm run dist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pubblica gli artefatti
+        uses: actions/upload-artifact@v4
+        with:
+          name: reportini-${{ matrix.nome }}
+          path: electron/release/*
+          if-no-files-found: error
+          retention-days: 7
+
+  pubblica:
+    needs: impacchetta
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scarica gli artefatti
+        uses: actions/download-artifact@v4
+        with:
+          path: pacchetti
+
+      - name: Crea la release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          # I pacchetti finiscono sotto pacchetti/<nome>/: si appiattiscono
+          # in una directory sola, altrimenti la release avrebbe allegati
+          # dentro cartelle che l'utente non aspetta.
+          mkdir -p dist
+          find pacchetti -type f -exec cp {} dist/ \;
+          ls -l dist
+          gh release create "$TAG" dist/* \
+            --title "Reportini $TAG" \
+            --generate-notes \
+            --latest
