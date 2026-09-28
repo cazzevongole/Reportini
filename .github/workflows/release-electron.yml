@@ -138,7 +138,16 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: reportini-${{ matrix.nome }}
-          path: electron/release/*
+          # Solo i pacchetti installabili, non le cartelle scompattate:
+          # win-unpacked e linux-unpacked sono centinaia di file che
+          # appesantirebbero la release di qualche centinaia di megabyte
+          # senza che nessuno li scarichi.
+          path: |
+            electron/release/*.dmg
+            electron/release/*.exe
+            electron/release/*.AppImage
+            electron/release/*.blockmap
+            electron/release/*.yml
           if-no-files-found: error
           retention-days: 7
 
@@ -147,6 +156,10 @@ jobs:
     if: needs.prepara.outputs.daRilasciare == 'true'
     runs-on: ubuntu-latest
     steps:
+      # gh release create lavora su un repository git: senza checkout non
+      # trova il tag e si ferma.
+      - uses: actions/checkout@v4
+
       - name: Scarica gli artefatti
         uses: actions/download-artifact@v4
         with:
@@ -161,8 +174,18 @@ jobs:
           # in una directory sola, altrimenti la release avrebbe allegati
           # dentro cartelle che l'utente non aspetta.
           mkdir -p dist
-          find pacchetti -type f -exec cp {} dist/ \;
+          find pacchetti -maxdepth 2 -type f -exec cp {} dist/ \;
           ls -l dist
+
+          # Una release senza i tre sistemi è una release a metà: meglio
+          # fermarsi che pubblicarla e dirsi che tanto è quasi uguale.
+          for estensione in dmg exe AppImage; do
+            if ! ls dist/*."$estensione" >/dev/null 2>&1; then
+              echo "::error::Manca il pacchetto .$estensione"
+              exit 1
+            fi
+          done
+
           gh release create "$VERSIONE" dist/* \
             --title "Reportini $VERSIONE" \
             --generate-notes \
