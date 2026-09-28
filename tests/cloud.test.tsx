@@ -7,7 +7,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "fake-indexeddb/auto";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { urlDiRitorno } from "../src/lib/cloud/destinazione";
 
 /* ------------------------------ Supabase finto ----------------------------- */
 
@@ -171,44 +170,18 @@ describe("Accesso con Google", () => {
     return () => stato!.signInWithGoogle();
   }
 
-  it("chiama signInWithOAuth con il provider google e il redirect alla pagina", async () => {
+  it("con il client Google l'accesso non passa da Supabase", async () => {
+    // Con il backend l'app porta sé stessa da Google, profilo e calendario
+    // insieme: è l'unico modo per avere un solo consenso e un token
+    // rinnovabile. Supabase non viene coinvolto nell'accesso. (L'URL di
+    // reindirizzamento è provato in tests/google.test.tsx, dove si può
+    // intercettare la navigazione senza toccare il location di jsdom.)
     const accedi = await montaAccount();
     await act(async () => {
-      await accedi();
+      void accedi();
     });
 
-    expect(supabaseFinto.auth.signInWithOAuth).toHaveBeenCalledWith({
-      provider: "google",
-      options: {
-        redirectTo: urlDiRitorno(window.location.origin, import.meta.env.BASE_URL),
-        scopes: "https://www.googleapis.com/auth/calendar.events",
-        queryParams: { access_type: "offline", prompt: "consent" },
-      },
-    });
-  });
-
-  it("torna alla sottocartella quando l'app è pubblicata su GitHub Pages", async () => {
-    // Su github.io l'app vive in /Reportini/: tornare all'origine finirebbe
-    // sulla pagina del profilo invece che sull'app.
-    vi.stubEnv("BASE_URL", "/Reportini/");
-    try {
-      const accedi = await montaAccount();
-      await act(async () => {
-        await accedi();
-      });
-      expect(supabaseFinto.auth.signInWithOAuth).toHaveBeenCalledWith({
-        provider: "google",
-        options: {
-          redirectTo: `${window.location.origin}/Reportini`,
-          // scopes finisce nella lista degli scope: deve esserci l'URL
-          // esatto, non "offline", che è un parametro OAuth.
-          scopes: "https://www.googleapis.com/auth/calendar.events",
-          queryParams: { access_type: "offline", prompt: "consent" },
-        },
-      });
-    } finally {
-      vi.unstubAllEnvs();
-    }
+    expect(supabaseFinto.auth.signInWithOAuth).not.toHaveBeenCalled();
   });
 
   it("espone l'email dell'utente dopo l'accesso, nelle impostazioni", async () => {
@@ -409,10 +382,10 @@ describe("Verifica del bucket", () => {
     expect(bucket?.dettaglio).toMatch(/scrittura e cancellazione riuscite/i);
     // Il file di sonda non deve restare nel bucket.
     expect([...stato.storage.keys()]).toEqual([]);
-    // Il solo controllo non concluso è Calendar, che la pagina non può
-    // verificare: il bucket, con l'account, è stato provato davvero.
+    // Il bucket, con l'account, è stato provato davvero: nessun controllo
+    // resta scoperto.
     expect(esito.controlli.find((c) => c.nome.includes("Bucket"))?.nonVerificato).toBeUndefined();
-    expect(esito.nonVerificati).toBe(1);
+    expect(esito.nonVerificati).toBe(0);
   });
 
   it("senza account dichiara il bucket non verificabile invece di darlo per buono", async () => {
@@ -420,20 +393,36 @@ describe("Verifica del bucket", () => {
     const esito = await verificaIntegrazione();
     const bucket = esito.controlli.find((c) => c.nome.includes("Bucket"));
     expect(bucket?.nonVerificato).toBe(true);
-    expect(esito.nonVerificati).toBe(2);
+    expect(esito.nonVerificati).toBe(1);
     expect(esito.tuttiOk).toBe(false);
   });
 
-  it("riporta Google Calendar come configurato ma non verificabile dalla pagina", async () => {
+  it("riporta Google Calendar come pronto solo se il client c'è e la funzione risponde", async () => {
     const { verificaIntegrazione } = await import("../src/lib/cloud/diagnostica");
     const esito = await verificaIntegrazione();
     const calendar = esito.controlli.find((c) => c.nome === "Google Calendar");
+    // Il finto risponde a tutto: la funzione risulta pubblicata e il client
+    // c'è (VITE_GOOGLE_CLIENT_ID è nei test).
     expect(calendar?.ok).toBe(true);
-    // Non si può sapere dalla pagina se lo scope Calendar è concesso al
-    // provider Google: dichiararlo pronto sarebbe falso.
-    expect(calendar?.nonVerificato).toBe(true);
-    // La causa numero uno del 403 in sincronizzazione è lo scope assente.
-    expect(calendar?.azione).toMatch(/calendar\.events/);
+    // Qui il controllo è concluso: 404 o no, la pagina lo distingue.
+    expect(calendar?.nonVerificato).toBe(false);
+  });
+
+  it("distingue la funzione non pubblicata dal backend che risponde", async () => {
+    const { verificaIntegrazione } = await import("../src/lib/cloud/diagnostica");
+    // 404 è la risposta di Supabase per un indirizzo che non è nessuna funzione.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: unknown) =>
+        String(url).includes("/functions/v1/")
+          ? { status: 404, ok: false, json: async () => ({ code: "WORKER_NOT_FOUND" }) }
+          : { status: 200, ok: true, json: async () => ({ external: { google: true } }) },
+      ),
+    );
+    const esito = await verificaIntegrazione();
+    const calendar = esito.controlli.find((c) => c.nome === "Google Calendar");
+    expect(calendar?.ok).toBe(false);
+    expect(calendar?.azione).toMatch(/supabase functions deploy/);
   });
 });
 

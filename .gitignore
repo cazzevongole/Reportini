@@ -4,10 +4,6 @@ dist-ssr
 electron/node_modules
 electron/renderer
 electron/release
-# Le dipendenze di Electron si installano con npm nel pacchetto electron/ e
-# non hanno un lockfile tracciato: quello che c'è qui vale solo per questa
-# macchina.
-electron/package-lock.json
 *.local
 .DS_Store
 
@@ -59,6 +55,10 @@ build/Release
 # Dependency directories
 node_modules/
 jspm_packages/
+
+# Le dipendenze del progetto si installano con bun (c'è bun.lock): il
+# package-lock.json di npm compete con quello e non serve a niente.
+package-lock.json
 
 # Snowpack dependency directory (https://snowpack.dev/)
 web_modules/

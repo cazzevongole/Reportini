@@ -1,5 +1,5 @@
 import { cloudEnabled, problemaConfigurazione, supabase, tipoChiave } from "./supabase";
-import { SCOPO_CALENDARIO } from "../google/auth";
+import { googleConfigured, statoBackend } from "../google/auth";
 
 const BUCKET = "reportini";
 const SONDAGGIO = ".verifica-bucket";
@@ -76,21 +76,29 @@ export interface EsitoDiagnostica {
 export async function verificaIntegrazione(): Promise<EsitoDiagnostica> {
   const controlli: Controllo[] = [];
 
-  // Google Calendar non usa un client OAuth dedicato: il token arriva dalla
-  // sessione Supabase, che fa da client confidenziale lato server. Serve però
-  // che lo scope Calendar sia concesso al provider Google del progetto.
+  // Google Calendar ha bisogno di due cose: il proprio client id nel browser
+  // (pubblico) e la funzione google-token pubblicata, che custodisce il
+  // secret. Senza la funzione non c'è né scambio del code né rinnovo.
+  const backend = await statoBackend();
   controlli.push({
     nome: "Google Calendar",
-    ok: true,
-    dettaglio: supabase
-      ? "Lo scope Calendar viaggia con l'accesso con Google."
-      : "Non disponibile: senza Supabase non c'è modo di ottenere un token Google.",
-    azione: supabase
-      ? `Supabase → Authentication → Providers → Google → Scopes: deve esserci ${SCOPO_CALENDARIO}.
-Senza lo scope l'accesso va a buon fine ma restituisce solo il profilo, e la
-sincronizzazione fallisce con 403.`
-      : "Collega Supabase dalle variabili d'ambiente.",
-    nonVerificato: supabase ? true : undefined,
+    ok: googleConfigured && backend === "pronto",
+    dettaglio: !googleConfigured
+      ? "Client Google non configurato: manca VITE_GOOGLE_CLIENT_ID."
+      : backend === "pronto"
+        ? "Client id presente e funzione google-token pubblicata."
+        : backend === "non-pubblicata"
+          ? "Client id presente, ma la funzione google-token non è pubblicata."
+          : "Backend non raggiungibile da qui.",
+    azione: !googleConfigured
+      ? "Copia il Client ID del tuo client Google di tipo 'Applicazione web' in VITE_GOOGLE_CLIENT_ID."
+      : backend === "non-pubblicata"
+        ? "supabase functions deploy google-token, poi supabase secrets set GOOGLE_CLIENT_ID=… e GOOGLE_CLIENT_SECRET=…"
+        : backend === "irraggiungibile"
+          ? "Controlla VITE_SUPABASE_URL e che il progetto sia attivo."
+          : "",
+    // La funzione risponde anche senza account: il controllo è concluso.
+    nonVerificato: false,
   });
 
   const url = (import.meta.env.VITE_SUPABASE_URL as string | undefined) ?? "";

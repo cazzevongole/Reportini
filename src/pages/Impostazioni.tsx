@@ -20,10 +20,11 @@ import { useAggiornamento } from "../lib/aggiornamento";
 import { sincronizza } from "../lib/cloud/sync";
 import { cloudEnabled } from "../lib/cloud/supabase";
 import {
-  connect,
+  avviaAccessoGoogle,
   disconnect,
   googleConfigured,
   isConnected,
+  readErroreCollegamento,
   readProfile,
   type GoogleProfile,
 } from "../lib/google/auth";
@@ -49,6 +50,9 @@ export default function Impostazioni() {
   // arriva con una richiesta a parte e può arrivare dopo il primo render.
   const [collegato, setCollegato] = useState(() => isConnected());
   const [profilo, setProfilo] = useState<GoogleProfile | null>(() => readProfile());
+  // L'ultimo rifiuto del backend, mostrato qui: dopo un rientro da Google
+  // l'utente torna in questa pagina, ed è qui che deve leggere cosa è successo.
+  const [erroreCollegamento, setErroreCollegamento] = useState(() => readErroreCollegamento());
   const appuntamenti = useLiveQuery(() => elencaAppuntamenti());
   const sincronizzati = appuntamenti.filter((a) => a.googleEventId).length;
   const {
@@ -110,13 +114,13 @@ export default function Impostazioni() {
     event.target.value = "";
   }
 
-  async function collegaGoogle() {
+  async function ricollegaCalendar() {
     setOccupato(true);
-    // connect() lascia la pagina verso Google: qui si arriva solo se è
-    // fallito, e la riga di errore è l'unica cosa che resta.
-    await esegui(() => connect(), {
-      successo: (account) => `Collegato come ${account.email}.`,
-      errore: "Collegamento a Google Calendar non riuscito",
+    setErroreCollegamento(null);
+    // avviaAccessoGoogle() lascia la pagina verso Google: qui si arriva solo
+    // se è fallito, e la riga di errore è l'unica cosa che resta.
+    await esegui(() => avviaAccessoGoogle(), {
+      errore: "Ricollegamento a Google Calendar non riuscito",
     });
     setOccupato(false);
   }
@@ -233,9 +237,19 @@ export default function Impostazioni() {
             {collegato
               ? `Collegato come ${profilo?.email ?? accountEmail ?? "questo account"}. ${sincronizzati} appuntamenti su ${appuntamenti.length} sono già pubblicati.`
               : googleConfigured
-                ? "Collega il tuo account per pubblicare gli appuntamenti con un tocco."
-                : "L'accesso con Google passa da Supabase: senza, non c'è modo di ottenere un token Calendar."}
+                ? "Il calendario fa parte dell'accesso con Google: si concede insieme. Se manca, è perché il consenso è stato revocato o annullato."
+                : "Serve il collegamento con Supabase e il client Google: senza, l'accesso funziona ma gli appuntamenti restano solo nell'app."}
           </p>
+          {collegato ? (
+            <p className="mt-1.5 text-sm text-ink-400">
+              Il collegamento si rinnova da solo: non devi ricollegarti ogni ora.
+            </p>
+          ) : null}
+          {erroreCollegamento ? (
+            <p className="mt-3 rounded-xl border border-clay-200 bg-clay-50 px-3.5 py-2.5 text-sm text-clay-800">
+              {erroreCollegamento}
+            </p>
+          ) : null}
           <div className="mt-4 flex flex-wrap gap-2">
             {collegato ? (
               <>
@@ -256,14 +270,19 @@ export default function Impostazioni() {
                     });
                     setCollegato(false);
                     setProfilo(null);
+                    setErroreCollegamento(null);
                   }}
                 >
                   Scollega
                 </Button>
               </>
             ) : (
-              <Button onClick={collegaGoogle} disabled={occupato || !googleConfigured}>
-                {occupato ? "Collegamento…" : "Collega account"}
+              // Il calendario fa parte dell'accesso: questo pulsante non è
+              // "attivare una funzione in più", è rimettere in pari un
+              // collegamento che manca (consenso revocato, backend non
+              // pubblicato, consenso annullato al rientro).
+              <Button onClick={ricollegaCalendar} disabled={occupato || !googleConfigured}>
+                {occupato ? "Ricollegamento…" : "Ricollega il calendario"}
               </Button>
             )}
             <Button
