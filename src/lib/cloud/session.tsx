@@ -10,7 +10,7 @@ import {
 import type { Session } from "@supabase/supabase-js";
 import { urlDiRitorno } from "./destinazione";
 import { cloudEnabled, supabase } from "./supabase";
-import { adottaTokenDiSessione, SCOPO_CALENDARIO } from "../google/auth";
+import { avviaAccessoGoogle, completaAccesso, googleConfigured } from "../google/auth";
 import { resettaRuolo } from "../sviluppo/richieste";
 
 export interface AccountState {
@@ -26,6 +26,28 @@ export interface AccountState {
 
 const AccountContext = createContext<AccountState | null>(null);
 
+/**
+ * Il rientro da Google si chiude una volta sola per caricamento: la pagina
+ * viene ricaricata, quindi l'URL con il `code` c'è fino a quando non è stato
+ * scambiato. Senza questo blocco, un cambio di sessione lo rischierebbe di
+ * farlo due volte e il secondo scambio fallirebbe.
+ */
+let accessoGirato = false;
+
+function giraRientroDaGoogle(): void {
+  if (accessoGirato) return;
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("code") && !url.searchParams.has("error")) return;
+  accessoGirato = true;
+  // Non è bloccante: se il backend non è pronto, `completaAccesso` ripiega
+  // sull'accesso con Supabase da sola. Un errore qui non deve impedire
+  // all'utente di entrare, quindi resta scritto e le impostazioni lo
+  // mostrano.
+  void completaAccesso().catch((causa: unknown) => {
+    console.warn("Accesso con Google non riuscito:", causa);
+  });
+}
+
 export function AccountProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(cloudEnabled);
@@ -37,16 +59,14 @@ export function AccountProvider({ children }: { children: ReactNode }) {
 
     supabase.auth.getSession().then(({ data }) => {
       if (!attivo) return;
-      adottaTokenDiSessione(data.session?.provider_token);
       setSession(data.session ?? null);
+      giraRientroDaGoogle();
       setLoading(false);
     });
 
     const { data: listener } = supabase.auth.onAuthStateChange((_evento, prossima) => {
-      // Supabase ha scambiato il codice per noi lato server: il token Google
-      // arriva qui con la sessione e va custodito per Calendar.
-      adottaTokenDiSessione(prossima?.provider_token);
       setSession(prossima ?? null);
+      giraRientroDaGoogle();
       setLoading(false);
     });
 
@@ -62,20 +82,23 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       return;
     }
     setError(null);
+    // Con il backend configurato l'accesso passa da Google **con** lo scope
+    // del calendario: profilo e appuntamenti in un consenso solo. Senza
+    // backend si entra lo stesso, ma solo col profilo, e le impostazioni
+    // dicono cosa manca.
+    if (googleConfigured) {
+      try {
+        await avviaAccessoGoogle();
+      } catch (causa) {
+        setError(causa instanceof Error ? causa.message : "Accesso non riuscito");
+      }
+      return;
+    }
     // Su GitHub Pages l'app vive in una sottocartella (/Reportini/): tornare
     // all'origine finirebbe sulla pagina del profilo, non sull'app.
     const { error: errore } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: {
-        redirectTo: urlDiRitorno(window.location.origin, import.meta.env.BASE_URL),
-        // Lo scope Calendar è un accesso solo, non un secondo consenso.
-        // "scopes" finisce nella lista degli scope: qui deve esserci l'URL
-        // esatto, non un'impostazione come "offline".
-        scopes: SCOPO_CALENDARIO,
-        // offline e prompt sono parametri OAuth, non scope: senza, Google non
-        // consegna il refresh token e il rinnovo non è nemmeno ipotizzabile.
-        queryParams: { access_type: "offline", prompt: "consent" },
-      },
+      options: { redirectTo: urlDiRitorno(window.location.origin, import.meta.env.BASE_URL) },
     });
     if (errore) setError(errore.message);
   }, []);

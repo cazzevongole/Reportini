@@ -52,8 +52,9 @@ salvataggio online.
 | --- | --- |
 | `VITE_SUPABASE_URL` | URL del progetto Supabase |
 | `VITE_SUPABASE_ANON_KEY` | **chiave pubblica** del progetto (`sb_publishable_…`) |
+| `VITE_GOOGLE_CLIENT_ID` | Client ID (pubblico) del client Google "Applicazione web" — **lo stesso di Supabase** |
 | `VITE_DURATA_APERTURA_MS` | secondi (in millisecondi) della schermata di benvenuto; default 5000 |
-| _(nessuna per Calendar)_ | il token Google Calendar viaggia sulla sessione Supabase |
+| _(il client secret non sta qui)_ | vive nella Edge Function `google-token`, come secret di Supabase |
 
 > **Non usare mai la chiave `secret`.** Le nuove chiavi `sb_secret_…` sostituiscono la vecchia
 > `service_role`: danno accesso completo al database e ignorano le Row Level Security, e finiscono
@@ -74,7 +75,8 @@ test, dove un guasto lo blocca prima di arrivare in giro.
 
 1. Crea un progetto su [supabase.com](https://supabase.com).
 2. In **Authentication → Providers → Google** abilita Google e incolla il Client ID e il Client
-   Secret del tuo progetto Google Cloud.
+   Secret del tuo progetto Google Cloud. Per il calendario ne serve uno **solo**: è lo stesso
+   client che va in `VITE_GOOGLE_CLIENT_ID` (vedi la sezione sotto).
 3. In **Authentication → URL Configuration** aggiungi in *Redirect URLs* `http://localhost:5173`
    e l'URL delle GitHub Pages. Con il workflow di questo repository l'app è pubblicata in una
    sottocartella, quindi gli URL sono `https://cazzevongole.github.io/Reportini/` e
@@ -84,6 +86,9 @@ test, dove un guasto lo blocca prima di arrivare in giro.
    È idempotente, quindi puoi rieseguirlo. In fondo ci sono le due query di verifica.
 5. Copia il **Project URL** e la chiave **public** (`sb_publishable_…`) nelle variabili
    `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`.
+6. Se vuoi Google Calendar, pubblica anche la Edge Function `google-token` (vedi la sezione
+   sotto): è lei che custodisce il `client_secret`. Senza, l'accesso funziona lo stesso ma gli
+   appuntamenti restano solo nell'app.
 
 La sicurezza per account si basa sulle Row Level Security di Supabase: ogni utente vede e scrive
 solo i propri file, perché il percorso nel bucket è `<user-id>/reportini.sqlite`.
@@ -153,8 +158,9 @@ si chiedono scope come `calendar.events`, ed è una procedura di Google, non un'
 - se l'app resta per uso interno, l'alternativa è **Google Workspace**: gli account del tuo
   dominio non vedono l'avviso, perché l'applicazione è considerata interna;
 - finché la verifica non arriva, l'alternativa tecnica è chiedere **solo** lo scope minimo e
-  usare `prompt=consent` per far accettare lo scope aggiuntivo al primo uso (è già così: l'app
-  chiede `calendar.events` fin dall'accesso, quindi niente passaggi aggiuntivi).
+  usare `prompt=consent` per far accettare lo scope aggiuntivo al primo uso. Con il flusso
+  attuale lo scope Calendar viene chiesto **all'accesso**, insieme al profilo: chi usa
+  l'app vede l'avviso una volta sola e poi può pubblicare gli eventi.
 
 Nel dubbio: il messaggio è un avviso di Google, non un errore dell'app, e l'accesso funziona
 lo stesso — ogni volta che l'app chiede il consenso, però, l'utente lo vede.
@@ -289,25 +295,75 @@ Se lo script non è stato eseguito l'app **non si rompe e lo dice**: al posto de
 un avviso che nomina il file da eseguire, e la sezione nascosta spiega lo stesso invece di
 mandarti fuori con un errore generico.
 
-### Google Calendar (facoltativo)
+### Google: accesso e calendario insieme
 
-Non serve un client OAuth dedicato: il token Calendar viaggia sulla **sessione Supabase**,
-che fa da client *confidenziale* lato server. Un'app su GitHub Pages non potrebbe farlo da
-sola — Google pretende il `client_secret` sia per scambiare l'authorization code sia per
-rinnovare il token, anche con PKCE, e metterlo nel browser lo esporrebbe a tutti.
+Il calendario **non è una funzione a parte**: si concede insieme all'accesso, con una sola
+schermata di consenso, e poi si rinnova da solo.
 
-Per abilitarlo:
+Perché dietro c'è un backend. Un'app su GitHub Pages è un client pubblico e non ha dove tenere
+un segreto; Google pretende il `client_secret` sia per scambiare l'authorization code sia per
+rinnovare il token, anche in PKCE — provato sull'endpoint reale, la risposta è
+`client_secret is missing`. Metterlo nel bundle lo darebbe a chiunque apra la pagina. Il pezzo
+che mancava è un piccolo servizio che parla con Google per conto dell'app: la **Supabase Edge
+Function `google-token`**, in `supabase/functions/google-token/index.ts`.
 
-1. In Google Cloud, sul **client usato da Supabase** (quello con la redirect URI
-   `https://<ref>.supabase.co/auth/v1/callback`): *Google Auth Platform → Data Access* →
-   aggiungi lo scope `https://www.googleapis.com/auth/calendar.events`
-2. In Supabase, *Authentication → Providers → Google*: lo scope deve comparire fra quelli
-   concessi
+Il percorso, che è uno solo:
 
-Il token dura un'ora. **Non può essere rinnovato in silenzio**: quando scade serve un nuovo
-accesso con Google, e l'app lo dice esplicitamente invece di fallire in silenzio.
+1. l'utente preme **Accedi con Google** e l'app lo porta all'*authorize* di Google chiedendo
+   **profilo e calendario nella stessa richiesta**;
+2. al ritorno lo `id_token` passa a Supabase con `signInWithIdToken` — è lui che apre la
+   sessione — e i token del calendario restano all'app;
+3. il `refresh_token` fa sì che il rinnovo sia **in silenzio**: prima, scaduto il token dopo
+   un'ora, l'utente doveva ricollegarsi.
 
-Senza questo scope ogni appuntamento si esporta comunque in formato `.ics`.
+Perché non può essere fatto diversamente: se l'accesso lo facesse Supabase, profilo e
+calendario sarebbero due richieste OAuth diverse e l'utente vedrebbe **due** schermate di
+consenso. In più il token che Supabase restituisce non ha un refresh token, quindi dopo un'ora
+l'app non potrebbe rinnovare niente.
+
+**Per metterlo in piedi** (una volta sola):
+
+1. In Google Cloud crea un **client OAuth di tipo "Applicazione web"**. Ne serve **uno solo**,
+   lo stesso che va configurato su Supabase: `signInWithIdToken` valida l'`id_token` con il
+   Client ID del progetto, quindi i due devono coincidere.
+2. Nei *URI di reindirizzamento autorizzati* metti:
+   - l'URL di callback di Supabase (lo trovi in *Authentication → Providers → Google*),
+   - `https://cazzevongole.github.io/Reportini`,
+   - `http://localhost:5173`.
+3. In Supabase, *Authentication → Providers → Google*: incolla **lo stesso** Client ID e Client
+   Secret del passo 1.
+4. Pubblica la funzione e carica i segreti:
+
+```bash
+supabase link --project-ref <ref>
+supabase functions deploy google-token --no-verify-jwt
+supabase secrets set GOOGLE_CLIENT_ID=<client id>
+supabase secrets set GOOGLE_CLIENT_SECRET=<client secret>
+supabase secrets set SUPABASE_URL=<project url>
+supabase secrets set SUPABASE_ANON_KEY=<chiave pubblica>
+supabase secrets set ORIGINI_AMMESSE=https://cazzevongole.github.io,http://localhost:5173
+```
+
+5. Metti il **Client ID** (solo quello, non il secret) in `VITE_GOOGLE_CLIENT_ID` nelle
+   variabili d'ambiente della web.
+
+Sul `--no-verify-jwt`: lo scambio avviene *mentre* l'utente sta entrando, quando non ha ancora
+una sessione da cui trarre un JWT, quindi la verifica automatica di Supabase non può
+applicarsi. Il costo è che lo `scambio` è aperto a chiunque; l'unica cosa che se ne ottiene è
+una sessione per il **proprio** account Google, attraverso un client che è pubblico per
+definizione. `rinnovo` e `revoca` invece richiedono un account Reportini e la funzione lo
+verifica da sé, interrogando Supabase Auth.
+
+Se Google rifiuta l'`id_token` con un errore sulla *audience*, il client ID del passo 1 e
+quello di Supabase non coincidono: è l'unico disallineamento possibile, e si vede subito
+perché l'accesso funziona ma il calendario no.
+
+Se i segreti non sono caricati la funzione risponde `503` con il nome del segreto mancante. Se
+il backend non è pronto, **l'accesso non si blocca**: l'app ripiega su Supabase da sola, e le
+impostazioni dicono cosa manca.
+
+Senza backend l'app funziona lo stesso: ogni appuntamento si esporta in formato `.ics`, e
+l'area Calendar resta semplicemente non collegata.
 
 ---
 
@@ -318,7 +374,7 @@ bun install
 bun run dev        # server di sviluppo su http://localhost:5173
 bun run build      # build statica in dist/ (+ 404.html per GitHub Pages)
 bun run typecheck  # tsc -b --noEmit
-bun run test       # test vitest (108 test) + smoke test dello schema
+bun run test       # test vitest (119 test) + smoke test dello schema
 bun run test:ui    # solo i test vitest
 bun run version:check  # la versione è coerente? (lo usa anche il rilascio)
 bun run version:patch  # alza la versione di un patch, come fa il workflow
@@ -349,8 +405,12 @@ I test vitest coprono dodici file:
   l'id dell'utente e non l'email, l'auto-salvataggio dopo ogni modifica, il
   controllo del bucket, la barra di navigazione, l'assenza di account e uscita fuori dalle
   impostazioni e la sparizione della sezione sviluppo.
-- `tests/google.test.tsx` copre il token Calendar che arriva sulla sessione Supabase: custodia,
-  scadenza con un'ora di margine, revoca allo scollegamento e i parametri OAuth richiesti.
+- `tests/google.test.tsx` copre il percorso col backend: l'authorize che chiede profilo e
+  calendario **nella stessa richiesta** (una sola schermata di consenso) e l'`offline` senza il
+  quale il refresh token non arriva, il ritorno con lo `state` confrontato, lo `id_token` che
+  apre la sessione su Supabase, il rinnovo in silenzio — incluso il caso di due chiamate
+  contemporanee che ne fanno una sola — e i due ripieghi: backend senza segreti e `audience`
+  sbagliata lasciano comunque entrare l'utente, dicendo che il calendario manca.
 - `tests/calendar.e2e.test.tsx` crea un appuntamento, esce e rientra, e verifica che non venga
   pubblicato due volte.
 - `tests/aggiornamento.test.tsx` guida l'aggiornamento automatico con un ponte finto (Electron
