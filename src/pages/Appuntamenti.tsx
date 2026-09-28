@@ -191,6 +191,15 @@ export default function Appuntamenti() {
                         <Button
                           size="sm"
                           variant={appuntamento.googleEventId ? "secondary" : "primary"}
+                          // Il pulsante è anche l'unico modo di togliere il
+                          // collegamento a mano: premendolo su un appuntamento
+                          // già pubblicato, l'evento viene cancellato da Google.
+                          // Annullare l'appuntamento, invece, lo segna annullato.
+                          title={
+                            appuntamento.googleEventId
+                              ? "Scollega l'evento da Google Calendar"
+                              : "Invia a Google Calendar"
+                          }
                           onClick={() =>
                             appuntamento.googleEventId ? dissocia(appuntamento) : sincronizza(appuntamento)
                           }

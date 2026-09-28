@@ -57,6 +57,11 @@ function aEvento(appuntamento: Appuntamento) {
       .filter(Boolean)
       .join("\n\n"),
     location: appuntamento.luogo || undefined,
+    // Lo stato dell'appuntamento viaggia con l'evento. Un annullato in Google
+    // Calendar non è sparito: è scritto "Cancelled" nella sua fascia, e
+    // l'app e il calendario dicono la stessa cosa. Cancellarlo del tutto
+    // farebbe sparire la traccia di un appuntamento che è esistito.
+    status: appuntamento.stato === "annullato" ? "cancelled" : "confirmed",
     // Il fuso va dichiarato: senza, Google interpreta l'ora nel fuso del
     // calendario di destinazione e un appuntamento delle 10:00 segnato a Roma
     // finisce a un'ora diversa per chi guarda il calendario da un'altra città.

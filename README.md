@@ -398,17 +398,30 @@ Cosa succede a seconda della situazione, deciso in `pubblicaAppuntamento()`
 | --- | --- |
 | Appuntamento nuovo | crea l'evento e salva il collegamento sull'appuntamento |
 | Appuntamento già pubblicato, ora modificato | **aggiorna** l'evento esistente, non ne crea un secondo |
-| Appuntamento portato ad "annullato" | **toglie** l'evento dal calendario di Google |
+| Appuntamento portato ad "annullato" | **segnal annullato** sull'evento, che resta in agenda scritto *Cancelled* |
 | Appuntamento **eliminato** | **toglie** l'evento dal calendario di Google |
 | Spunta disattivata | salva solo in locale, Google non viene toccato |
+
+Lo stato segue l'appuntamento, quindi l'evento dice sempre la stessa cosa
+che dice l'app. Un annullato in Google Calendar non è sparito, è scritto
+*Cancelled* nella sua fascia: è la differenza fra "non si è più tenuto" e
+"non è mai esistito", e senza quell'informazione l'app e il calendario si
+contraddirebbero. Il collegamento all'evento resta anche quando l'appuntamento
+è annullato, così la prossima modifica non crea un secondo evento.
+
+L'unico modo di togliere davvero l'evento è **eliminare** l'appuntamento, o
+premere "Su Google" su un appuntamento già pubblicato, che è lo scollegamento
+manuale.
 
 Due dettagli che contano più di quanto sembrino:
 
 - **Prima il locale, poi Google.** Il salvataggio nell'app non dipende dalla rete: se Google è
   irraggiungibile l'appuntamento è salvo lo stesso e l'avviso dice che non è stato pubblicato. Si
   riprova con **Invia a Google** nella lista appuntamenti, senza riscriverlo.
-- **Un appuntamento annullato non può restare in agenda.** È l'unico caso in cui l'app e il
-  calendario direbbero due cose diverse, quindi l'evento viene cancellato, non solo ignorato.
+- **Un appuntamento annullato non può restare in agenda senza dirlo.** L'evento non viene
+  cancellato, viene segnato annullato: Google Calendar accetta `status: "cancelled"` e lo
+  mostra come *Cancelled*. Sarebbe più semplice sparirlo del tutto, ma si perderebbe la traccia
+  di un appuntamento che è esistito, e il calendario direbbe una cosa diversa dall'app.
 - **Il contesto dell'anagrafico vive solo nell'evento.** All'evento viene aggiunto
   `Anagrafico: …`, `Documento: …` e `Relazione: …`; la descrizione che l'utente scrive resta quella
   nel database e nel modulo di modifica. Scollegare l'evento tocca **solo** i marcatori di Google
@@ -424,7 +437,7 @@ bun install
 bun run dev        # server di sviluppo su http://localhost:5173
 bun run build      # build statica in dist/ (+ 404.html per GitHub Pages)
 bun run typecheck  # tsc -b --noEmit
-bun run test       # test vitest (135 test) + smoke test dello schema
+bun run test       # test vitest (138 test) + smoke test dello schema
 bun run test:ui    # solo i test vitest
 bun run version:check  # la versione è coerente? (lo usa anche il rilascio)
 bun run version:patch  # alza la versione di un patch, come fa il workflow
@@ -437,6 +450,10 @@ I test vitest coprono dodici file:
   caricamento del modulo, che produceva una pagina bianca). Verifica anche che senza account non
   si veda nessuna pagina interna, e che la schermata di errore dica che cosa è andato storto e che
   i dati non sono persi.
+- `tests/desktop-renderer.test.tsx` monta l'app **con il ponte di Electron in piedi** e la apre su
+  un percorso di file vero (`/C:/Program Files/Reportini/…/index.html`): verifica che il percorso
+  non venga ripulito fino alla radice del disco, che era la pagina bianca su Windows. Con il
+  `BrowserRouter` di prima il test fallisce.
 - `tests/avvisi.test.tsx` verifica il meccanismo degli avvisi: successo, errore con la causa,
   auto-chiusura, durata maggiore per gli errori, tetto di tre avvisi contemporanei.
 - `tests/apertura.test.tsx` monta la schermata di benvenuto da sola: copre l'app, la frase è
@@ -508,6 +525,15 @@ del processo di rendering — in un file `renderer.log` nella stessa cartella de
 errore capita durante un render, invece di lasciare la finestra vuota compare
 `src/components/ErroreAvvio.tsx`: il messaggio dell'errore e la reassurance che **i dati non sono
 persi**, con il percorso del log per i dettagli.
+
+**E sul desktop il router guarda l'hash, non il percorso** (`HashRouter` invece di
+`BrowserRouter`, scelto da `isDesktop`). La pagina è un file, e il suo "percorso" è
+`/C:/Program Files/Reportini/resources/app.asar/renderer/index.html`: non è un percorso di rotte,
+quindi il router non trovava nulla e il fallback riportava a `/`, facendo navigare il browser a
+`file:///C:/` — la **radice del disco**, dove non c'è un indice.html. Il sintomo era la pagina
+bianca dopo quella di benvenuto, e nel log `did-fail-load -6 ERR_FILE_NOT_FOUND file:///C:/`. Con
+l'hash la rotta iniziale è `/` e nessuna navigazione può portare fuori dal file. Sulla web resta il
+`BrowserRouter`, perché lì gli URL puliti servono.
 
 ---
 

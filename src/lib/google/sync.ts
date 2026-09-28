@@ -90,9 +90,9 @@ export async function sincronizzaAppuntamento(
  *
  * Non è un semplice `sincronizzaAppuntamento`: qui si decide *cosa* fare
  * guardando lo stato. Un appuntamento già pubblicato viene aggiornato e non
- * duplicato, e uno annullato perde l'evento che aveva — lasciarlo sul
- * calendario di Google sarebbe l'unico caso in cui l'app e il calendario
- * racconterebbero due storie diverse.
+ * duplicato, e uno annullato viene **segnato annullato** sull'evento invece
+ * che cancellato: è quello che distingue "non si è più tenuto" da "non è
+ * mai esistito", e fa sì che l'app e il calendario non si contraddicano.
  */
 export async function pubblicaAppuntamento(
   id: number,
@@ -100,21 +100,24 @@ export async function pubblicaAppuntamento(
 ): Promise<SyncResult> {
   const salvato = ottieniAppuntamento(id);
   if (!salvato) return { ok: false, messaggio: "L'appuntamento non esiste più" };
-  if (salvato.stato === "annullato") {
-    if (!salvato.googleEventId) {
-      return { ok: true, messaggio: "Appuntamento annullato: non era su Google Calendar" };
-    }
-    return dissociaAppuntamento(id, calendarId);
+  if (salvato.stato === "annullato" && !salvato.googleEventId) {
+    return { ok: true, messaggio: "Appuntamento annullato: non era su Google Calendar" };
   }
   const esito = await sincronizzaAppuntamento(id, calendarId);
+  if (!esito.ok) return esito;
+  if (salvato.stato === "annullato") {
+    return { ok: true, messaggio: "Appuntamento segnato come annullato su Google Calendar" };
+  }
   return {
-    ...esito,
-    messaggio: esito.ok
-      ? salvato.googleEventId
-        ? "Appuntamento aggiornato su Google Calendar"
-        : "Appuntamento pubblicato su Google Calendar"
-      : esito.messaggio,
+    ok: true,
+    messaggio: salvato.googleEventId
+      ? `Appuntamento aggiornato su Google Calendar${inAttesaDi(salvato) ? " (in attesa)" : ""}`
+      : `Appuntamento pubblicato su Google Calendar${inAttesaDi(salvato) ? " (in attesa)" : ""}`,
   };
+}
+
+function inAttesaDi(appuntamento: Appuntamento): boolean {
+  return appuntamento.stato === "in-attesa";
 }
 
 /** Rimuove l'evento remoto e pulisce i marcatori di sincronizzazione locali. */

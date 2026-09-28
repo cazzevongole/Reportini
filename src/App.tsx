@@ -1,5 +1,11 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import {
+  BrowserRouter,
+  HashRouter,
+  Navigate,
+  Route,
+  Routes,
+} from "react-router-dom";
 import AppShell from "./components/AppShell";
 import { AvvisoProvider } from "./components/Avvisi";
 import RichiedeAccesso from "./components/RichiedeAccesso";
@@ -13,6 +19,7 @@ import Panel from "./pages/Panel";
 import Relazioni from "./pages/Relazioni";
 import Sviluppo from "./pages/Sviluppo";
 import { initDatabase } from "./lib/sqlite/engine";
+import { isDesktop } from "./lib/sqlite/storage";
 import { baseRoutte } from "./lib/cloud/destinazione";
 
 /**
@@ -59,6 +66,21 @@ function DatabaseGate({ children }: { children: ReactNode }) {
 }
 
 export default function App() {
+  /**
+   * Sul desktop la pagina è un file — `file:///C:/Program Files/.../index.html`
+   * — e il suo percorso non è un percorso di rotte. Con un BrowserRouter la
+   * posizione iniziale non combacia con nessuna rotta, scatta il fallback che
+   * riporta a "/", e il browser va davvero a `file:///C:/`: cioè alla radice
+   * del disco, dove non c'è un indice.html. La pagina resta bianca e nel log
+   * c'è `did-fail-load ERR_FILE_NOT_FOUND file:///C:/`.
+   *
+   * Sul desktop si usa quindi il router con l'hash, che guarda il frammento
+   * invece del percorso: la rotta iniziale è "/" e nessuna navigazione può
+   * portare fuori dal file. Sulla web resta il BrowserRouter, perché lì
+   * gli URL puliti servono (GitHub Pages, link, ricaricare la pagina).
+   */
+  const Router = isDesktop ? HashRouter : BrowserRouter;
+
   return (
     // Fuori da tutto, gate del database compreso: l'ospite non deve vedere
     // il doppio salto fra "saluto" e "apertura dei tuoi dati".
@@ -72,7 +94,7 @@ export default function App() {
               l'accesso l'utente finiva su una pagina di profilo e poi su un
               404 al ricaricare. Nell'app desktop, che si apre da file://, la
               base è "./" e per il router vale la radice. */}
-          <BrowserRouter
+          <Router
             basename={baseRoutte()}
             future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
           >
@@ -107,7 +129,7 @@ export default function App() {
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
-          </BrowserRouter>
+          </Router>
         </AvvisoProvider>
       </DatabaseGate>
     </SchermataApertura>
