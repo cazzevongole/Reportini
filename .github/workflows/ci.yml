@@ -14,9 +14,12 @@ concurrency:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    # Immagine bloccata, non "latest": GitHub annuncia la migrazione di
+    # ubuntu-latest a Ubuntu 26 e avvisa su ogni run. Qui si vuole la 24.04,
+    # che è quella nota, finché non la si cambia di proposito.
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: oven-sh/setup-bun@v2
         with:

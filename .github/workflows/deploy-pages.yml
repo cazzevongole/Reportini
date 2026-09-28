@@ -18,13 +18,16 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Immagine bloccata, non "latest": GitHub annuncia la migrazione di
+    # ubuntu-latest a Ubuntu 26 e avvisa su ogni run. Qui si vuole la 24.04,
+    # che è quella nota, finché non la si cambia di proposito.
+    runs-on: ubuntu-24.04
     # Le variabili VITE_* stanno nell'ambiente "prod": GitHub le rende
     # disponibili solo ai job che dichiarano quell'ambiente. Senza questa riga
     # il build le legge vuote e pubblica un'app che non fa entrare nessuno.
     environment: prod
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -72,7 +75,7 @@ jobs:
       # I job girano su runner separati: senza questo passaggio il job di
       # deploy si trova davanti una dist/ inesistente e muore su "tar: dist:
       # Cannot open".
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: site
           path: dist
@@ -80,19 +83,22 @@ jobs:
 
   deploy:
     needs: build
-    runs-on: ubuntu-latest
+    # Immagine bloccata, non "latest": GitHub annuncia la migrazione di
+    # ubuntu-latest a Ubuntu 26 e avvisa su ogni run. Qui si vuole la 24.04,
+    # che è quella nota, finché non la si cambia di proposito.
+    runs-on: ubuntu-24.04
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: site
           path: dist
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: dist
 
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

@@ -55,12 +55,15 @@ concurrency:
 
 jobs:
   versione:
-    runs-on: ubuntu-latest
+    # Immagine bloccata, non "latest": GitHub annuncia la migrazione di
+    # ubuntu-latest a Ubuntu 26 e avvisa su ogni run. Qui si vuole la 24.04,
+    # che è quella nota, finché non la si cambia di proposito.
+    runs-on: ubuntu-24.04
     outputs:
       versione: ${{ steps.scegli.outputs.versione }}
       daRilasciare: ${{ steps.scegli.outputs.daRilasciare }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -131,14 +134,16 @@ jobs:
             nome: mac
           - os: windows-latest
             nome: win
-          - os: ubuntu-latest
+          # Come sopra: immagine bloccata, così il pacchetto Linux si
+          # costruisce sempre sulla stessa e non su un'etichetta che migra.
+          - os: ubuntu-24.04
             nome: linux
     runs-on: ${{ matrix.os }}
     steps:
       # Si compila dal tag, non dal commit che ha fatto partire il workflow:
       # è il tag che contiene il commit di versione, ed è l'unico modo perché
       # electron-builder metta nel pacchetto lo stesso numero della release.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.versione.outputs.versione }}
 
@@ -146,7 +151,7 @@ jobs:
         with:
           bun-version: latest
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
 
@@ -182,7 +187,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Pubblica gli artefatti
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: reportini-${{ matrix.nome }}
           # Solo i pacchetti installabili, non le cartelle scompattate:
@@ -207,16 +212,19 @@ jobs:
   pubblica:
     needs: [versione, impacchetta]
     if: needs.versione.outputs.daRilasciare == 'true'
-    runs-on: ubuntu-latest
+    # Immagine bloccata, non "latest": GitHub annuncia la migrazione di
+    # ubuntu-latest a Ubuntu 26 e avvisa su ogni run. Qui si vuole la 24.04,
+    # che è quella nota, finché non la si cambia di proposito.
+    runs-on: ubuntu-24.04
     steps:
       # gh release create lavora su un repository git: senza checkout non
       # trova il tag e si ferma.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.versione.outputs.versione }}
 
       - name: Scarica gli artefatti
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: pacchetti
 
