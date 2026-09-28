@@ -97,6 +97,19 @@ manutenzione. Non c'è una voce di menu: si arriva alla pagina con l'indirizzo.
 > La whitelist viene compilata nel bundle del browser: protegge contro accessi casuali, **non** è
 > un controllo di sicurezza. Per una barriera vera va verificata lato server.
 
+### Avvisi
+
+Ogni azione che chiama la rete — salvataggio online, pubblicazione su Google Calendar,
+scollegamento, uscita dalla sessione, esportazione — mostra sempre un avviso breve con l'esito:
+verde per il successo, rosso per l'errore, e l'errore riporta sia l'azione fallita sia la causa
+vera. Le azioni passano da `useAvvisi()` (`src/components/Avvisi.tsx`): `esegui()` avvolge la
+chiamata, mostra il messaggio e restituisce `null` se è fallita, così chi chiama non prosegue con
+dati che non ci sono. Il provider sta fuori dal router: un avviso resta visibile anche cambiando
+pagina, per esempio dopo un'uscita dalla sessione.
+
+Le azioni che scrivono solo in locale (anagrafiche, relazioni, appuntamenti, copie di sicurezza)
+non fanno richieste di rete e quindi non hanno bisogno di avvisi.
+
 ### Google Calendar (facoltativo)
 
 Non serve un client OAuth dedicato: il token Calendar viaggia sulla **sessione Supabase**,
@@ -126,16 +139,18 @@ bun install
 bun run dev        # server di sviluppo su http://localhost:5173
 bun run build      # build statica in dist/ (+ 404.html per GitHub Pages)
 bun run typecheck  # tsc -b --noEmit
-bun run test       # test vitest (51 test) + smoke test dello schema
+bun run test       # test vitest (58 test) + smoke test dello schema
 bun run test:ui    # solo i test vitest
 ```
 
-I test vitest coprono quattro file:
+I test vitest coprono cinque file:
 
 - `tests/app.test.tsx` monta l'app reale in jsdom con un IndexedDB finto: è la rete che
   intercetta i crash a runtime (per esempio un dereferenziamento di `window.reportini` fatto al
   caricamento del modulo, che produceva una pagina bianca). Verifica anche che senza account non
   si veda nessuna pagina interna.
+- `tests/avvisi.test.tsx` verifica il meccanismo degli avvisi: successo, errore con la causa,
+  auto-chiusura, durata maggiore per gli errori, tetto di tre avvisi contemporanei.
 - `tests/cloud.test.tsx` verifica con un client Supabase finto l'accesso con Google, il
   caricamento e il ripristino della copia online, il pulsante "Salva subito online" con
   l'id dell'utente e non l'email, l'auto-salvataggio dopo ogni modifica, il

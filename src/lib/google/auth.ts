@@ -119,16 +119,22 @@ async function arricchisciProfilo(accessToken: string): Promise<void> {
   }
 }
 
-export function disconnect(): void {
+export async function disconnect(): Promise<{ revocato: boolean }> {
   const token = readToken();
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(PROFILE_KEY);
-  if (!token?.accessToken) return;
+  if (!token?.accessToken) return { revocato: true };
   // Revocare conta più che cancellare il token: altrimenti l'app resta
-  // autorizzata su myaccount.google.com/permissions. Non è bloccante.
-  void fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(token.accessToken)}`, {
-    method: "POST",
-  }).catch(() => undefined);
+  // autorizzata su myaccount.google.com/permissions. Non è bloccante per
+  // l'utente, quindi una revoca fallita va detta, non nascosta.
+  try {
+    await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(token.accessToken)}`, {
+      method: "POST",
+    });
+    return { revocato: true };
+  } catch {
+    return { revocato: false };
+  }
 }
 
 /* ------------------------------- collegamento ----------------------------- */

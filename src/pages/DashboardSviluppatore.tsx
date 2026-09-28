@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { BugIcon, CheckIcon, CloudIcon } from "../components/icons";
 import { Badge, Button, Card, PageHeader, Stat } from "../components/ui";
+import { useAvvisi } from "../components/Avvisi";
 import { useLiveQuery } from "../hooks/useLiveQuery";
 import { useAccount } from "../lib/cloud/session";
 import { sincronizza } from "../lib/cloud/sync";
@@ -15,15 +15,11 @@ import { isDesktop } from "../lib/sqlite/storage";
  */
 export default function DashboardSviluppatore() {
   const { email, isDeveloper, session, signOut } = useAccount();
-  const [azione, setAzione] = useState("");
+  const { notifica, esegui } = useAvvisi();
   const dati = useLiveQuery(() => riepilogo());
   const anagrafici = useLiveQuery(() => elencaAnagrafici());
   const relazioni = useLiveQuery(() => elencaRelazioni());
   const appuntamenti = useLiveQuery(() => elencaAppuntamenti());
-
-  useEffect(() => {
-    setAzione("");
-  }, [email]);
 
   if (!isDeveloper) return <Navigate to="/panel" replace />;
 
@@ -31,14 +27,14 @@ export default function DashboardSviluppatore() {
     // Nel bucket il percorso è <user-id>/…: con l'email la scrittura viene
     // respinta dalle RLS e il pulsante sembra non fare nulla.
     const userId = session?.user?.id;
-    if (!userId) return;
-    setAzione("Salvataggio in corso…");
-    try {
-      const esito = await sincronizza(userId, "solo_upload");
-      setAzione(esito.messaggio);
-    } catch (errore) {
-      setAzione(errore instanceof Error ? errore.message : "Salvataggio non riuscito");
+    if (!userId) {
+      notifica("errore", "Sessione senza id utente: esci e rientra.");
+      return;
     }
+    await esegui(() => sincronizza(userId, "solo_upload"), {
+      successo: (r) => r.messaggio,
+      errore: "Salvataggio nel cloud non riuscito",
+    });
   }
 
   const tabelle = [
@@ -112,20 +108,21 @@ export default function DashboardSviluppatore() {
             </Button>
             <Button
               variant="secondary"
-              onClick={() => {
-                void navigator.clipboard?.writeText(session?.user.id ?? "");
-                setAzione("ID account copiato negli appunti.");
+              onClick={async () => {
+                const id = session?.user.id ?? "";
+                if (!id) {
+                  notifica("errore", "Sessione senza id utente: esci e rientra.");
+                  return;
+                }
+                await esegui(() => navigator.clipboard.writeText(id), {
+                  successo: "ID account copiato negli appunti.",
+                  errore: "Copia negli appunti non riuscita",
+                });
               }}
             >
               Copia ID account
             </Button>
           </div>
-          {azione ? (
-            <p className="mt-3 flex items-center gap-2 text-sm text-ink-600">
-              <CheckIcon className="h-4 w-4 text-brand-600" />
-              {azione}
-            </p>
-          ) : null}
         </Card>
       </section>
 
@@ -135,7 +132,16 @@ export default function DashboardSviluppatore() {
           <p className="mt-1.5 text-sm text-ink-500">
             Account Google collegato: {email}
           </p>
-          <Button variant="secondary" className="mt-4" onClick={() => void signOut()}>
+          <Button
+            variant="secondary"
+            className="mt-4"
+            onClick={() => {
+              void esegui(() => signOut(), {
+                successo: "Sessione chiusa",
+                errore: "Uscita non riuscita",
+              });
+            }}
+          >
             Esci
           </Button>
         </Card>

@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import AppShell from "./components/AppShell";
+import { AvvisoProvider } from "./components/Avvisi";
 import RichiedeAccesso from "./components/RichiedeAccesso";
 import Accesso from "./pages/Accesso";
 import AnagraficoDettaglio from "./pages/AnagraficoDettaglio";
@@ -58,36 +59,40 @@ function DatabaseGate({ children }: { children: ReactNode }) {
 export default function App() {
   return (
     <DatabaseGate>
-      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <Routes>
-          {/* Unica rotta aperta: senza account non si vede nient'altro. */}
-          <Route path="/accedi" element={<Accesso />} />
-          <Route
-            path="/"
-            element={
-              <RichiedeAccesso>
-                <Navigate to="/panel" replace />
-              </RichiedeAccesso>
-            }
-          />
-          <Route
-            element={
-              <RichiedeAccesso>
-                <AppShell />
-              </RichiedeAccesso>
-            }
-          >
-            <Route path="/panel" element={<Panel />} />
-            <Route path="/panel/anagrafici" element={<Anagrafici />} />
-            <Route path="/panel/anagrafici/:id" element={<AnagraficoDettaglio />} />
-            <Route path="/panel/relazioni" element={<Relazioni />} />
-            <Route path="/panel/appuntamenti" element={<Appuntamenti />} />
-            <Route path="/panel/impostazioni" element={<Impostazioni />} />
-            <Route path="/panel/sviluppo" element={<DashboardSviluppatore />} />
-          </Route>
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
+      {/* Gli avvisi stanno fuori dal router: un'azione che chiama la rete deve
+          poter parlare anche cambiando pagina (per esempio uscendo). */}
+      <AvvisoProvider>
+        <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          <Routes>
+            {/* Unica rotta aperta: senza account non si vede nient'altro. */}
+            <Route path="/accedi" element={<Accesso />} />
+            <Route
+              path="/"
+              element={
+                <RichiedeAccesso>
+                  <Navigate to="/panel" replace />
+                </RichiedeAccesso>
+              }
+            />
+            <Route
+              element={
+                <RichiedeAccesso>
+                  <AppShell />
+                </RichiedeAccesso>
+              }
+            >
+              <Route path="/panel" element={<Panel />} />
+              <Route path="/panel/anagrafici" element={<Anagrafici />} />
+              <Route path="/panel/anagrafici/:id" element={<AnagraficoDettaglio />} />
+              <Route path="/panel/relazioni" element={<Relazioni />} />
+              <Route path="/panel/appuntamenti" element={<Appuntamenti />} />
+              <Route path="/panel/impostazioni" element={<Impostazioni />} />
+              <Route path="/panel/sviluppo" element={<DashboardSviluppatore />} />
+            </Route>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </BrowserRouter>
+      </AvvisoProvider>
     </DatabaseGate>
   );
 }
