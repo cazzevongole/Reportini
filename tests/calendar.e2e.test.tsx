@@ -1,0 +1,334 @@
+import "fake-indexeddb/auto";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { initDatabase } from "../src/lib/sqlite/engine";
+
+// In un ambiente jsdom sotto vitest sql.js carica il wasm da filesystem, non
+// con fetch: gli serve un percorso reale. Così il test gira sul motore vero e
+// non su un doppione finto.
+vi.mock("sql.js/dist/sql-wasm.wasm?url", () => ({
+  default: `${process.cwd()}/node_modules/sql.js/dist/sql-wasm.wasm`,
+}));
+import {
+  creaAnagrafico,
+  creaAppuntamento,
+  elencaAppuntamenti,
+  elencaAnagrafici,
+  marcaAppuntamentoSincronizzato,
+  ottieniAppuntamento,
+} from "../src/lib/repo";
+import { resetSincronizzazione, sincronizza } from "../src/lib/cloud/sync";
+import { dissociaAppuntamento, sincronizzaAppuntamento } from "../src/lib/google/sync";
+
+/* --------------------------- cloud finto (in memoria) --------------------- */
+
+/**
+ * vi.hoisted: la factory di vi.mock gira durante l'import dei moduli di
+ * production, prima che le const del file siano inizializzate. Senza, il
+ * mock non trova nulla e il test fallisce con "before initialization".
+ */
+/**
+ * vi.hoisted: la factory di vi.mock gira durante l'import dei moduli di
+ * production, prima che le const del file siano inizializzate. Senza, il
+ * mock non trova nulla e il test muore con "before initialization".
+ */
+const finto = vi.hoisted(() => {
+  const cloud = new Map<string, Blob>();
+  const stato = {
+    /** Sopravvive a "logout" e "login": è il server, non il browser. */
+    cloud,
+    sessione: null as { user: { id: string; email: string } } | null,
+  };
+  const supabase = {
+    auth: {
+      getSession: vi.fn(async () => ({ data: { session: stato.sessione } })),
+      onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })),
+      signOut: vi.fn(async () => {
+        stato.sessione = null;
+      }),
+    },
+    storage: {
+      from: () => ({
+        upload: vi.fn(async (path: string, corpo: Blob | Uint8Array) => {
+          const byte =
+            corpo instanceof Uint8Array
+              ? corpo
+              : new Uint8Array(await (corpo as Blob).arrayBuffer());
+          cloud.set(path, new Blob([byte.slice().buffer]));
+          return { error: null };
+        }),
+        download: vi.fn(async (path: string) => {
+          const blob = cloud.get(path);
+          if (!blob) return { data: null, error: { message: "not found" } };
+          return { data: blob, error: null };
+        }),
+        remove: vi.fn(async () => ({ error: null })),
+      }),
+    },
+  };
+  return { stato, supabase };
+});
+
+const supabaseFinto = finto.supabase;
+const cloud = finto.stato.cloud;
+
+// La factory deve puntare a finto.supabase, non all'alias: gli import statici
+// dei moduli di production vengono valutati prima di qualsiasi const del file.
+vi.mock("@supabase/supabase-js", () => ({ createClient: () => finto.supabase }));
+
+/* --------------------------- Calendar API finta --------------------------- */
+
+interface EventoFinto {
+  id: string;
+  htmlLink?: string;
+  summary?: string;
+  start?: { dateTime?: string; timeZone?: string };
+  end?: { dateTime?: string; timeZone?: string };
+}
+
+const eventi = new Map<string, EventoFinto>();
+const chiamate: { metodo: string; url: string }[] = [];
+let prossimoId = 1;
+
+function risposta(corpo: unknown, stato = 200) {
+  return {
+    ok: stato >= 200 && stato < 300,
+    status: stato,
+    text: async () => JSON.stringify(corpo),
+    json: async () => corpo,
+  } as Response;
+}
+
+const fetchFinto = vi.fn(async (url: string, init: RequestInit = {}) => {
+  const metodo = init.method ?? "GET";
+  chiamate.push({ metodo, url: String(url) });
+
+  // Token già presente: l'accessToken() non deve aprire il popup.
+  if (String(url).includes("oauth2.googleapis.com")) return risposta({ access_token: "x" });
+
+  if (String(url).includes("/calendarList")) {
+    return risposta({ items: [{ id: "primary", summary: "Calendario principale", primary: true }] });
+  }
+
+  const evento = String(url).match(/\/events\/([^?]+)/);
+  if (evento) {
+    const id = decodeURIComponent(evento[1]);
+    if (metodo === "DELETE") {
+      eventi.delete(id);
+      return risposta({}, 204);
+    }
+    if (metodo === "PUT" || metodo === "PATCH") {
+      const aggiornato = { ...(eventi.get(id) ?? { id }), ...(JSON.parse(String(init.body)) as object) };
+      eventi.set(id, aggiornato as EventoFinto);
+      return risposta(aggiornato);
+    }
+  }
+  if (String(url).endsWith("/events") && metodo === "POST") {
+    const creato = {
+      id: `evt-${prossimoId++}`,
+      htmlLink: "https://calendar.google.com/event?eid=falso",
+      ...(JSON.parse(String(init.body)) as object),
+    } as EventoFinto;
+    eventi.set(creato.id, creato);
+    return risposta(creato);
+  }
+  return risposta({});
+});
+
+/* --------------------------------- helpers -------------------------------- */
+
+const UTENTE = "utente-1";
+const TOKEN_KEY = "reportini.google.token";
+
+async function nuovoDatabase() {
+  // Solo i dati: il token Google rappresenta una sessione già collegata e
+  // sopravvive al riavvio del database.
+  const db = await initDatabase();
+  // Un dispositivo nuovo parte vuoto: nessuna copia locale.
+  db.run("DELETE FROM anagrafici");
+  db.run("DELETE FROM relazioni");
+  db.run("DELETE FROM appuntamenti");
+}
+
+function creaSchedaConAppuntamento() {
+  const anagraficoId = creaAnagrafico({
+    nome: "Mario",
+    cognome: "Rossi",
+    documento: "VR123456A",
+    dataNascita: "1980-01-02",
+    sesso: "M",
+    nazionalita: "ITA",
+    indirizzo: "Via Roma 1",
+    citta: "Verona",
+    cap: "37100",
+    provincia: "VR",
+    telefono: "0401234567",
+    email: "mario.rossi@example.it",
+    note: "",
+  });
+  const appuntamentoId = creaAppuntamento({
+    anagraficoId,
+    relazioneId: null,
+    titolo: "Ritiro documento",
+    descrizione: "",
+    inizio: "2026-10-01T10:00:00.000Z",
+    fine: "2026-10-01T10:45:00.000Z",
+    luogo: "Sportello 3",
+    stato: "confermato",
+    promemoriaMin: 30,
+    googleEventId: null,
+    googleCalendarId: null,
+    googleHtmlLink: null,
+    googleSyncAt: null,
+  });
+  return { anagraficoId, appuntamentoId };
+}
+
+/** Token Google già valido: equivale a un account Calendar collegato. */
+function collegaGoogle() {
+  localStorage.setItem(
+    TOKEN_KEY,
+    JSON.stringify({ accessToken: "at", expiresAt: Date.now() + 3_600_000, refreshToken: "rt" }),
+  );
+}
+
+beforeEach(() => {
+  localStorage.clear();
+  sessionStorage.clear();
+  cloud.clear();
+  eventi.clear();
+  chiamate.length = 0;
+  prossimoId = 1;
+  finto.stato.sessione = { user: { id: UTENTE, email: "mara@example.it" } };
+  supabaseFinto.auth.getSession.mockClear();
+  // Il collegamento in sé è coperto da tests/google.test.tsx.
+  collegaGoogle();
+  vi.stubGlobal("fetch", fetchFinto);
+  resetSincronizzazione();
+});
+
+/* --------------------------------- test ----------------------------------- */
+
+describe("Reportini end-to-end: dati, Calendar, logout e rientro", () => {
+  it("crea l'anagrafico, pubblica l'evento su Calendar e conserva il collegamento", async () => {
+    await nuovoDatabase();
+    const { appuntamentoId } = creaSchedaConAppuntamento();
+
+    const esito = await sincronizzaAppuntamento(appuntamentoId, "primary");
+
+    expect(esito.ok).toBe(true);
+    expect(esito.messaggio).toMatch(/sincronizzato/i);
+    // Un solo evento creato, e con il fuso dichiarato.
+    expect(eventi.size).toBe(1);
+    const creato = [...eventi.values()][0];
+    expect(creato.summary).toBe("Ritiro documento");
+    expect(creato.start?.dateTime).toBe("2026-10-01T10:00:00.000Z");
+    expect(creato.start?.timeZone).toBeTruthy();
+    expect(creato.end?.timeZone).toBeTruthy();
+    // Il contesto dell'anagrafico viaggia nella descrizione.
+    expect(chiamate.some((c) => c.metodo === "POST" && c.url.endsWith("/events"))).toBe(true);
+
+    // Il collegamento è persistito in locale.
+    const salvato = ottieniAppuntamento(appuntamentoId);
+    expect(salvato?.googleEventId).toBe(creato.id);
+    expect(salvato?.googleCalendarId).toBe("primary");
+  });
+
+  it("dopo logout e rientro i dati tornano dal cloud e l'evento viene aggiornato, non duplicato", async () => {
+    await nuovoDatabase();
+    const { anagraficoId, appuntamentoId } = creaSchedaConAppuntamento();
+    await sincronizzaAppuntamento(appuntamentoId, "primary");
+    const idEvento = ottieniAppuntamento(appuntamentoId)?.googleEventId;
+    expect(idEvento).toBeTruthy();
+
+    // Salva nel cloud, come fa l'auto-sync dopo ogni scrittura.
+    const upload = await sincronizza(UTENTE);
+    expect(upload.messaggio).toMatch(/salvati nel cloud/i);
+
+    // --- logout ---
+    finto.stato.sessione = null;
+    await supabaseFinto.auth.signOut();
+    localStorage.clear(); // il browser non conserva nulla
+    sessionStorage.clear();
+
+    // Dispositivo nuovo: database vuoto, stato di sync dimenticato.
+    resetSincronizzazione();
+    await nuovoDatabase();
+    expect(elencaAnagrafici().length).toBe(0);
+    expect(elencaAppuntamenti({}).length).toBe(0);
+
+    // --- login ---
+    // L'utente ricollega anche Google Calendar: il popup si riapre come dopo
+    // ogni scadenza. L'anagrafica e il collegamento all'evento, invece,
+    // arrivano dal cloud e non da qui.
+    finto.stato.sessione = { user: { id: UTENTE, email: "mara@example.it" } };
+    collegaGoogle();
+    const ripristino = await sincronizza(UTENTE);
+
+    expect(ripristino.scaricato).toBe(true);
+    expect(ripristino.messaggio).toMatch(/ripristinati dal cloud/i);
+    const anagrafici = elencaAnagrafici();
+    expect(anagrafici.length).toBe(1);
+    expect(anagrafici[0].nome).toBe("Mario");
+    expect(anagrafici[0].id).toBe(anagraficoId);
+
+    // Soprattutto: il collegamento all'evento è sopravvissuto.
+    const rientrato = ottieniAppuntamento(appuntamentoId);
+    expect(rientrato?.googleEventId).toBe(idEvento);
+
+    // Risincronizzare aggiorna l'evento esistente invece di crearne un altro.
+    await aggiornaTitolo(rientrato!.id, "Ritiro documento (rivisto)");
+    const secondo = await sincronizzaAppuntamento(appuntamentoId, "primary");
+
+    expect(secondo.ok).toBe(true);
+    expect(eventi.size).toBe(1);
+    expect([...eventi.values()][0].summary).toBe("Ritiro documento (rivisto)");
+  });
+
+  it("scollegare elimina l'evento remoto e pulisce i marcatori", async () => {
+    await nuovoDatabase();
+    const { appuntamentoId } = creaSchedaConAppuntamento();
+    await sincronizzaAppuntamento(appuntamentoId, "primary");
+    expect(eventi.size).toBe(1);
+
+    const esito = await dissociaAppuntamento(appuntamentoId);
+
+    expect(esito.ok).toBe(true);
+    expect(eventi.size).toBe(0);
+    const ripulito = ottieniAppuntamento(appuntamentoId);
+    expect(ripulito?.googleEventId).toBeNull();
+    expect(ripulito?.googleCalendarId).toBeNull();
+  });
+
+  it("un errore di Google non lascia marcatori falsi sull'appuntamento", async () => {
+    await nuovoDatabase();
+    const { appuntamentoId } = creaSchedaConAppuntamento();
+    fetchFinto.mockImplementationOnce(async () => risposta({ error: "quotaExceeded" }, 403));
+
+    const esito = await sincronizzaAppuntamento(appuntamentoId, "primary");
+
+    expect(esito.ok).toBe(false);
+    expect(esito.messaggio).toMatch(/403/);
+    // Nessun collegamento registrato: il tentativo non è riuscito.
+    expect(ottieniAppuntamento(appuntamentoId)?.googleEventId).toBeNull();
+  });
+
+  it("marcaAppuntamentoSincronizzato conserva il collegamento già presente", async () => {
+    await nuovoDatabase();
+    const { appuntamentoId } = creaSchedaConAppuntamento();
+    marcaAppuntamentoSincronizzato(appuntamentoId, {
+      googleEventId: "evt-manuale",
+      googleCalendarId: "secondario",
+      googleHtmlLink: "https://calendar.google.com/event?eid=manuale",
+    });
+    const salvato = ottieniAppuntamento(appuntamentoId);
+    expect(salvato?.googleEventId).toBe("evt-manuale");
+    expect(salvato?.googleCalendarId).toBe("secondario");
+  });
+});
+
+/** Modifica il titolo passando dalla stessa API del repository. */
+async function aggiornaTitolo(id: number, titolo: string) {
+  const { aggiornaAppuntamento } = await import("../src/lib/repo");
+  const attuale = ottieniAppuntamento(id)!;
+  aggiornaAppuntamento(id, { ...attuale, titolo });
+}

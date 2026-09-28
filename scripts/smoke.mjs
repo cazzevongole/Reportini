@@ -84,6 +84,35 @@ console.log(
   `query di repo.ts verificate: ${query.length}, non valide: ${fallite} (saltati ${candidate.length - query.length} template)`,
 );
 
+// Deriva delle colonne: repo.ts costruisce le INSERT a partire da chiavi di
+// oggetto, quindi un errore di battitura (una colonna che si chiama come nello
+// spagnolo) fallisce solo a runtime, quando l'app prova a salvare. Qui le
+// chiavi di ogni factory di valori vengono confrontate con lo schema reale.
+const TABELLE_DAL_REPO = {
+  valoriAnagrafico: "anagrafici",
+  valoriRelazione: "relazioni",
+  valoriAppuntamento: "appuntamenti",
+};
+let disallineamenti = 0;
+for (const [funzione, tabella] of Object.entries(TABELLE_DAL_REPO)) {
+  const corpo = sorgente.match(new RegExp(`function ${funzione}\\([\\s\\S]*?\\n\\}`))?.[0];
+  if (!corpo) {
+    console.log(`factory non trovata: ${funzione}`);
+    continue;
+  }
+  const colonne = new Set(
+    db.exec(`PRAGMA table_info(${tabella})`)[0].values.map((riga) => riga[1]),
+  );
+  const chiavi = [...corpo.matchAll(/^\s{4}([A-Za-z][A-Za-z0-9]*):/gm)].map((m) => m[1]);
+  for (const chiave of chiavi) {
+    if (!colonne.has(chiave)) {
+      console.error(`COLONNA INESISTENTE: ${tabella}.${chiave} (usata da ${funzione})`);
+      disallineamenti += 1;
+    }
+  }
+  console.log(`${funzione}: ${chiavi.length} colonne verificate su ${tabella}`);
+}
+
 const byte = db.export();
 console.log("byte esportati:", byte.length, "| intestazione:", String.fromCharCode(...byte.slice(0, 15)));
-if (fallite > 0) process.exit(1);
+if (fallite > 0 || disallineamenti > 0) process.exit(1);

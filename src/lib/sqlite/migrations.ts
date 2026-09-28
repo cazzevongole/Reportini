@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS appuntamenti (
   anagraficoId INTEGER REFERENCES anagrafici(id) ON DELETE SET NULL,
   relazioneId INTEGER REFERENCES relazioni(id) ON DELETE SET NULL,
   titolo TEXT NOT NULL DEFAULT '',
-  descripcion TEXT NOT NULL DEFAULT '',
+  descrizione TEXT NOT NULL DEFAULT '',
   inizio TEXT NOT NULL,
   fine TEXT NOT NULL,
   luogo TEXT NOT NULL DEFAULT '',
