@@ -175,3 +175,17 @@ export const BugIcon = (p: IconProps) => (
     <path d="M8 12H4M20 12h-4M8 16H5M19 16h-3M9 8l-2-3M15 8l2-3" />
   </Icon>
 );
+
+export const EyeIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M2.5 12S6 5.8 12 5.8 21.5 12 21.5 12 18 18.2 12 18.2 2.5 12 2.5 12Z" />
+    <circle cx="12" cy="12" r="2.8" />
+  </Icon>
+);
+
+export const RotateIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M20 12a8 8 0 1 1-2.6-5.9" />
+    <path d="M20 4v4.5h-4.5" />
+  </Icon>
+);

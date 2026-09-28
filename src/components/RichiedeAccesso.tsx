@@ -1,6 +1,7 @@
 import { Navigate, useLocation } from "react-router-dom";
 import type { ReactNode } from "react";
 import { useSalvataggioCloud } from "../hooks/useSalvataggioCloud";
+import { useRegistrazioneVersioni } from "../hooks/useVersioniBackup";
 import { useAccount } from "../lib/cloud/session";
 
 /**
@@ -14,9 +15,11 @@ import { useAccount } from "../lib/cloud/session";
 export default function RichiedeAccesso({ children }: { children: ReactNode }) {
   const { email, loading } = useAccount();
   const posizione = useLocation();
-  // Con l'account aperto parte il salvataggio online automatico: qui dentro,
-  // perché copra tutte le pagine e non una sola schermata.
+  // Con l'account aperto partono le due cose che devono stare accese per
+  // tutta la sessione e non appartencono a una schermata: il salvataggio
+  // online automatico e le versioni di backup del database.
   useSalvataggioCloud();
+  useRegistrazioneVersioni();
 
   if (loading) {
     return (

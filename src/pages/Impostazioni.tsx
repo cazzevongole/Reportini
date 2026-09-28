@@ -9,6 +9,7 @@ import {
 } from "../components/icons";
 import { Badge, Button, Card, PageHeader } from "../components/ui";
 import { useAvvisi } from "../components/Avvisi";
+import VersioniBackup from "../components/VersioniBackup";
 import { useLiveQuery } from "../hooks/useLiveQuery";
 import { useSalvataggioCloud } from "../hooks/useSalvataggioCloud";
 import { useAccount } from "../lib/cloud/session";
@@ -303,6 +304,8 @@ export default function Impostazioni() {
           </div>
         </Card>
       </section>
+
+      <VersioniBackup />
 
       <section>
         <Card className="bg-ink-950 p-5 text-white">
