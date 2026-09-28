@@ -92,6 +92,7 @@ interface EventoFinto {
   htmlLink?: string;
   summary?: string;
   description?: string;
+  status?: string;
   start?: { dateTime?: string; timeZone?: string };
   end?: { dateTime?: string; timeZone?: string };
 }
@@ -429,7 +430,7 @@ describe("Pubblicazione automatica: cosa fa il modulo quando si salva", () => {
     expect([...eventi.values()][0].summary).toBe("Ritiro documento (rivisto)");
   });
 
-  it("annullarlo toglie l'evento dal calendario di Google", async () => {
+  it("annullarlo lo segna annullato su Google, invece di cancellarlo", async () => {
     await nuovoDatabase();
     const { appuntamentoId } = creaSchedaConAppuntamento();
     await pubblicaAppuntamento(appuntamentoId, "primary");
@@ -440,8 +441,45 @@ describe("Pubblicazione automatica: cosa fa il modulo quando si salva", () => {
     const esito = await pubblicaAppuntamento(appuntamentoId, "primary");
 
     expect(esito.ok).toBe(true);
-    expect(eventi.size).toBe(0);
-    expect(ottieniAppuntamento(appuntamentoId)?.googleEventId).toBeNull();
+    expect(esito.messaggio).toMatch(/annullato/i);
+    // L'evento resta, scritto come annullato: è la differenza fra "non si è
+    // più tenuto" e "non è mai esistito".
+    expect(eventi.size).toBe(1);
+    expect([...eventi.values()][0].status).toBe("cancelled");
+    // Il collegamento resta: senza, la prossima modifica non saprebbe dove
+    // scrivere e creerebbe un secondo evento.
+    expect(ottieniAppuntamento(appuntamentoId)?.googleEventId).toBe("evt-1");
+    expect(chiamate.some((c) => c.metodo === "DELETE")).toBe(false);
+  });
+
+  it("in attesa, confermato e annullato si leggono dall'evento", async () => {
+    await nuovoDatabase();
+    const { appuntamentoId } = creaSchedaConAppuntamento();
+    const stato = () => [...eventi.values()][0]?.status;
+
+    // Nato in attesa: l'evento lo dice.
+    await pubblicaAppuntamento(appuntamentoId, "primary");
+    expect(stato()).toBe("confirmed");
+    const appuntamento = () => ottieniAppuntamento(appuntamentoId)!;
+    aggiornaAppuntamento(appuntamentoId, { ...appuntamento(), stato: "in-attesa" });
+    expect((await pubblicaAppuntamento(appuntamentoId, "primary")).messaggio).toMatch(
+      /in attesa/i,
+    );
+    expect(stato()).toBe("confirmed");
+
+    // Confermato: stesso evento, stato confermato.
+    aggiornaAppuntamento(appuntamentoId, { ...appuntamento(), stato: "confermato" });
+    const confermato = await pubblicaAppuntamento(appuntamentoId, "primary");
+    expect(confermato.messaggio).toMatch(/aggiornato/i);
+    expect(confermato.messaggio).not.toMatch(/in attesa/i);
+    expect(stato()).toBe("confirmed");
+    expect(eventi.size).toBe(1);
+
+    // Annullato: sempre lo stesso evento, segnato annullato.
+    aggiornaAppuntamento(appuntamentoId, { ...appuntamento(), stato: "annullato" });
+    await pubblicaAppuntamento(appuntamentoId, "primary");
+    expect(stato()).toBe("cancelled");
+    expect(eventi.size).toBe(1);
   });
 
   it("annullare un appuntamento mai pubblicato non chiama Google", async () => {
