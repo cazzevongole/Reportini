@@ -89,8 +89,48 @@ function schedulePersist(): void {
 
 export type SqlValue = string | number | null | Uint8Array;
 
+const NON_REPLICATO = "reportini.db.nonReplicato";
+
+/**
+ * Ci sono scritture locali che il cloud non ha ancora visto?
+ *
+ * Il contatore di `getVersion()` dice se il database è cambiato **in questa
+ * sessione**, ma riparte da zero a ogni avvio: un'appuntamento eliminato e poi
+ * chiusa l'app prima che la copia online si aggiornasse, al riavvio sembrerebbe
+ * un database intatto — e il cloud, più vecchio, avrebbe la precedenza e
+ * restituirebbe l'appuntamento eliminato. Il flag è su `localStorage` perché
+ * deve sopravvivere al riavvio, che è esattamente il caso in cui serve.
+ */
+export function nonReplicato(): boolean {
+  try {
+    return localStorage.getItem(NON_REPLICATO) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** Una scrittura locale: il cloud ora è più vecchio di questo dispositivo. */
+export function segnaNonReplicato(): void {
+  try {
+    localStorage.setItem(NON_REPLICATO, "1");
+  } catch {
+    // Senza spazio il flag non si può scrivere: la sincronizzazione userà il
+    // contatore di sessione, che è comunque meglio di niente.
+  }
+}
+
+/** Il cloud ha tutto: da adesso è lui la copia più recente. */
+export function segnaReplicato(): void {
+  try {
+    localStorage.removeItem(NON_REPLICATO);
+  } catch {
+    // Come sopra: senza spazio il flag resta, e si risincronizza prima.
+  }
+}
+
 export function run(sql: string, params: SqlValue[] = []): void {
   getDatabase().run(sql, params);
+  segnaNonReplicato();
   schedulePersist();
   notifyChange();
 }
@@ -125,6 +165,7 @@ export function insert(table: string, values: Record<string, SqlValue>): number 
   // `inserisci` restituirebbe l'id di una riga appena creata da qualcun
   // altro: un appuntamento appena salvato risulterebbe inesistente.
   const result = get<{ id: number }>(`SELECT last_insert_rowid() AS id`);
+  segnaNonReplicato();
   schedulePersist();
   notifyChange();
   return result?.id ?? 0;
@@ -140,6 +181,7 @@ export function update(
     .map((key) => `${key} = ?`)
     .join(", ")} WHERE id = ?`;
   getDatabase().run(sql, [...keys.map((key) => values[key]), id]);
+  segnaNonReplicato();
   schedulePersist();
   notifyChange();
 }

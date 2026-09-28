@@ -1,4 +1,5 @@
 import { accessToken } from "./auth";
+import { leggiColori } from "./colori";
 import type { Appuntamento, StatoAppuntamento } from "../types";
 
 const API = "https://www.googleapis.com/calendar/v3";
@@ -96,7 +97,20 @@ const STATO_ICS: Record<StatoAppuntamento, string> = {
   annullato: "CANCELLED",
 };
 
+/**
+ * Il colore dell'evento non lo decido io: lo sceglie l'utente nelle
+ * impostazioni, e la mappa predefinita (Sage per confermato, Tangerine per in
+ * attesa, Graphite per annullato) vale solo finché non sceglie. Serve anche
+ * `extendedProperties.reportiniStato`, perché un ID di colore non dice quale
+ * stato sia ma che lo stato c'è.
+ *
+ * `colorId` è una **stringa** nell'API, non un numero: inviarla come numero
+ * viene rifiutato.
+ */
 function aEvento(appuntamento: Appuntamento) {
+  // Letta qui e non al modulo: la preferenza può cambiare mentre l'app è
+  // aperta, e va letta al momento in cui si scrive l'evento.
+  const colori = leggiColori();
   return {
     summary: appuntamento.titolo || "Appuntamento",
     description: [
@@ -125,6 +139,11 @@ function aEvento(appuntamento: Appuntamento) {
     // occupasse il tempo continuerebbe a bloccare la fascia di chi lo cerca,
     // e sarebbe una contraddizione.
     transparency: appuntamento.stato === "confermato" ? "opaque" : "transparent",
+    // Il colore è l'ultimo pezzo: con stato e trasparenza l'appuntamento è già
+    // distinguibile, ma in una vista per mese riepilogativa — dove un evento è
+    // una macchia di colore e nient'altro — era la tonalità dell'app a
+    // comunicare lo stato, e quella di Google era casuale.
+    colorId: colori[appuntamento.stato],
     // Il fuso va dichiarato: senza, Google interpreta l'ora nel fuso del
     // calendario di destinazione e un appuntamento delle 10:00 segnato a Roma
     // finisce a un'ora diversa per chi guarda il calendario da un'altra città.

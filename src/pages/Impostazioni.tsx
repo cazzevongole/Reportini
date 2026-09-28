@@ -11,6 +11,7 @@ import {
 import { Button, Card, PageHeader } from "../components/ui";
 import { useAvvisi } from "../components/Avvisi";
 import ChiediloAlloSviluppatore from "../components/ChiediloAlloSviluppatore";
+import ColoriStato from "../components/ColoriStato";
 import SvoltaSviluppo from "../components/SvoltaSviluppo";
 import VersioniBackup from "../components/VersioniBackup";
 import { useLiveQuery } from "../hooks/useLiveQuery";
@@ -297,6 +298,16 @@ export default function Impostazioni() {
               Esporta .ics
             </Button>
           </div>
+          <ColoriStato
+            onApplicati={(n) =>
+              notifica(
+                "ok",
+                n === 0
+                  ? "Colori tornati quelli iniziali."
+                  : `Colori salvati. Valgono dalle prossime pubblicazioni.`,
+              )
+            }
+          />
         </Card>
       </section>
 
