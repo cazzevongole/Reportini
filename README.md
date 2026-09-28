@@ -233,6 +233,18 @@ Due dettagli che sembrano secondari e non lo sono:
   c'è qualcosa di nuovo. Il workflow li pubblica e, se mancano, **fallisce**: senza
   `latest.yml`, `latest-mac.yml` e `latest-linux.yml` l'aggiornamento non funzionerebbe e
   nessuno se ne accorgerebbe.
+- **E che i nomi che promettono siano nomi di file veri.** `scripts/verifica-menu-aggiornamento.mjs`
+  legge ogni `url` e ogni `path` dei tre menù e controlla che il file corrispondente sia fra
+  gli allegati; se non c'è, il rilascio **fallisce**. Non è pignoleria: electron-builder
+  ricava il nome che scrive nel menù da un posto diverso rispetto a quello del file che
+  produce, e su Windows i due erano diversi — il menù prometteva
+  `Reportini-Setup-0.1.24.exe` e l'allegato si chiamava `Reportini.Setup.0.1.24.exe`.
+  L'aggiornamento finiva in un 404, l'app restava sulla versione vecchia, e non c'era errore
+  da nessuna parte. Su mac e Linux i nomi tornavano, quindi il difetto stava solo in un
+  sistema e nessuna verifica fatta a occhio lo avrebbe visto. Per questo il controllo è
+  uno script **con un test** (`tests/menu-aggiornamento.test.ts`, eseguito a ogni PR) e non
+  una riga dentro il workflow. `win.artifactName` in `electron/package.json` è esplicito
+  per lo stesso motivo: allinea il file al nome che electron-builder scrive nel menù.
 - **Lo `.zip` su macOS.** Sulla mac l'aggiornamento automatico può solo sostituire un `.zip`,
   non un `.dmg`: il `.dmg` resta per chi scarica a mano, lo `.zip` serve solo all'auto-update.
 
@@ -453,7 +465,7 @@ bun install
 bun run dev        # server di sviluppo su http://localhost:5173
 bun run build      # build statica in dist/ (+ 404.html per GitHub Pages)
 bun run typecheck  # tsc -b --noEmit
-bun run test       # test vitest (164 test) + smoke test dello schema
+bun run test       # test vitest (169 test) + smoke test dello schema
 bun run test:ui    # solo i test vitest
 bun run version:check  # la versione è coerente? (lo usa anche il rilascio)
 bun run version:patch  # alza la versione di un patch, come fa il workflow
