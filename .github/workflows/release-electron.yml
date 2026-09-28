@@ -139,6 +139,13 @@ jobs:
           - os: ubuntu-24.04
             nome: linux
     runs-on: ${{ matrix.os }}
+    # Le variabili VITE_* stanno nell'ambiente "prod", e GitHub le rende
+    # disponibili solo ai job che lo dichiarano. Senza questa riga il build
+    # dell'app desktop le vede tutte vuote: Vite le sostituisce con stringhe
+    # vuote e il pacchetto si apre su una schermata di accesso che non può
+    # mai entrare, perché Supabase non è collegato. Meglio un pacchetto che
+    # non esce che uno che sembra funzionante e non lo è.
+    environment: prod
     steps:
       # Si compila dal tag, non dal commit che ha fatto partire il workflow:
       # è il tag che contiene il commit di versione, ed è l'unico modo perché
@@ -164,14 +171,32 @@ jobs:
       - name: Dipendenze
         run: bun install --frozen-lockfile
 
+      - name: Controlla la configurazione
+        run: |
+          if [ -z "$VITE_SUPABASE_URL" ] || [ -z "$VITE_SUPABASE_ANON_KEY" ]; then
+            echo "::error::Mancano VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY nell'ambiente 'prod' (Settings > Secrets and variables > Actions > Variables > prod)."
+            exit 1
+          fi
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+
       - name: Build della web
         # ELECTRON=1 forza la base "./": l'app si apre da file://, dove un
         # percorso assoluto come /assets/app.js punterebbe alla radice del
         # filesystem e non troverebbe nulla. Con la base relativa il pacchetto
         # si apre su qualunque disco e per qualunque utente.
+        #
+        # Le stesse VITE_* della web: il pacchetto desktop è la stessa app,
+        # e senza Supabase non c'è account, quindi non c'è nemmeno una
+        # pagina. La chiave pubblica e il client id sono pubblici per
+        # definizione — il secret di Google resta nella Edge Function.
         run: bun run build
         env:
           ELECTRON: "1"
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+          VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
 
       - name: Copia nel renderer di Electron
         run: node scripts/copia-renderer.mjs

@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { baseRoutte, urlDiRitorno } from "./destinazione";
+import { baseRoutte, motivoRientroNonValido, urlDiRitorno } from "./destinazione";
 import { cloudEnabled, supabase } from "./supabase";
 import { avviaAccessoGoogle, completaAccesso, googleConfigured } from "../google/auth";
 import { resettaRuolo } from "../sviluppo/richieste";
@@ -78,7 +78,12 @@ export function AccountProvider({ children }: { children: ReactNode }) {
 
   const signInWithGoogle = useCallback(async () => {
     if (!supabase) {
-      setError("Collega l'accesso con Google dalle variabili d'ambiente (VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY).");
+      const messaggio =
+        "Collega l'accesso con Google dalle variabili d'ambiente (VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY).";
+      // Va nel log del desktop: senza, l'utente vede solo una riga che
+      // sparisce e non sa che l'app non è collegata a nulla.
+      console.error("accesso: Supabase non è configurato —", messaggio);
+      setError(messaggio);
       return;
     }
     setError(null);
@@ -96,9 +101,20 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     }
     // Su GitHub Pages l'app vive in una sottocartella (/Reportini/): tornare
     // all'origine finirebbe sulla pagina del profilo, non sull'app.
+    const rientro = urlDiRitorno(window.location.origin, baseRoutte());
+    // Stessa guardia del percorso con il calendario: da file:// non esiste
+    // un'origine utilizzabile, e senza controllo l'accesso fallisce in
+    // silenzio. Qui la frase la dice l'utente, nel log la dice anche chi
+    // deve sistemare.
+    const motivo = motivoRientroNonValido(rientro);
+    if (motivo) {
+      console.error("accesso: rientro non utilizzabile —", motivo);
+      setError(motivo);
+      return;
+    }
     const { error: errore } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: urlDiRitorno(window.location.origin, baseRoutte()) },
+      options: { redirectTo: rientro },
     });
     if (errore) setError(errore.message);
   }, []);

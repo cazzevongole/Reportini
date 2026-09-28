@@ -437,7 +437,7 @@ bun install
 bun run dev        # server di sviluppo su http://localhost:5173
 bun run build      # build statica in dist/ (+ 404.html per GitHub Pages)
 bun run typecheck  # tsc -b --noEmit
-bun run test       # test vitest (138 test) + smoke test dello schema
+bun run test       # test vitest (140 test) + smoke test dello schema
 bun run test:ui    # solo i test vitest
 bun run version:check  # la versione è coerente? (lo usa anche il rilascio)
 bun run version:patch  # alza la versione di un patch, come fa il workflow
@@ -534,6 +534,23 @@ quindi il router non trovava nulla e il fallback riportava a `/`, facendo naviga
 bianca dopo quella di benvenuto, e nel log `did-fail-load -6 ERR_FILE_NOT_FOUND file:///C:/`. Con
 l'hash la rotta iniziale è `/` e nessuna navigazione può portare fuori dal file. Sulla web resta il
 `BrowserRouter`, perché lì gli URL puliti servono.
+
+**Il pacchetto desktop si costruisce con le stesse variabili della web.** Il job che impacchetta
+dichiara `environment: prod` e passa `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` e
+`VITE_GOOGLE_CLIENT_ID` alla build; se mancano le prime due il pacchetto **non esce**. Senza quelle
+variabili, infatti, il pacchetto si apre su una schermata di accesso che non può mai entrare:
+Supabase non è collegato, e senza account l'app non mostra niente. Meglio un pacchetto che non
+viene costruito che uno che sembra funzionante e non lo è.
+
+**Un limite che resta, e che è nelle mani di chi decide**: il rientro da Google. Le URL `file://`
+non hanno un'origine — `window.location.origin` restituisce la stringa `null` — quindi l'indirizzo
+di rientro che l'app manderebbe a Google sarebbe la parola `null`, che Google e Supabase non
+accettano. L'app non lo fa più in silenzio: `motivoRientroNonValido()` controlla l'indirizzo prima
+di partire, scrive il motivo sia a schermo sia nel `renderer.log`, e spiega che serve un rientro
+vero. Per collegarlo bisogna scegliere come: un **protocollo proprio** (`reportini://`, che
+richiede un client OAuth di tipo "Applicazione desktop" su Google e quindi un secondo client, in
+conflitto con quello che Supabase usa per `signInWithIdToken`), oppure far entrare il desktop
+**dalla web** e tenere sul desktop solo l'uso locale dei dati.
 
 ---
 
