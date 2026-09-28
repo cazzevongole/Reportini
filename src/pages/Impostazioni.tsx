@@ -11,6 +11,7 @@ import {
 import { Button, Card, PageHeader } from "../components/ui";
 import { useAvvisi } from "../components/Avvisi";
 import ChiediloAlloSviluppatore from "../components/ChiediloAlloSviluppatore";
+import SvoltaSviluppo from "../components/SvoltaSviluppo";
 import VersioniBackup from "../components/VersioniBackup";
 import { useLiveQuery } from "../hooks/useLiveQuery";
 import { useSalvataggioCloud } from "../hooks/useSalvataggioCloud";
@@ -359,6 +360,9 @@ export default function Impostazioni() {
             Reportini funziona sul cellulare, nel browser e come app desktop con Electron. Ogni
             persona vede solo i propri dati, grazie all'accesso con il proprio account Google.
           </p>
+          {/* Solo per lo sviluppatore: se il database non lo riconosce, questa
+              riga non viene nemmeno disegnata. */}
+          <SvoltaSviluppo />
         </Card>
       </section>
     </div>

@@ -13,12 +13,14 @@ import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { AvvisoProvider } from "../src/components/Avvisi";
 import ChiediloAlloSviluppatore from "../src/components/ChiediloAlloSviluppatore";
+import SvoltaSviluppo from "../src/components/SvoltaSviluppo";
 import Sviluppo from "../src/pages/Sviluppo";
 import {
   RichiesteNonAttive,
   cambiaStato,
   elencaRichieste,
   inviaRichiesta,
+  resettaRuolo,
   verificaRuolo,
 } from "../src/lib/sviluppo/richieste";
 
@@ -51,6 +53,8 @@ const { stato, supabaseFinto } = vi.hoisted(() => {
     errore: null as { message: string; code?: string } | null,
     righe: [] as Riga[],
     prossimoId: 1,
+    /** Contatore delle interrogazioni al database sul ruolo. */
+    chiamateRpc: 0,
   };
 
   // È la RLS: le righe degli altri non arrivano al client, punto.
@@ -63,7 +67,10 @@ const { stato, supabaseFinto } = vi.hoisted(() => {
     auth: {
       getSession: async () => ({ data: { session: stato.sessione }, error: null }),
     },
-    rpc: async () => ({ data: stato.sviluppatore, error: stato.errore }),
+    rpc: async () => {
+      stato.chiamateRpc += 1;
+      return { data: stato.sviluppatore, error: stato.errore };
+    },
     from: (tabella: string) => {
       if (tabella !== "richieste") throw new Error(`tabella inattesa: ${tabella}`);
       return {
@@ -171,11 +178,13 @@ function scrivi(elemento: HTMLInputElement | HTMLTextAreaElement, testo: string)
 }
 
 beforeEach(() => {
+  resettaRuolo();
   stato.sessione = { user: UTENTE };
   stato.sviluppatore = false;
   stato.errore = null;
   stato.righe = [];
   stato.prossimoId = 1;
+  stato.chiamateRpc = 0;
   contenitore = document.createElement("div");
   document.body.appendChild(contenitore);
 });
@@ -248,11 +257,24 @@ describe("Richieste allo sviluppatore", () => {
   it("il ruolo distingue 'non sei tu' da 'non lo so'", async () => {
     expect((await verificaRuolo()).ruolo).toBe("utente");
     stato.sviluppatore = true;
-    expect((await verificaRuolo()).ruolo).toBe("sviluppatore");
+    expect((await verificaRuolo(true)).ruolo).toBe("sviluppatore");
     stato.errore = { code: "42883", message: "function public.sei_sviluppatore does not exist" };
-    const esito = await verificaRuolo();
+    const esito = await verificaRuolo(true);
     expect(esito.ruolo).toBe("errore");
     expect(esito.messaggio).toMatch(/richieste\.sql/);
+  });
+
+  it("il ruolo si chiede una volta sola, finché non cambia account", async () => {
+    stato.chiamateRpc = 0;
+    await verificaRuolo();
+    await verificaRuolo();
+    expect(stato.chiamateRpc).toBe(1);
+    // Cambiando account la risposta va rinfrescata: altrimenti il secondo
+    // utente di questo dispositivo eredita il ruolo del primo.
+    stato.sviluppatore = true;
+    expect((await verificaRuolo()).ruolo).toBe("utente");
+    resettaRuolo();
+    expect((await verificaRuolo()).ruolo).toBe("sviluppatore");
   });
 });
 
@@ -285,6 +307,29 @@ describe("Sezione Chiedilo allo sviluppatore", () => {
     stato.sessione = null;
     await monta(<ChiediloAlloSviluppatore />);
     expect(testo()).toContain("Chiedilo allo sviluppatore");
+  });
+});
+
+describe("Puntamento dalla pagina impostazioni", () => {
+  async function montaSvolta() {
+    await monta(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <SvoltaSviluppo />
+      </MemoryRouter>,
+    );
+  }
+
+  it("per un utente qualsiasi non c'è", async () => {
+    await montaSvolta();
+    expect(testo()).toBe("");
+    expect(contenitore.querySelector("a")).toBeNull();
+  });
+
+  it("per lo sviluppatore c'è, e porta alla sezione nascosta", async () => {
+    stato.sviluppatore = true;
+    await montaSvolta();
+    expect(testo()).toContain("Richieste degli utenti");
+    expect(contenitore.querySelector("a")?.getAttribute("href")).toBe("/panel/sviluppo");
   });
 });
 

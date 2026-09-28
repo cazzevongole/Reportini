@@ -11,6 +11,7 @@ import type { Session } from "@supabase/supabase-js";
 import { urlDiRitorno } from "./destinazione";
 import { cloudEnabled, supabase } from "./supabase";
 import { adottaTokenDiSessione, SCOPO_CALENDARIO } from "../google/auth";
+import { resettaRuolo } from "../sviluppo/richieste";
 
 export interface AccountState {
   /** Supabase non configurato: l'app lavora solo in locale. */
@@ -81,6 +82,10 @@ export function AccountProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     if (!supabase) return;
+    // Il ruolo (sviluppatore o no) è legato a chi è entrato: uscendo, la
+    // risposta va dimenticata, altrimenti il prossimo utente di questo
+    // dispositivo troverebbe la sezione sviluppo già aperta.
+    resettaRuolo();
     await supabase.auth.signOut();
   }, []);
 
