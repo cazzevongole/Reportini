@@ -26,6 +26,30 @@ export declare function avviaServer(opzioni: OpzioniServer): Promise<Server>;
 /** Il server come è, per chi lo composition a mano (i test). */
 export declare function creaServer(opzioni: Omit<OpzioniServer, "porta" | "tentativi">): Server;
 
+/** La finestra dell'app, per `riportaAllaApp`. */
+export interface FinestraApp {
+  isDestroyed(): boolean;
+  isMinimized(): boolean;
+  restore(): void;
+  show(): void;
+  focus(): void;
+  webContents: {
+    executeJavaScript(codice: string): Promise<unknown>;
+    loadURL(indirizzo: string): Promise<void>;
+  };
+}
+
+/**
+ * Porta il rientro dentro l'app e riporta la finestra su un indirizzo pulito.
+ * Solleva se non riesce a passare i parametri: perderli in silenzio sarebbe
+ * peggio.
+ */
+export declare function riportaAllaApp(
+  finestra: FinestraApp,
+  origine: string,
+  query: string,
+): Promise<boolean>;
+
 /** La richiesta è il ritorno di Google? */
 export declare function eRitorno(url: URL): boolean;
 
@@ -37,4 +61,5 @@ export declare function queryRitorno(parametri: URLSearchParams): string;
 
 export declare const TIPI: Record<string, string>;
 export declare const PAGINA_ATTESA: string;
+export declare const CHIAVE_ARRIVO: string;
 export declare const CHIAVI_RITORNO: string[];

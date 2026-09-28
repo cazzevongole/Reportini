@@ -439,7 +439,7 @@ bun install
 bun run dev        # server di sviluppo su http://localhost:5173
 bun run build      # build statica in dist/ (+ 404.html per GitHub Pages)
 bun run typecheck  # tsc -b --noEmit
-bun run test       # test vitest (154 test) + smoke test dello schema
+bun run test       # test vitest (158 test) + smoke test dello schema
 bun run test:ui    # solo i test vitest
 bun run version:check  # la versione è coerente? (lo usa anche il rilascio)
 bun run version:patch  # alza la versione di un patch, come fa il workflow
@@ -559,8 +559,17 @@ finestra: Google rifiuta l'accesso dai browser incorporati, quindi aperto dentro
 raggiunge "This browser or app may not be secure". Da qui il ponte `apriUrlEsterno` nel preload, che
 accetta solo `https` e `http` verso la macchina stessa. Il ritorno arriva a `127.0.0.1:42720` e
 **nessuno lo ascolterebbe**: l'ha aperto un altro programma, quindi è il main process a vederlo,
-a ripulire i parametri e a riportare la finestra all'indirizzo col `code`. Da lì il renderer fa lo
-scambio come sulla web. Il `code` non finisce nel `renderer.log`.
+a ripulire i parametri e a riportare la finestra avanti. Da lì il renderer fa lo scambio come sulla
+web. Il `code` non finisce nel `renderer.log`.
+
+**Il rientro non viene rimesso nell'URL, e questo è il punto.** Il server riconosce il rientro proprio
+da quei parametri, quindi chiedere alla finestra di caricare `/?code=…` la farebbe sembrare un
+rientro nuovo: il main rimanda la finestra, la finestra chiede di nuovo, e l'app si ricarica
+all'infinito. Il sintomo era "la pagina non si aggiorna" e nessun errore — il renderer non arrivava
+mai a mostrare niente. Quindi i parametri passano dalla `sessionStorage` della pagina corrente
+(`riportaAllaApp` in `electron/server-locale.cjs`, che li scrive e poi porta la finestra a un
+indirizzo pulito) e `completaAccesso()` li legge da lì quando non arrivano dall'URL, cioè
+sempre sul desktop e mai sulla web.
 
 **Perché una porta fissa e non una libera.** L'indirizzo di rientro va registrato *prima*, in Google e
 in Supabase, e un numero che cambia a ogni avvio non si può registrare. Se la porta è occupata se ne

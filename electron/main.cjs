@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain, shell, dialog } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs/promises");
-const { avviaServer } = require("./server-locale.cjs");
+const { avviaServer, riportaAllaApp } = require("./server-locale.cjs");
 
 const DB_FILE = () => path.join(app.getPath("userData"), "reportini.sqlite");
 const LOG_FILE = () => path.join(app.getPath("userData"), "renderer.log");
@@ -48,22 +48,23 @@ let serverLocale = null;
 let origineLocale = "";
 
 /**
- * Porta a casa il rientro di Google: la finestra dell'app si riporta
- * all'indirizzo con il `code`, e da lì il renderer fa il resto.
+ * Porta a casa il rientro di Google: la finestra dell'app si riporta avanti e
+ * da lì il renderer fa il resto.
  *
  * La query è già stata ripulita dal server, che ha tenuto solo i parametri
  * che Google usa davvero: questa porta è raggiungibile da qualunque
  * programma sulla macchina e non è il posto dove far arrivare un indirizzo di
- * scelta altrui.
+ * scelta altrui. E non viene rimessa nell'URL, per il motivo che spiega
+ * `riportaAllaApp`.
  */
 async function riportaRitorno(query) {
   for (const finestra of BrowserWindow.getAllWindows()) {
-    if (finestra.isDestroyed()) continue;
-    if (finestra.isMinimized()) finestra.restore();
-    finestra.show();
-    finestra.focus();
-    await finestra.webContents.loadURL(`${origineLocale}/?${query}`);
-    return;
+    try {
+      await riportaAllaApp(finestra, origineLocale, query);
+      return;
+    } catch (errore) {
+      await registra(errore.message);
+    }
   }
 }
 

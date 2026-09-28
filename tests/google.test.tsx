@@ -247,6 +247,24 @@ describe("Ritorno da Google", () => {
     expect(isConnected()).toBe(true);
   });
 
+  it("sul desktop il rientro arriva dalla session, non dall'URL", async () => {
+    // Il main process mette il rientro in `sessionStorage` e riporta la
+    // finestra su un indirizzo pulito. Se il renderer guardasse solo l'URL, sul
+    // desktop non chiuderebbe mai l'accesso — ed è esattamente quello che
+    // faceva, con la pagina che non si aggiornava.
+    statoRitorno("abc123");
+    tornaCon({});
+    sessionStorage.setItem("reportini.google.arrivo", "code=il-code&state=abc123");
+    scambioPronto();
+
+    await expect(completaAccesso()).resolves.toBe("calendario");
+
+    expect(chiamateFunzione()[0].code).toBe("il-code");
+    // E non resta appeso: un rientno vecchio non deve riaprire l'accesso al
+    // ricaricamento successivo.
+    expect(sessionStorage.getItem("reportini.google.arrivo")).toBeNull();
+  });
+
   it("dopo lo scambio arricchisce il profilo, ma senza profilo il collegamento regge", async () => {
     statoRitorno("abc123");
     tornaCon({ code: "il-code", state: "abc123" });
