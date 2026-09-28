@@ -39,8 +39,6 @@ jobs:
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
           VITE_DEV_WHITELIST: ${{ vars.VITE_DEV_WHITELIST }}
-          # Collegamento diretto a Google Calendar (OAuth lato client).
-          VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
 
   deploy:
     needs: build

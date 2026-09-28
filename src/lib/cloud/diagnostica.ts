@@ -1,5 +1,5 @@
 import { cloudEnabled, problemaConfigurazione, supabase, tipoChiave } from "./supabase";
-import { urlDiRitorno } from "./destinazione";
+import { SCOPO_CALENDARIO } from "../google/auth";
 
 const BUCKET = "reportini";
 const SONDAGGIO = ".verifica-bucket";
@@ -76,23 +76,21 @@ export interface EsitoDiagnostica {
 export async function verificaIntegrazione(): Promise<EsitoDiagnostica> {
   const controlli: Controllo[] = [];
 
-  // Google Calendar è un collegamento indipendente da Supabase: usa un
-  // proprio client OAuth della console Google Cloud. Va controllato per primo
-  // perché non dipende dagli altri e deve comparire anche se Supabase manca.
-  const clientCalendar = (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined) ?? "";
+  // Google Calendar non usa un client OAuth dedicato: il token arriva dalla
+  // sessione Supabase, che fa da client confidenziale lato server. Serve però
+  // che lo scope Calendar sia concesso al provider Google del progetto.
   controlli.push({
     nome: "Google Calendar",
     ok: true,
-    dettaglio: clientCalendar
-      ? "Client OAuth configurato."
-      : "Non configurato: ogni appuntamento si esporta comunque in formato .ics.",
-    azione: clientCalendar
-      ? `Nel client OAuth, in "Authorized redirect URIs" deve comparire esattamente:
-${urlDiRitorno(window.location.origin, import.meta.env.BASE_URL)}
-(e in "Authorized JavaScript origins" la sola origine ${window.location.origin}).
-Senza questo Google risponde redirect_uri_mismatch.`
-      : "Google Cloud → APIs and Services → Library → abilita Google Calendar API → crea un client OAuth di tipo Web application e copiane il Client ID in VITE_GOOGLE_CLIENT_ID.",
-    nonVerificato: clientCalendar ? true : undefined,
+    dettaglio: supabase
+      ? "Lo scope Calendar viaggia con l'accesso con Google."
+      : "Non disponibile: senza Supabase non c'è modo di ottenere un token Google.",
+    azione: supabase
+      ? `Supabase → Authentication → Providers → Google → Scopes: deve esserci ${SCOPO_CALENDARIO}.
+Senza lo scope l'accesso va a buon fine ma restituisce solo il profilo, e la
+sincronizzazione fallisce con 403.`
+      : "Collega Supabase dalle variabili d'ambiente.",
+    nonVerificato: supabase ? true : undefined,
   });
 
   const url = (import.meta.env.VITE_SUPABASE_URL as string | undefined) ?? "";

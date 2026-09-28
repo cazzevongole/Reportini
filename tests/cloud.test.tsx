@@ -172,6 +172,7 @@ describe("Accesso con Google", () => {
       provider: "google",
       options: {
         redirectTo: urlDiRitorno(window.location.origin, import.meta.env.BASE_URL),
+        scopes: "offline consent",
       },
     });
   });
@@ -187,7 +188,12 @@ describe("Accesso con Google", () => {
       });
       expect(supabaseFinto.auth.signInWithOAuth).toHaveBeenCalledWith({
         provider: "google",
-        options: { redirectTo: `${window.location.origin}/Reportini` },
+        options: {
+          redirectTo: `${window.location.origin}/Reportini`,
+          // Lo scope Calendar viaggia nello stesso accesso, non in un secondo
+          // consenso: senza, il token Calendar non arriva mai.
+          scopes: "offline consent",
+        },
       });
     } finally {
       vi.unstubAllEnvs();
@@ -380,13 +386,11 @@ describe("Verifica del bucket", () => {
     const esito = await verificaIntegrazione();
     const calendar = esito.controlli.find((c) => c.nome === "Google Calendar");
     expect(calendar?.ok).toBe(true);
-    expect(calendar?.dettaglio).toMatch(/Client OAuth configurato/);
-    // Non si può sapere dalla pagina se la Calendar API è abilitata nel
-    // progetto Google Cloud: dichiararlo pronto sarebbe buggy.
+    // Non si può sapere dalla pagina se lo scope Calendar è concesso al
+    // provider Google: dichiararlo pronto sarebbe falso.
     expect(calendar?.nonVerificato).toBe(true);
-    // La causa numero uno di redirect_uri_mismatch è avere configurato le
-    // origini JavaScript senza la redirect URI: la riga deve dirlo.
-    expect(calendar?.azione).toMatch(/Authorized redirect URIs/);
+    // La causa numero uno del 403 in sincronizzazione è lo scope assente.
+    expect(calendar?.azione).toMatch(/calendar\.events/);
   });
 });
 

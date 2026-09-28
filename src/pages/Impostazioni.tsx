@@ -139,7 +139,7 @@ export default function Impostazioni() {
               ? `Collegato come ${profilo.email}. ${sincronizzati} appuntamenti su ${appuntamenti.length} sono già pubblicati.`
               : googleConfigured
                 ? "Collega il tuo account per pubblicare gli appuntamenti con un tocco."
-                : "Aggiungi VITE_GOOGLE_CLIENT_ID nelle variabili d'ambiente per attivarlo."}
+                : "L'accesso con Google passa da Supabase: senza, non c'è modo di ottenere un token Calendar."}
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             {profilo ? (

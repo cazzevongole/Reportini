@@ -1,56 +1,41 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  MESSAGGIO_RITORNO,
   accessToken,
+  adottaTokenDiSessione,
   connect,
   disconnect,
   isConnected,
   readToken,
-  consegnaRitornoPopup,
-  sfidaDi,
+  SCOPO_CALENDARIO,
 } from "../src/lib/google/auth";
 
-const CLIENT_ID = "123.apps.googleusercontent.com";
 const TOKEN_KEY = "reportini.google.token";
-// Definito in vitest.config.ts: Vite sostituisce import.meta.env in fase di
-// trasformazione, quindi lo stub a runtime arriverebbe troppo tardi.
+const PROFILE_KEY = "reportini.google.profile";
 
-function popupFalso() {
-  return { close: vi.fn() };
-}
+type ChiamataOAuth = {
+  provider: string;
+  options: { redirectTo: string; scopes: string };
+};
 
-function rispostaJson(dati: unknown, ok = true, status = 200) {
-  return {
-    ok,
-    status,
-    text: async () => JSON.stringify(dati),
-    json: async () => dati,
-  } as unknown as Response;
-}
+// vi.hoisted: la factory gira durante l'import dei moduli di production,
+// prima che le const del file siano inizializzate.
+const finto = vi.hoisted(() => ({
+  signInWithOAuth: vi.fn(async (_argomento: unknown) => ({ error: null })),
+}));
 
-/** Trova il body della chiamata a un endpoint, decodificato da form. */
-function corpoPost(url: string): URLSearchParams | null {
-  const chiamata = fetchMock.mock.calls.find(([a]) => String(a).includes(url));
-  if (!chiamata) return null;
-  return new URLSearchParams(String((chiamata[1] as RequestInit | undefined)?.body ?? ""));
-}
+vi.mock("@supabase/supabase-js", () => ({
+  createClient: () => ({ auth: { signInWithOAuth: finto.signInWithOAuth } }),
+}));
 
 let fetchMock: ReturnType<typeof vi.fn>;
-let aperto: ReturnType<typeof popupFalso>;
-let urlAperta: string;
 
-beforeEach(async () => {
+function rispostaJson(dati: unknown, ok = true) {
+  return { ok, json: async () => dati, text: async () => JSON.stringify(dati) } as unknown as Response;
+}
+
+beforeEach(() => {
   localStorage.clear();
-  sessionStorage.clear();
-  const modulo = await import("../src/lib/google/auth");
-  expect(modulo.googleConfigured).toBe(true);
-
-  aperto = popupFalso();
-  urlAperta = "";
-  vi.stubGlobal("open", vi.fn((url: string) => {
-    urlAperta = String(url);
-    return aperto;
-  }));
+  finto.signInWithOAuth.mockClear();
   fetchMock = vi.fn(async () => rispostaJson({}));
   vi.stubGlobal("fetch", fetchMock);
 });
@@ -59,197 +44,103 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-/** Simula la risposta del popup di Google. */
-function rispondiPopup(payload: Record<string, string>) {
-  window.dispatchEvent(
-    new MessageEvent("message", {
-      data: { tipo: MESSAGGIO_RITORNO, ...payload },
-      origin: window.location.origin,
-    }),
-  );
-}
+describe("Token Google dalla sessione Supabase", () => {
+  it("custodisce il token che Supabase ha scambiato", () => {
+    adottaTokenDiSessione("ya29.token-reale");
 
-/** Fa partire connect() e risponde al popup con il codice ricavato dallo state. */
-async function completaCollegamento(codice = "auth-code") {
-  const attesa = connect();
-  // Lo state è generato dentro connect(): lo si legge dalla URL del popup.
-  for (let tentativo = 0; tentativo < 50 && !urlAperta.includes("state="); tentativo += 1) {
-    await new Promise((r) => setTimeout(r, 0));
-  }
-  const state = new URL(urlAperta).searchParams.get("state") ?? "";
-  rispondiPopup({ code: codice, state });
-  return attesa;
-}
-
-describe("Flusso OAuth con PKCE", () => {
-  it("calcola la sfida come S256 secondo la RFC 7636", async () => {
-    // Vettore di prova ufficiale (RFC 7636, appendice B): se questo passa, il
-    // computation della sfida è corretto e lo scambio del codice può riuscire.
-    expect(
-      await sfidaDi("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"),
-    ).toBe("E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM");
-  });
-
-  it("costruisce l'URL di autorizzazione con code_challenge S256 e offline access", async () => {
-    fetchMock.mockImplementation(async (url: string) => {
-      if (String(url).includes("oauth2.googleapis.com/token")) {
-        return rispostaJson({ access_token: "at-1", expires_in: 3600, refresh_token: "rt-1" });
-      }
-      return rispostaJson({ email: "mara@example.it", name: "Mara" });
-    });
-
-    await completaCollegamento();
-
-    const url = new URL(urlAperta);
-    expect(url.origin + url.pathname).toBe("https://accounts.google.com/o/oauth2/v2/auth");
-    expect(url.searchParams.get("client_id")).toBe(CLIENT_ID);
-    expect(url.searchParams.get("response_type")).toBe("code");
-    expect(url.searchParams.get("code_challenge_method")).toBe("S256");
-    expect(url.searchParams.get("access_type")).toBe("offline");
-    expect(url.searchParams.get("scope")).toContain("calendar.events");
-    // La sfida non è il verifier: deve essere l'hash.
-    expect(url.searchParams.get("code_challenge")).not.toBeNull();
-    expect(url.searchParams.get("code_challenge")?.length).toBeGreaterThan(40);
-  });
-
-  it("scambia il codice con il verifier e conserva il refresh token", async () => {
-    fetchMock.mockImplementation(async (url: string) => {
-      if (String(url).includes("oauth2.googleapis.com/token")) {
-        return rispostaJson({ access_token: "at-1", expires_in: 3600, refresh_token: "rt-1" });
-      }
-      return rispostaJson({ email: "mara@example.it", name: "Mara Rossi" });
-    });
-
-    const profilo = await completaCollegamento();
-
-    const scambio = corpoPost("oauth2.googleapis.com/token");
-    expect(scambio?.get("grant_type")).toBe("authorization_code");
-    expect(scambio?.get("code")).toBe("auth-code");
-    // Il verifier non viaggia mai nell'URL: solo nello scambio, col codice.
-    expect(scambio?.get("code_verifier")).toBeTruthy();
-    expect(urlAperta).not.toContain(scambio?.get("code_verifier") ?? "impossibile");
-
-    expect(profilo.email).toBe("mara@example.it");
-    const token = readToken();
-    expect(token?.accessToken).toBe("at-1");
-    expect(token?.refreshToken).toBe("rt-1");
+    expect(readToken()?.accessToken).toBe("ya29.token-reale");
     expect(isConnected()).toBe(true);
   });
 
-  it("rifiuta una risposta il cui state non corrisponde", async () => {
-    const inCorso = connect();
-    for (let i = 0; i < 50 && !urlAperta.includes("state="); i += 1) {
-      await new Promise((r) => setTimeout(r, 0));
-    }
-    // state inventato: la risposta va scartata senza interrogare Google.
-    rispondiPopup({ code: "iniettato", state: "altro" });
-    await expect(inCorso).rejects.toThrow(/non riconosciuta/);
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-});
+  it("non lascia scadere il token: un'ora meno il margine di sicurezza", () => {
+    adottaTokenDiSessione("ya29.token-reale");
 
-describe("Rinnovo del token", () => {
-  it("usa il refresh token quando il token è scaduto, senza aprire il popup", async () => {
-    localStorage.setItem(
-      TOKEN_KEY,
-      JSON.stringify({ accessToken: "vecchio", expiresAt: Date.now() - 1000, refreshToken: "rt-1" }),
-    );
+    // 3600s - 60s di margine.
+    const { expiresAt } = readToken()!;
+    const rimanenti = expiresAt - Date.now();
+    expect(rimanenti).toBeGreaterThan(3_500_000);
+    expect(rimanenti).toBeLessThan(3_600_000);
+  });
+
+  it("non sovrascrive un token identico e non si rompe su sessione senza token", () => {
+    adottaTokenDiSessione("ya29.token-reale");
+    const primo = readToken();
+
+    adottaTokenDiSessione("ya29.token-reale");
+    expect(readToken()?.expiresAt).toBe(primo?.expiresAt);
+
+    // Utente non Google, o scope non concesso: non deve succedere nulla.
+    adottaTokenDiSessione(null);
+    adottaTokenDiSessione(undefined);
+    expect(readToken()?.accessToken).toBe("ya29.token-reale");
+  });
+
+  it("arricchisce il profilo quando Google risponde", async () => {
     fetchMock.mockImplementation(async () =>
-      rispostaJson({ access_token: "at-2", expires_in: 3600 }),
+      rispostaJson({ email: "mara@example.it", name: "Mara Rossi", picture: "https://img/f" }),
     );
 
-    const token = await accessToken();
+    adottaTokenDiSessione("ya29.token-reale");
+    await new Promise((r) => setTimeout(r, 0));
 
-    expect(token).toBe("at-2");
-    const rinnovo = corpoPost("oauth2.googleapis.com/token");
-    expect(rinnovo?.get("grant_type")).toBe("refresh_token");
-    expect(rinnovo?.get("refresh_token")).toBe("rt-1");
-    expect(readToken()?.refreshToken).toBe("rt-1");
-    // Nessun popup: è un rinnovo silenzioso.
-    expect(aperto.close).not.toHaveBeenCalled();
+    const profilo = JSON.parse(localStorage.getItem(PROFILE_KEY) ?? "{}");
+    expect(profilo.email).toBe("mara@example.it");
   });
 
-  it("non perde il refresh token quando Google non lo rinvia", async () => {
-    localStorage.setItem(
-      TOKEN_KEY,
-      JSON.stringify({ accessToken: "vecchio", expiresAt: Date.now() - 1000, refreshToken: "rt-1" }),
-    );
-    fetchMock.mockImplementation(async () => rispostaJson({ access_token: "at-3", expires_in: 3600 }));
+  it("se il profilo non arriva il token resta valido: è solo cosmetico", async () => {
+    fetchMock.mockImplementation(async () => rispostaJson({}, false));
 
-    await accessToken();
+    adottaTokenDiSessione("ya29.token-reale");
+    await new Promise((r) => setTimeout(r, 0));
 
-    expect(readToken()?.refreshToken).toBe("rt-1");
-  });
-
-  it("collega di nuovo quando il refresh token è stato revocato", async () => {
-    localStorage.setItem(
-      TOKEN_KEY,
-      JSON.stringify({ accessToken: "vecchio", expiresAt: Date.now() - 1000, refreshToken: "rt-1" }),
-    );
-    fetchMock.mockImplementation(async (url: string) => {
-      if (String(url).includes("oauth2.googleapis.com/token")) {
-        // Prima il rinnovo fallisce, poi lo scambio del consenso riesce.
-        const chiamate = fetchMock.mock.calls.filter(([u]) =>
-          String(u).includes("oauth2.googleapis.com/token"),
-        ).length;
-        if (chiamate === 1) return rispostaJson({ error: "invalid_grant" }, false, 400);
-        return rispostaJson({ access_token: "at-4", expires_in: 3600, refresh_token: "rt-2" });
-      }
-      return rispostaJson({ email: "mara@example.it", name: "Mara" });
-    });
-
-    const attesa = accessToken();
-    for (let i = 0; i < 50 && !urlAperta.includes("state="); i += 1) {
-      await new Promise((r) => setTimeout(r, 0));
-    }
-    const state = new URL(urlAperta).searchParams.get("state") ?? "";
-    rispondiPopup({ code: "nuovo", state });
-
-    expect(await attesa).toBe("at-4");
-    expect(readToken()?.refreshToken).toBe("rt-2");
+    expect(readToken()?.accessToken).toBe("ya29.token-reale");
+    expect(localStorage.getItem(PROFILE_KEY)).toBeNull();
   });
 });
 
-describe("Ritorno dal popup", () => {
-  it("consegna il codice a chi ha aperto la finestra e si chiude", () => {
-    const post = vi.fn();
-    const chiudi = vi.fn();
-    // jsdom espone opener come proprietà semplice.
-    Object.defineProperty(window, "opener", { value: { postMessage: post }, configurable: true });
-    window.close = chiudi;
-    const storico = window.location.search;
-    window.history.replaceState({}, "", "/?code=abc&state=xyz");
-
-    consegnaRitornoPopup();
-
-    expect(post).toHaveBeenCalledWith(
-      { tipo: MESSAGGIO_RITORNO, state: "xyz", code: "abc", errore: undefined },
-      window.location.origin,
-    );
-    expect(chiudi).toHaveBeenCalled();
-
-    window.history.replaceState({}, "", storico || "/");
-    Object.defineProperty(window, "opener", { value: null, configurable: true });
+describe("Collegamento", () => {
+  it("chiede l'accesso con Google includendo lo scope Calendar", async () => {
+    const inCorso = connect();
+    // La pagina viene scaricata: la promise non si conclude mai.
+    expect(finto.signInWithOAuth).toHaveBeenCalled();
+    const opzioni = finto.signInWithOAuth.mock.calls[0][0] as ChiamataOAuth;
+    expect(opzioni.provider).toBe("google");
+    // offline + consent fanno arrivare il refresh token a Supabase, che lo
+    // usa lato server: nel browser non deve finire nessun secret.
+    expect(opzioni.options.scopes).toContain("offline");
+    expect(opzioni.options.scopes).toContain("consent");
+    expect(opzioni.options.redirectTo).toBeTruthy();
+    void inCorso;
   });
 
-  it("non fa nulla in una scheda normale", () => {
-    Object.defineProperty(window, "opener", { value: null, configurable: true });
-    const post = vi.fn();
-    window.history.replaceState({}, "", "/");
-    expect(() => consegnaRitornoPopup()).not.toThrow();
-    expect(post).not.toHaveBeenCalled();
+  it("usa lo scope calendar.events dichiarato nel modulo", () => {
+    expect(SCOPO_CALENDARIO).toBe("https://www.googleapis.com/auth/calendar.events");
   });
 });
 
-describe("Scollegamento", () => {
-  it("cancella i dati locali e revoca il consenso", () => {
-    localStorage.setItem(TOKEN_KEY, JSON.stringify({ accessToken: "at-1", expiresAt: Date.now() + 1000 }));
+describe("Scadenza del token", () => {
+  it("accessToken restituisce il token valido", async () => {
+    adottaTokenDiSessione("ya29.valido");
+    await expect(accessToken()).resolves.toBe("ya29.valido");
+  });
+
+  it("un token scaduto spiega che serve un nuovo accesso, non fallisce in silenzio", async () => {
+    // Un client pubblico non può rinnovare: pretende un client secret che
+    // non possiede. Meglio un messaggio che dia la mano.
+    localStorage.setItem(
+      TOKEN_KEY,
+      JSON.stringify({ accessToken: "vecchio", expiresAt: Date.now() - 1000 }),
+    );
+    await expect(accessToken()).rejects.toThrow(/scaduto/i);
+  });
+
+  it("scollegare cancella il token e revoca il consenso", () => {
+    adottaTokenDiSessione("ya29.token-reale");
     disconnect();
+
     expect(readToken()).toBeNull();
     expect(isConnected()).toBe(false);
     const revoca = fetchMock.mock.calls.find(([u]) => String(u).includes("revoke"));
-    expect(revoca).toBeDefined();
-    // Il token da revocare viaggia nella query, non nel corpo della richiesta.
-    expect(String(revoca?.[0])).toContain("token=at-1");
+    expect(String(revoca?.[0])).toContain("token=ya29.token-reale");
   });
 });

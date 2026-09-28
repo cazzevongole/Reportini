@@ -10,6 +10,7 @@ import {
 import type { Session } from "@supabase/supabase-js";
 import { urlDiRitorno } from "./destinazione";
 import { cloudEnabled, supabase } from "./supabase";
+import { adottaTokenDiSessione } from "../google/auth";
 
 /**
  * Email autorizzate a vedere la dashboard di sviluppo, lette dalla variabile
@@ -50,11 +51,15 @@ export function AccountProvider({ children }: { children: ReactNode }) {
 
     supabase.auth.getSession().then(({ data }) => {
       if (!attivo) return;
+      adottaTokenDiSessione(data.session?.provider_token);
       setSession(data.session ?? null);
       setLoading(false);
     });
 
     const { data: listener } = supabase.auth.onAuthStateChange((_evento, prossima) => {
+      // Supabase ha scambiato il codice per noi lato server: il token Google
+      // arriva qui con la sessione e va custodito per Calendar.
+      adottaTokenDiSessione(prossima?.provider_token);
       setSession(prossima ?? null);
       setLoading(false);
     });
@@ -75,7 +80,12 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     // all'origine finirebbe sulla pagina del profilo, non sull'app.
     const { error: errore } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: urlDiRitorno(window.location.origin, import.meta.env.BASE_URL) },
+      options: {
+        redirectTo: urlDiRitorno(window.location.origin, import.meta.env.BASE_URL),
+        // Chiede anche lo scope Calendar: è lo stesso accesso, non un secondo
+        // consenso. Senza questo arriva solo il profilo.
+        scopes: "offline consent",
+      },
     });
     if (errore) setError(errore.message);
   }, []);

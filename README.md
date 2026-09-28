@@ -50,7 +50,7 @@ salvataggio online.
 | `VITE_SUPABASE_URL` | URL del progetto Supabase |
 | `VITE_SUPABASE_ANON_KEY` | **chiave pubblica** del progetto (`sb_publishable_…`) |
 | `VITE_DEV_WHITELIST` | email separate da virgola autorizzate alla dashboard sviluppatore |
-| `VITE_GOOGLE_CLIENT_ID` | client OAuth per pubblicare gli appuntamenti su Google Calendar |
+| _(nessuna per Calendar)_ | il token Google Calendar viaggia sulla sessione Supabase |
 
 > **Non usare mai la chiave `secret`.** Le nuove chiavi `sb_secret_…` sostituiscono la vecchia
 > `service_role`: danno accesso completo al database e ignorano le Row Level Security, e finiscono
@@ -94,18 +94,23 @@ Gli account la cui email è in `VITE_DEV_WHITELIST` vedono una voce in più nel 
 
 ### Google Calendar (facoltativo)
 
-1. In Google Cloud attiva la **Google Calendar API** (*APIs and Services → Library*).
-2. Crea un **client OAuth 2.0 di tipo _Web application_** e aggiungi fra le *origini
-   JavaScript autorizzate* `http://localhost:5173`, `https://cazzevongole.github.io` e
-   l'origine dell'anteprima.
-3. Copia **solo il Client ID** in `VITE_GOOGLE_CLIENT_ID` (il client secret non serve e non
-   deve mai entrare in una variabile `VITE_*`).
+Non serve un client OAuth dedicato: il token Calendar viaggia sulla **sessione Supabase**,
+che fa da client *confidenziale* lato server. Un'app su GitHub Pages non potrebbe farlo da
+sola — Google pretende il `client_secret` sia per scambiare l'authorization code sia per
+rinnovare il token, anche con PKCE, e metterlo nel browser lo esporrebbe a tutti.
 
-L'app usa il flusso **authorization code con PKCE** e scambia il codice dal browser: è
-obbligatorio perché è un client pubblico senza backend, quindi non può custodire un secret.
-Il refresh token mantiene il collegamento vivo senza riaprire il popup ogni ora.
+Per abilitarlo:
 
-Senza questa chiave ogni appuntamento si esporta comunque in formato `.ics`.
+1. In Google Cloud, sul **client usato da Supabase** (quello con la redirect URI
+   `https://<ref>.supabase.co/auth/v1/callback`): *Google Auth Platform → Data Access* →
+   aggiungi lo scope `https://www.googleapis.com/auth/calendar.events`
+2. In Supabase, *Authentication → Providers → Google*: lo scope deve comparire fra quelli
+   concessi
+
+Il token dura un'ora. **Non può essere rinnovato in silenzio**: quando scade serve un nuovo
+accesso con Google, e l'app lo dice esplicitamente invece di fallire in silenzio.
+
+Senza questo scope ogni appuntamento si esporta comunque in formato `.ics`.
 
 ---
 

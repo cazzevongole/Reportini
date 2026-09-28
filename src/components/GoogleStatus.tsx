@@ -86,7 +86,7 @@ export default function GoogleStatus({ compatto = false }: { compatto?: boolean 
         <p className="text-xs text-ink-400">
           {googleConfigured
             ? "Senza credenziali puoi comunque esportare ogni appuntamento in formato .ics."
-            : "Aggiungi VITE_GOOGLE_CLIENT_ID in Settings → Environment per attivare la sincronizzazione."}
+            : "Collega Supabase dalle variabili d'ambiente per attivare la sincronizzazione."}
         </p>
         {errore ? <p className="mt-1 text-xs text-clay-600">{errore}</p> : null}
       </div>
