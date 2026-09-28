@@ -31,7 +31,7 @@
  */
 
 import { supabase } from "../cloud/supabase";
-import { baseRoutte, urlDiRitorno } from "../cloud/destinazione";
+import { baseRoutte, motivoRientroNonValido, urlDiRitorno } from "../cloud/destinazione";
 
 const TOKEN_KEY = "reportini.google.token";
 const PROFILE_KEY = "reportini.google.profile";
@@ -191,6 +191,15 @@ export async function avviaAccessoGoogle(): Promise<void> {
   // Deve combaciare al segno con uno registrato in Google Cloud, altrimenti
   // lo scambio del code si ferma con redirect_uri_mismatch.
   const redirect = urlDiRitorno(window.location.origin, baseRoutte());
+  // Su file:// non c'è un'origine utilizzabile. Meglio fermarsi qui con una
+  // frase che spiega, che mandare l'utente da Google con un indirizzo di
+  // rientro che non potrà mai funzionare. Il messaggio finisce anche nel
+  // log del desktop, così non è più un pulsante che non fa niente.
+  const motivo = motivoRientroNonValido(redirect);
+  if (motivo) {
+    console.error("google-token: accesso non avviato —", motivo);
+    throw new Error(motivo);
+  }
   const state = stateCasuale();
   sessionStorage.setItem(RITORNO_KEY, JSON.stringify({ state, redirect } satisfies Ritorno));
 

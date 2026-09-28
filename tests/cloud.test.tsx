@@ -340,6 +340,27 @@ describe("Chiave API", () => {
   });
 });
 
+describe("L'indirizzo di rientro deve essere una pagina web", () => {
+  it("su web e su GitHub Pages va bene", async () => {
+    const { motivoRientroNonValido } = await import("../src/lib/cloud/destinazione");
+    expect(motivoRientroNonValido("https://cazzevongole.github.io/Reportini")).toBe("");
+    expect(motivoRientroNonValido("http://localhost:5173")).toBe("");
+  });
+
+  it("da file:// dice perché non può funzionare", async () => {
+    const { motivoRientroNonValido } = await import("../src/lib/cloud/destinazione");
+    // È quello che succede sul pacchetto desktop: `file://` non ha origine,
+    // window.location.origin restituisce la stringa "null" e l'indirizzo di
+    // rientro che finisce a Google è la parola "null".
+    const motivo = motivoRientroNonValido("null");
+    expect(motivo).toContain("non è una pagina web");
+    expect(motivo).toContain("file://");
+    expect(motivoRientroNonValido("file:///C:/Program%20Files/Reportini/index.html")).toContain(
+      "non è una pagina web",
+    );
+  });
+});
+
 describe("URL di ritorno", () => {
   it("è l'URL che va incollato in Supabase, senza slash finali", async () => {
     const { urlDiRitorno } = await import("../src/lib/cloud/destinazione");

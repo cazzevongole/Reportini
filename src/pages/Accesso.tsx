@@ -29,7 +29,7 @@ const PERCHE = [
 ];
 
 export default function Accesso() {
-  const { email, loading, signInWithGoogle } = useAccount();
+  const { email, loading, error, signInWithGoogle } = useAccount();
   const { esegui } = useAvvisi();
   const posizione = useLocation();
   const da = (posizione.state as { da?: string } | null)?.da ?? "/panel";
@@ -63,6 +63,15 @@ export default function Accesso() {
             >
               {loading ? "Accesso in corso…" : "Accedi con Google"}
             </Button>
+
+            {/* L'errore dell'accesso resta qui, non solo nell'avviso che sparisce
+                dopo qualche secondo: è l'unica spiegazione quando il pulsante
+                premuto non porta da nessuna parte. */}
+            {error ? (
+              <p className="mt-3 rounded-xl bg-clay-50 px-3 py-2 text-xs leading-relaxed text-clay-900">
+                {error}
+              </p>
+            ) : null}
 
             {problemaConfigurazione ? (
               <p className="mt-3 rounded-xl bg-clay-50 px-3 py-2 text-xs text-clay-900">

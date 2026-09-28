@@ -47,6 +47,13 @@ async function createWindow() {
 
   ventana.once("ready-to-show", () => ventana && ventana.show());
 
+  // La testata: senza, il log nasce solo al primo messaggio del renderer, e
+  // "non ho log" non distingue un'app muta da un log che non c'è. Qui si
+  // vede subito quale versione è partita, su cosa, e dove sta il database.
+  registra(
+    `Reportini ${app.getVersion()} su ${process.platform} — dati in ${DB_FILE()} — log in ${LOG_FILE()}`,
+  );
+
   // Quello che il renderer scrive, su file. Le due forme del evento sono
   // entrambe gestite: Electron 31 passa ancora i parametri posizionali, le
   // versioni più recenti un oggetto.
