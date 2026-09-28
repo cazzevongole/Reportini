@@ -1,4 +1,5 @@
 import { cloudEnabled, problemaConfigurazione, supabase, tipoChiave } from "./supabase";
+import { urlDiRitorno } from "./destinazione";
 
 const BUCKET = "reportini";
 const SONDAGGIO = ".verifica-bucket";
@@ -86,7 +87,10 @@ export async function verificaIntegrazione(): Promise<EsitoDiagnostica> {
       ? "Client OAuth configurato."
       : "Non configurato: ogni appuntamento si esporta comunque in formato .ics.",
     azione: clientCalendar
-      ? undefined
+      ? `Nel client OAuth, in "Authorized redirect URIs" deve comparire esattamente:
+${urlDiRitorno(window.location.origin, import.meta.env.BASE_URL)}
+(e in "Authorized JavaScript origins" la sola origine ${window.location.origin}).
+Senza questo Google risponde redirect_uri_mismatch.`
       : "Google Cloud → APIs and Services → Library → abilita Google Calendar API → crea un client OAuth di tipo Web application e copiane il Client ID in VITE_GOOGLE_CLIENT_ID.",
     nonVerificato: clientCalendar ? true : undefined,
   });

@@ -384,6 +384,9 @@ describe("Verifica del bucket", () => {
     // Non si può sapere dalla pagina se la Calendar API è abilitata nel
     // progetto Google Cloud: dichiararlo pronto sarebbe buggy.
     expect(calendar?.nonVerificato).toBe(true);
+    // La causa numero uno di redirect_uri_mismatch è avere configurato le
+    // origini JavaScript senza la redirect URI: la riga deve dirlo.
+    expect(calendar?.azione).toMatch(/Authorized redirect URIs/);
   });
 });
 
