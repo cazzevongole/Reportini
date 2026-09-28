@@ -291,26 +291,54 @@ describe("Salvataggio online", () => {
   });
 
   it("salva automaticamente dopo ogni modifica locale", async () => {
-    const { avviaAutoSync } = await import("../src/lib/cloud/sync");
+    const { avviaAutoSync, iscrivitiAllaSalvataggio } = await import(
+      "../src/lib/cloud/sync"
+    );
     let notificato: string | null = null;
-    const { invia, annulla } = avviaAutoSync("utente-1", (info) => {
+    const smetti = iscrivitiAllaSalvataggio((info) => {
       notificato = info.messaggio;
     });
+    const { invia, annulla } = avviaAutoSync("utente-1");
     await act(async () => {
       await invia(true);
     });
     expect(notificato).toBe("Dati salvati nel cloud");
     expect(stato.firmati.length).toBe(2);
     annulla();
+    smetti();
   });
 
   it("non sincronizza nulla senza un account collegato", async () => {
     const { avviaAutoSync } = await import("../src/lib/cloud/sync");
-    const { invia } = avviaAutoSync(null, () => {});
+    const { invia } = avviaAutoSync(null);
     await act(async () => {
       await invia(true);
     });
     expect(stato.firmati.length).toBe(0);
+  });
+
+  it("un errore di caricamento arriva a chi ascolta, non muore in silenzio", async () => {
+    const { avviaAutoSync, iscrivitiAllaSalvataggio, statoSalvataggio } = await import(
+      "../src/lib/cloud/sync"
+    );
+    const finto = await import("../src/lib/sqlite/engine");
+    vi.mocked(finto.snapshot).mockImplementationOnce(() => {
+      throw new Error("disco pieno");
+    });
+    let ultimo: { stato: string; messaggio: string } | null = null;
+    const smetti = iscrivitiAllaSalvataggio((info) => {
+      ultimo = { stato: info.stato, messaggio: info.messaggio };
+    });
+    const { invia, annulla } = avviaAutoSync("utente-1");
+    await act(async () => {
+      await invia(true);
+    });
+    // Il pulsante "Salva subito online" mostra questo messaggio: senza di esso
+    // l'errore spariva e sembrava che il salvataggio non facesse niente.
+    expect(ultimo).toEqual({ stato: "errore", messaggio: "disco pieno" });
+    expect(statoSalvataggio().stato).toBe("errore");
+    annulla();
+    smetti();
   });
 
   it("il client cloud risulta configurato", async () => {
@@ -460,6 +488,51 @@ describe("Riferimenti rimossi", () => {
     // E lo stato del collegamento con Google Calendar, senza duplicarlo.
     expect(testo).toContain("Google Calendar");
     expect(testo).toContain("Salvataggio online");
+  });
+});
+
+describe("Salvataggio online nelle impostazioni", () => {
+  it("salva con l'id dell'utente, non con l'email", async () => {
+    await entraCome("utente@esempio.it");
+    await monta("/panel/impostazioni");
+    // Il mount avvia già il salvataggio automatico: azzeriamo per isolare
+    // quello che fa il pulsante.
+    stato.firmati = [];
+
+    const bottone = [...contenitore.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Salva subito online"),
+    );
+    expect(bottone).toBeDefined();
+    await act(async () => {
+      bottone!.click();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    const percorsi = stato.firmati.map((f) => f.path);
+    // Nel bucket il percorso è <user-id>/…: con l'email le RLS respongono la
+    // scrittura e il pulsante sembra non salvare nulla.
+    expect(percorsi).toContain("utente-1/reportini.sqlite");
+    expect(percorsi).toContain("utente-1/reportini-meta.json");
+    expect(percorsi.some((p) => p.startsWith("utente@esempio.it"))).toBe(false);
+    expect(contenitore.textContent).toContain("Dati salvati nel cloud");
+  });
+
+  it("mostra l'esito del salvataggio, anche quando fallisce", async () => {
+    await entraCome("utente@esempio.it");
+    await monta("/panel/impostazioni");
+    const { snapshot } = await import("../src/lib/sqlite/engine");
+    vi.mocked(snapshot).mockImplementationOnce(() => {
+      throw new Error("disco pieno");
+    });
+    const bottone = [...contenitore.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Salva subito online"),
+    );
+    await act(async () => {
+      bottone!.click();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    // Senza questo messaggio l'errore spariva e il pulsante restava muto.
+    expect(contenitore.textContent).toContain("disco pieno");
   });
 });
 

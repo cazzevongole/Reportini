@@ -24,6 +24,36 @@ export interface SincronizzazioneInfo {
   prossimoTra: number | null;
 }
 
+const INIZIALE: SincronizzazioneInfo = {
+  stato: "inattivo",
+  messaggio: "",
+  ultimoSalvataggio: null,
+  prossimoTra: null,
+};
+
+/**
+ * L'ultimo esito della sincronizzazione, in un punto solo: le impostazioni
+ * lo possono mostrare senza avviare una seconda sincronizzazione.
+ */
+let ultimoStato: SincronizzazioneInfo = INIZIALE;
+const ascoltatori = new Set<(info: SincronizzazioneInfo) => void>();
+
+export function statoSalvataggio(): SincronizzazioneInfo {
+  return ultimoStato;
+}
+
+export function iscrivitiAllaSalvataggio(
+  ascolta: (info: SincronizzazioneInfo) => void,
+): () => void {
+  ascoltatori.add(ascolta);
+  return () => ascoltatori.delete(ascolta);
+}
+
+function pubblica(info: SincronizzazioneInfo): void {
+  ultimoStato = info;
+  for (const ascolta of ascoltatori) ascolta(info);
+}
+
 function percorso(userId: string, nome: string): string {
   return `${userId}/${nome}`;
 }
@@ -122,7 +152,7 @@ export async function sincronizza(
  * Rincarica automaticamente dopo ogni scrittura locale, con un cooldown per
  * non fare una richiesta a ogni tasto premuto.
  */
-export function avviaAutoSync(userId: string | null, suCambio: (info: SincronizzazioneInfo) => void) {
+export function avviaAutoSync(userId: string | null) {
   let cooldown = 0;
 
   const base = {
@@ -133,7 +163,7 @@ export function avviaAutoSync(userId: string | null, suCambio: (info: Sincronizz
     if (!userId || !supabase) return;
     if (!forzato && Date.now() < cooldown) return;
     cooldown = Date.now() + 5_000;
-    suCambio({
+    pubblica({
       stato: "in corso",
       messaggio: "Salvataggio nel cloud…",
       ultimoSalvataggio: base.ultimoSalvataggio,
@@ -142,14 +172,14 @@ export function avviaAutoSync(userId: string | null, suCambio: (info: Sincronizz
     try {
       const esito = await sincronizza(userId);
       base.ultimoSalvataggio = new Date().toISOString();
-      suCambio({
+      pubblica({
         stato: "sincronizzato",
         messaggio: esito.messaggio,
         ultimoSalvataggio: base.ultimoSalvataggio,
         prossimoTra: null,
       });
     } catch (errore) {
-      suCambio({
+      pubblica({
         stato: "errore",
         messaggio: errore instanceof Error ? errore.message : "Salvataggio cloud non riuscito",
         ultimoSalvataggio: base.ultimoSalvataggio,
