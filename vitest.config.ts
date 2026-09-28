@@ -14,8 +14,10 @@ export default defineConfig({
     env: {
       VITE_SUPABASE_URL: "https://esempio.supabase.co",
       VITE_SUPABASE_ANON_KEY: "anon-key-di-prova",
-      VITE_DEV_WHITELIST: "sviluppo@example.it",
       VITE_GOOGLE_CLIENT_ID: "123.apps.googleusercontent.com",
+      // La schermata di apertura dura cinque secondi: in test deve durare
+      // zero, altrimenti ogni montaggio aspetterebbe la stessa pausa.
+      VITE_DURATA_APERTURA_MS: "0",
     },
   },
 });

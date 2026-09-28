@@ -52,7 +52,7 @@ salvataggio online.
 | --- | --- |
 | `VITE_SUPABASE_URL` | URL del progetto Supabase |
 | `VITE_SUPABASE_ANON_KEY` | **chiave pubblica** del progetto (`sb_publishable_…`) |
-| `VITE_DEV_WHITELIST` | email separate da virgola autorizzate alla dashboard sviluppatore |
+| `VITE_DURATA_APERTURA_MS` | secondi (in millisecondi) della schermata di benvenuto; default 5000 |
 | _(nessuna per Calendar)_ | il token Google Calendar viaggia sulla sessione Supabase |
 
 > **Non usare mai la chiave `secret`.** Le nuove chiavi `sb_secret_…` sostituiscono la vecchia
@@ -88,14 +88,19 @@ test, dove un guasto lo blocca prima di arrivare in giro.
 La sicurezza per account si basa sulle Row Level Security di Supabase: ogni utente vede e scrive
 solo i propri file, perché il percorso nel bucket è `<user-id>/reportini.sqlite`.
 
-### Dashboard sviluppatore
+### Schermata di benvenuto
 
-Gli account la cui email è in `VITE_DEV_WHITELIST` vedono un badge *Sviluppo* nelle impostazioni e
-possono aprire `/panel/sviluppo`, con stato dei dati, controllo della sincronizzazione e azioni di
-manutenzione. Non c'è una voce di menu: si arriva alla pagina con l'indirizzo.
+All'accesso e a ogni ricaricamento l'app si apre su una schermata di **cinque secondi** con un
+saluto e una frase, poi si dissolve e rivela il sito (`src/components/SchermataApertura.tsx`).
+La pausa è voluta: dà il tempo di leggere, copre l'apertura del database e mette un po' di
+ritmo fra tornare e lavorare.
 
-> La whitelist viene compilata nel bundle del browser: protegge contro accessi casuali, **non** è
-> un controllo di sicurezza. Per una barriera vera va verificata lato server.
+La frase viene scelta **a caso a ogni caricamento** fra le cinquanta di `src/lib/benvenuto.ts`, non
+una al giorno: due ricariche consecutive non direbbero la stessa identica cosa. Nella home non c'è
+più nessun saluto, che ripetuto ogni volta che si apre il pannello diventerebbe un avviso.
+
+La durata si accorcia con `VITE_DURATA_APERTURA_MS` (serve ai test, che altrimenti aspetterebbero
+tutti la stessa pausa).
 
 ### Versioni di backup
 
@@ -225,13 +230,13 @@ bun install
 bun run dev        # server di sviluppo su http://localhost:5173
 bun run build      # build statica in dist/ (+ 404.html per GitHub Pages)
 bun run typecheck  # tsc -b --noEmit
-bun run test       # test vitest (83 test) + smoke test dello schema
+bun run test       # test vitest (85 test) + smoke test dello schema
 bun run test:ui    # solo i test vitest
 bun run version:check  # la versione è coerente? (lo usa anche il rilascio)
 bun run version:patch  # alza la versione di un patch, come fa il workflow
 ```
 
-I test vitest coprono otto file:
+I test vitest coprono dieci file:
 
 - `tests/app.test.tsx` monta l'app reale in jsdom con un IndexedDB finto: è la rete che
   intercetta i crash a runtime (per esempio un dereferenziamento di `window.reportini` fatto al
@@ -239,6 +244,9 @@ I test vitest coprono otto file:
   si veda nessuna pagina interna.
 - `tests/avvisi.test.tsx` verifica il meccanismo degli avvisi: successo, errore con la causa,
   auto-chiusura, durata maggiore per gli errori, tetto di tre avvisi contemporanei.
+- `tests/apertura.test.tsx` monta la schermata di benvenuto da sola: copre l'app, la frase è
+  presa dall'archivio e cambia a ogni apertura, il dissolvenza parte opaca e si accende, e la
+  durata resta di cinque secondi anche con la variabile d'ambiente scritta male.
 - `tests/backup.test.tsx` verifica il versionamento: una copia per ora, potatura a tre giorni,
   scarto delle versioni successive, anteprima che legge una copia senza toccare il database di
   lavoro, e il percorso completo "guarda e richiudi" / "riparti da qui" dalle impostazioni.
@@ -246,14 +254,13 @@ I test vitest coprono otto file:
   via i riferimenti orfani e che le chiavi esterne restino attive anche dopo un salvataggio
   (sql.js chiude e riapre il database a ogni export: senza rimettere il PRAGMA, le cascate
   smetterebbero di funzionare).
-- `tests/benvenuto.test.ts` e `tests/versione.test.ts` coprono i messaggi di benvenuto e il
-  controllo di versione che fa scoppiare il rilascio se il tag non torna.
+- `tests/benvenuto.test.ts` e `tests/versione.test.ts` coprono l'archivio delle frasi di benvenuto
+  e il controllo di versione che fa scoppiare il rilascio se il tag non torna.
 - `tests/cloud.test.tsx` verifica con un client Supabase finto l'accesso con Google, il
   caricamento e il ripristino della copia online, il pulsante "Salva subito online" con
   l'id dell'utente e non l'email, l'auto-salvataggio dopo ogni modifica, il
-  gating della dashboard sviluppatore per whitelist, il controllo del bucket, la barra di
-  navigazione, l'assenza di sezioni di sviluppo nelle impostazioni e la presenza di account e
-  uscita sempre lì, e non in cima alle pagine.
+  controllo del bucket, la barra di navigazione, l'assenza di account e uscita fuori dalle
+  impostazioni e la sparizione della sezione sviluppo.
 - `tests/google.test.tsx` copre il token Calendar che arriva sulla sessione Supabase: custodia,
   scadenza con un'ora di margine, revoca allo scollegamento e i parametri OAuth richiesti.
 - `tests/calendar.e2e.test.tsx` crea un appuntamento, esce e rientra, e verifica che non venga
