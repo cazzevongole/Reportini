@@ -2,6 +2,7 @@ import {
   eliminaAppuntamento,
   elencaAppuntamenti,
   marcaAppuntamentoSincronizzato,
+  marcaErroreGoogle,
   ottieniAppuntamento,
   rimuoviCollegamentoGoogle,
 } from "../repo";
@@ -81,7 +82,13 @@ export async function sincronizzaAppuntamento(
     });
     return { ok: true, messaggio: "Appuntamento sincronizzato con Google Calendar" };
   } catch (error) {
-    return { ok: false, messaggio: spiega(error) };
+    const messaggio = spiega(error);
+    // Il motivo resta sull'appuntamento: è l'unica traccia che sopravvive
+    // all'avviso e al riavvio, ed è quella che dice se il problema è la rete,
+    // i permessi o il token.
+    marcaErroreGoogle(appuntamento.id, messaggio);
+    console.error("google-calendar: sincronizzazione fallita —", messaggio);
+    return { ok: false, messaggio };
   }
 }
 

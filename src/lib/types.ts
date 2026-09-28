@@ -48,6 +48,15 @@ export interface Appuntamento {
   googleCalendarId: string | null;
   googleHtmlLink: string | null;
   googleSyncAt: string | null;
+  /**
+   * Perché l'ultimo tentativo di pubblicazione è fallito, se è fallito.
+   *
+   * Vive sull'appuntamento e non in un avviso perché un avviso sparisce: un
+   * salvataggio riuscito con la pubblicazione fallita sembrava identico a
+   * uno riuscito del tutto, e l'unica traccia del problema era una notifica
+   * verde sparita di lì a poco. Qui la ragione aspetta che l'utente la legga.
+   */
+  googleErrore: string | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -191,6 +191,7 @@ function creaSchedaConAppuntamento() {
     googleCalendarId: null,
     googleHtmlLink: null,
     googleSyncAt: null,
+    googleErrore: null,
   });
   return { anagraficoId, appuntamentoId };
 }
@@ -322,6 +323,40 @@ describe("Reportini end-to-end: dati, Calendar, logout e rientro", () => {
     expect(esito.messaggio).toMatch(/403/);
     // Nessun collegamento registrato: il tentativo non è riuscito.
     expect(ottieniAppuntamento(appuntamentoId)?.googleEventId).toBeNull();
+    // Ma il motivo resta scritto sull'appuntamento. Prima non restava, e un
+    // salvataggio riuscito con la pubblicazione fallita era indistinguibile da
+    // uno riuscito del tutto: l'utente vedeva l'appuntamento in lista e una
+    // notifica verde, e in agenda non c'era niente.
+    expect(ottieniAppuntamento(appuntamentoId)?.googleErrore).toMatch(/403/);
+  });
+
+  it("un tentativo riuscito cancella il motivo del fallimento precedente", async () => {
+    await nuovoDatabase();
+    const { appuntamentoId } = creaSchedaConAppuntamento();
+    fetchFinto.mockImplementationOnce(async () => risposta({ error: "boom" }, 500));
+    await sincronizzaAppuntamento(appuntamentoId, "primary");
+    expect(ottieniAppuntamento(appuntamentoId)?.googleErrore).toBeTruthy();
+
+    const esito = await sincronizzaAppuntamento(appuntamentoId, "primary");
+
+    expect(esito.ok).toBe(true);
+    // L'errore non deve sopravvivere al successo: un appuntamento finito in
+    // agenda che continua ad accusare un 500 è un appuntamento che non
+    // si lascia in pace.
+    expect(ottieniAppuntamento(appuntamentoId)?.googleErrore).toBeNull();
+  });
+
+  it("l'appuntamento mostra il motivo e il pulsato per riprovare", async () => {
+    await nuovoDatabase();
+    const { appuntamentoId } = creaSchedaConAppuntamento();
+    fetchFinto.mockImplementationOnce(async () => risposta({ error: "insufficientPermissions" }, 403));
+    await sincronizzaAppuntamento(appuntamentoId, "primary");
+    // Qui la pagina non serve: il motivo e il pulsato stanno sull'appuntamento,
+    // e senza una traccia sul record un salvataggio riuscito con la
+    // pubblicazione fallita era indistinguibile da uno riuscito del tutto.
+    const salvato = ottieniAppuntamento(appuntamentoId);
+    expect(salvato?.googleErrore).toContain("403");
+    expect(salvato?.googleErrore).toContain("insufficientPermissions");
   });
 
   it("marcaAppuntamentoSincronizzato conserva il collegamento già presente", async () => {
@@ -628,5 +663,28 @@ describe("Il modulo dell'appuntamento", () => {
     );
     expect(salvato).toBeTruthy();
     expect(salvato?.googleEventId).toBeNull();
+  });
+
+  it("un salvataggio con Google che risponde male lo dice, e lo dice sulla pagina", async () => {
+    await nuovoDatabase();
+    creaSchedaConAppuntamento();
+    // Il modulo salva, poi prova a pubblicare. Se Google risponde con un
+    // errore, quello che l'utente legge deve essere un avviso di **errore**:
+    // prima la funzione ritornava `{ ok: false }` e veniva passata a `esegui`
+    // come `successo`, quindi un fallimento arrivava come notifica verde con
+    // dentro la frase dell'errore — e poi spariva.
+    fetchFinto.mockImplementation(async () => risposta({ error: "insufficientPermissions" }, 403));
+    await monta();
+
+    const spunta = contenitore.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+    expect(spunta.checked).toBe(true);
+    await act(async () => {
+      perEtichetta("Crea appuntamento").click();
+    });
+
+    // L'appuntamento è salvato — quello non deve mai andare perso — ma
+    // l'avviso è di errore, non di successo.
+    expect(elencaAppuntamenti({}).some((a) => a.titolo === "Appuntamento allo sportello")).toBe(true);
+    expect(document.body.textContent).toContain("Non pubblicato");
   });
 });

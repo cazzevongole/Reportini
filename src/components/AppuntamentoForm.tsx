@@ -63,6 +63,9 @@ export default function AppuntamentoForm({
       googleCalendarId: null,
       googleHtmlLink: null,
       googleSyncAt: null,
+      // Un appuntamento nuovo non ha ancora un motivo di fallimento: quello
+      // arriva dalla pubblicazione, e la riga sparisce al primo successo.
+      googleErrore: null,
     };
   });
 
@@ -109,10 +112,17 @@ export default function AppuntamentoForm({
     if (googlePronto && pubblica) {
       setInCorso(true);
       notifica("info", "Salvo e pubblico su Google Calendar…");
-      await esegui(() => pubblicaAppuntamento(id), {
-        successo: (r) => r.messaggio,
+      // `pubblicaAppuntamento` non solleva: ritorna `{ ok: false }`. Passarlo a
+      // `esegui` con `successo: (r) => r.messaggio` mostrava un fallimento
+      // come se fosse un avviso verde, con dentro la frase dell'errore che poi
+      // spariva: l'utente vedeva una notifica di successo su un'operazione
+      // fallita, e restava con la convinzione che l'evento fosse in agenda.
+      // Qui l'esito decide il colore, e il motivo va anche sull'appuntamento.
+      const esito = await esegui(() => pubblicaAppuntamento(id), {
         errore: "Appuntamento salvato, ma non pubblicato su Google Calendar",
       });
+      if (esito?.ok) notifica("ok", esito.messaggio);
+      else if (esito) notifica("errore", `Non pubblicato: ${esito.messaggio}`);
       setInCorso(false);
     }
     onSaved(id);
