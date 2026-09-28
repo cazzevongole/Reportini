@@ -1,5 +1,5 @@
 import { accessToken } from "./auth";
-import type { Appuntamento } from "../types";
+import type { Appuntamento, StatoAppuntamento } from "../types";
 
 const API = "https://www.googleapis.com/calendar/v3";
 
@@ -24,6 +24,30 @@ export interface CalendarEvent {
   end?: { dateTime?: string; date?: string };
 }
 
+/**
+ * Errore di Google Calendar, con il codice HTTP accanto al messaggio.
+ *
+ * Serve a distinguere i fallimenti veri da quelli che sono solo l'evento che
+ * non c'è più: `404 Gone` e `410` dicono che la risorsa non esiste, e in quel
+ * caso la cancellazione che l'utente ha chiesto è **già stata fatta**. Con
+ * una stringa sola non era distinguibile, e un 410 finiva come qualsiasi
+ * altro errore di rete.
+ */
+export class ErroreGoogle extends Error {
+  readonly stato: number;
+
+  constructor(stato: number, messaggio: string) {
+    super(messaggio);
+    this.name = "ErroreGoogle";
+    this.stato = stato;
+  }
+}
+
+/** L'evento che Google non ha più:Gone e Not Found sono la stessa cosa qui. */
+export function eventoMancante(errore: unknown): boolean {
+  return errore instanceof ErroreGoogle && (errore.stato === 404 || errore.stato === 410);
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = await accessToken();
   const response = await fetch(`${API}${path}`, {
@@ -36,7 +60,10 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   });
   if (!response.ok) {
     const detail = await response.text();
-    throw new Error(`Google Calendar (${response.status}): ${detail.slice(0, 180)}`);
+    throw new ErroreGoogle(
+      response.status,
+      `Google Calendar (${response.status}): ${detail.slice(0, 180)}`,
+    );
   }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
@@ -47,10 +74,33 @@ export async function elencaCalendar(): Promise<CalendarInfo[]> {
   return data.items ?? [];
 }
 
+/**
+ * Come lo stato dell'appuntamento silegge a occhio.
+ *
+ * `transparency` dice gia che un evento in attesa non occupa la fascia, ma è
+ * una proprietà che si vede solo aprendo l'evento: in elenco due appuntamenti
+ * identici, uno in attesa e uno confermato, sembrano uguali. La riga qui sotto
+ * la dice subito, e per l'esportazione .ics (dove `transparency` non esiste)
+ * è l'unica traccia.
+ */
+const STATO_SU_EVENTO: Record<StatoAppuntamento, string> = {
+  "in-attesa": "in attesa di conferma",
+  confermato: "confermato",
+  annullato: "annullato",
+};
+
+/** `STATUS` dell'iCalendar: `TENTATIVE` è esattamente "non ancora tenuto". */
+const STATO_ICS: Record<StatoAppuntamento, string> = {
+  "in-attesa": "TENTATIVE",
+  confermato: "CONFIRMED",
+  annullato: "CANCELLED",
+};
+
 function aEvento(appuntamento: Appuntamento) {
   return {
     summary: appuntamento.titolo || "Appuntamento",
     description: [
+      `Stato: ${STATO_SU_EVENTO[appuntamento.stato]}`,
       appuntamento.descrizione,
       appuntamento.luogo ? `Luogo: ${appuntamento.luogo}` : "",
     ]
@@ -88,7 +138,13 @@ function aEvento(appuntamento: Appuntamento) {
           : [],
     },
     extendedProperties: {
-      private: { reportiniAppuntamentoId: String(appuntamento.id) },
+      // Anche in forma leggibile da una macchina: `transparency` e `status`
+      // coprono solo annullato e occupazione, e non dicono quale dei due stati
+      // dell'app sia.
+      private: {
+        reportiniAppuntamentoId: String(appuntamento.id),
+        reportiniStato: appuntamento.stato,
+      },
     },
   };
 }
@@ -160,7 +216,7 @@ export function scaricaIcs(appuntamento: Appuntamento): void {
     `SUMMARY:${escapeIcs(appuntamento.titolo || "Appuntamento")}`,
     appuntamento.descrizione ? `DESCRIPTION:${escapeIcs(appuntamento.descrizione)}` : "",
     appuntamento.luogo ? `LOCATION:${escapeIcs(appuntamento.luogo)}` : "",
-    `STATUS:${appuntamento.stato === "annullato" ? "CANCELLED" : "CONFIRMED"}`,
+    `STATUS:${STATO_ICS[appuntamento.stato]}`,
     "BEGIN:VALARM",
     "TRIGGER:-PT30M",
     "ACTION:DISPLAY",
@@ -181,8 +237,11 @@ export function scaricaTuttiGliAppuntamenti(appuntamenti: Appuntamento[]): void 
       `DTSTART:${dataIcs(appuntamento.inizio)}`,
       `DTEND:${dataIcs(appuntamento.fine)}`,
       `SUMMARY:${escapeIcs(appuntamento.titolo || "Appuntamento")}`,
+      // Nell'ics lo stato lo dice `STATUS`, che è il campo standard: qui non
+      // serve anche la riga nella descrizione.
       appuntamento.descrizione ? `DESCRIPTION:${escapeIcs(appuntamento.descrizione)}` : "",
       appuntamento.luogo ? `LOCATION:${escapeIcs(appuntamento.luogo)}` : "",
+      `STATUS:${STATO_ICS[appuntamento.stato]}`,
       "END:VEVENT",
     ]
       .filter(Boolean)

@@ -96,14 +96,47 @@ async function scriviMeta(userId: string, meta: RemoteMeta): Promise<void> {
  */
 let versioneSincronizzata: number | null = null;
 
+/**
+ * Versione del database com'era all'inizio della sessione.
+ *
+ * È ciò che distingue "l'utente sta tornando su un altro dispositivo, qui non
+ * c'è niente" da "l'utente sta lavorando e le sue scritture non sono ancora
+ * salite". Nel secondo caso il cloud **non** può fare da fonte di verità: la
+ * copia online è più vecchia di quello che c'è qui, e sostituirla cancella il
+ * lavoro dell'utente.
+ *
+ * Senza questo controllo il sintomo era un appuntamento creato che spariva, e
+ * la pubblicazione si fermava con «L'appuntamento non esiste più»: non
+ * accadeva sempre, perché dipende da se la scrittura capitava dentro la
+ * finestra del download.
+ */
+let versioneAllaPartenza = 0;
+
+/** Il database è cambiato da quando è iniziata la sessione? */
+function ciSonoModificheLocali(): boolean {
+  return getVersion() !== versioneAllaPartenza;
+}
+
 /** Dimentica lo stato di sincronizzazione (usato dopo un cambio account). */
 export function resetSincronizzazione(): void {
   versioneSincronizzata = null;
+  versioneAllaPartenza = getVersion();
 }
 
 async function caricaLocale(userId: string): Promise<{ scaricato: boolean; messaggio: string }> {
   const remoto = await scarica(userId, DB_PATH);
   if (!remoto) return { scaricato: false, messaggio: "Nessuna copia online" };
+  // Il download è stato in rete e l'utente, in quei secondi, ha potuto
+  // salvare qualcosa. Sostituire il database adesso butterebbe via quello che
+  // ha appena scritto: quindi si ricontrolla **dopo** aver scaricato, non solo
+  // prima. È la differenza fra un errore che capita una volta e uno che non
+  // capita mai.
+  if (ciSonoModificheLocali()) {
+    console.warn(
+      "cloud: il database locale è cambiato durante il download, quindi la copia online non lo sostituisce",
+    );
+    return salvaLocale(userId);
+  }
   await replaceDatabase(remoto);
   versioneSincronizzata = getVersion();
   return { scaricato: true, messaggio: "Dati ripristinati dal cloud" };
@@ -142,7 +175,13 @@ export async function sincronizza(
   const meta = await leggiMeta(userId);
 
   if (!meta) return salvaLocale(userId);
-  if (versioneSincronizzata === null) return caricaLocale(userId);
+  if (versioneSincronizzata === null) {
+    // Primo contatto della sessione. Il cloud vince solo se questo database
+    // è ancora quello di quando l'app si è aperta: se l'utente ha già scritto,
+    // salire sono i dati suoi, non scendere quelli di una copia più vecchia.
+    if (ciSonoModificheLocali()) return salvaLocale(userId);
+    return caricaLocale(userId);
+  }
   if (getVersion() !== versioneSincronizzata) return salvaLocale(userId);
 
   return { scaricato: false, messaggio: "Già allineato" };

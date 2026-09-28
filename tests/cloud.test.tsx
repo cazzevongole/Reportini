@@ -250,15 +250,66 @@ describe("Salvataggio online", () => {
 
     // 3. Cambio di account o di sessione: il device "nuovo" non sa nulla,
     //    quindi il cloud deve vincere e la copia locale vuota NON deve
-    //    sovrascrivere i dati già presenti.
-    resetSincronizzazione();
+    //    sovrascrivere i dati già presenti. Il database è quello di quando la
+    //    sessione è iniziata, quindi l'azzeramento viene *prima*: è una
+    //    versione che non è mai cambiata, non un dispositivo che ha lavorato.
     stato.versione = 0;
+    resetSincronizzazione();
     stato.firmati = [];
     const esito = await sincronizza("utente-1");
     expect(esito.scaricato).toBe(true);
     expect(esito.messaggio).toBe("Dati ripristinati dal cloud");
     expect(vi.mocked(replaceDatabase)).toHaveBeenCalledOnce();
     expect(stato.firmati).toHaveLength(0);
+  });
+
+  it("non lascia che la copia online cancelli un appuntamento appena creato", async () => {
+    const { sincronizza, resetSincronizzazione } = await import("../src/lib/cloud/sync");
+    const { replaceDatabase } = await import("../src/lib/sqlite/engine");
+
+    // Il cloud ha già dei dati, quindi al primo contatto verrebbe scaricato.
+    await sincronizza("utente-1");
+    vi.mocked(replaceDatabase).mockClear();
+    stato.firmati = [];
+
+    // Nuova sessione, e l'utente salva un appuntamento prima che la
+    // sincronizzazione sia finita: è la finestra in cui il download è in
+    // corso e la sostituzione del database può arrivare dopo la scrittura.
+    stato.versione = 0;
+    resetSincronizzazione();
+    stato.versione = 1; // l'appuntamento è stato creato
+
+    const esito = await sincronizza("utente-1");
+
+    // Il lavoro locale vince: sostituire il database qui farebbe sparire
+    // l'appuntamento, e la pubblicazione si fermerebbe con «L'appuntamento non
+    // esiste più».
+    expect(vi.mocked(replaceDatabase)).not.toHaveBeenCalled();
+    expect(esito.scaricato).toBe(false);
+    expect(stato.firmati.map((f) => f.path)).toContain("utente-1/reportini.sqlite");
+  });
+
+  it("ricontrolla dopo il download, non solo prima", async () => {
+    const { sincronizza, resetSincronizzazione } = await import("../src/lib/cloud/sync");
+    const { replaceDatabase } = await import("../src/lib/sqlite/engine");
+
+    await sincronizza("utente-1");
+    vi.mocked(replaceDatabase).mockClear();
+    stato.firmati = [];
+
+    stato.versione = 0;
+    resetSincronizzazione();
+
+    // Il download parte quando il database è ancora intatto, e l'utente
+    // scrive mentre la rete è occupata. Il controllo fatto prima di scaricare
+    // non lo vede: solo quello fatto dopo lo vede.
+    const inCorso = sincronizza("utente-1");
+    stato.versione = 1;
+    const esito = await inCorso;
+
+    expect(vi.mocked(replaceDatabase)).not.toHaveBeenCalled();
+    expect(esito.scaricato).toBe(false);
+    expect(stato.firmati.map((f) => f.path)).toContain("utente-1/reportini.sqlite");
   });
 
   it("carica in locale le modifiche fatte dopo l'ultimo allineamento", async () => {

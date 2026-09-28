@@ -6,7 +6,13 @@ import {
   ottieniAppuntamento,
   rimuoviCollegamentoGoogle,
 } from "../repo";
-import { aggiornaEvento, creaEvento, eliminaEvento } from "./calendar";
+import {
+  aggiornaEvento,
+  creaEvento,
+  eliminaEvento,
+  eventoMancante,
+  type CalendarEvent,
+} from "./calendar";
 import type { Appuntamento, AppuntamentoDettagliato } from "../types";
 
 export interface SyncResult {
@@ -65,19 +71,31 @@ export async function sincronizzaAppuntamento(
   const salvato = ottieniAppuntamento(id);
   if (!salvato) return { ok: false, messaggio: "L'appuntamento non esiste più" };
   const appuntamento = aSincronizzabile(salvato);
+  const calendario = appuntamento.googleCalendarId ?? calendarId;
   try {
-    const evento = appuntamento.googleEventId
-      ? await aggiornaEvento(
-          appuntamento.googleEventId,
-          appuntamento,
-          appuntamento.googleCalendarId ?? calendarId,
-        )
-      : await creaEvento(appuntamento, calendarId);
+    let evento: CalendarEvent;
+    if (!appuntamento.googleEventId) {
+      evento = await creaEvento(appuntamento, calendario);
+    } else {
+      try {
+        evento = await aggiornaEvento(appuntamento.googleEventId, appuntamento, calendario);
+      } catch (errore) {
+        // L'utente ha cancellato l'evento direttamente su Google Calendar: il
+        // collegamento punta a qualcosa che non esiste più. Senza questo, ogni
+        // modifica successiva riceverebbe lo stesso 404 e l'appuntamento
+        // resterebbe bloccato per sempre, con l'evento che non c'è. Qui
+        // l'evento viene ricreato: è quello che l'utente si aspetta salvando,
+        // e non si duplica nulla perché il precedente non è più in agenda.
+        if (!eventoMancante(errore)) throw errore;
+        console.warn(
+          `google-calendar: l'evento ${appuntamento.googleEventId} non esiste più, se ne crea uno nuovo`,
+        );
+        evento = await creaEvento(appuntamento, calendario);
+      }
+    }
     marcaAppuntamentoSincronizzato(appuntamento.id, {
       googleEventId: evento.id,
-      googleCalendarId: appuntamento.googleEventId
-        ? appuntamento.googleCalendarId ?? calendarId
-        : calendarId,
+      googleCalendarId: calendario,
       googleHtmlLink: evento.htmlLink ?? null,
     });
     return { ok: true, messaggio: "Appuntamento sincronizzato con Google Calendar" };
@@ -141,15 +159,22 @@ export async function dissociaAppuntamento(
         salvato.googleCalendarId ?? calendarId,
       );
     }
-    // Solo i marcatori di Google: l'appuntamento non si tocca. Riscriverlo
-    // porterebbe nel database la descrizione arricchita che va solo
-    // all'evento, e il modulo di modifica la mostrerebbe con dentro il
-    // contesto dell'anagrafico — che si accoderebbe a ogni passaggio.
-    rimuoviCollegamentoGoogle(salvato.id);
-    return { ok: true, messaggio: "Appuntamento scollegato da Google Calendar" };
   } catch (error) {
-    return { ok: false, messaggio: spiega(error) };
+    // Se l'evento non c'è più, lo scollegamento è riuscito: il collegamento
+    // è a un evento che non esiste, quindi toglierlo è esattamente quello che
+    // l'utente voleva. Fallire qui lo lascerebbe collegato per sempre, a un
+    // evento che non si può più toccare.
+    if (!eventoMancante(error)) return { ok: false, messaggio: spiega(error) };
   }
+  // Solo i marcatori di Google: l'appuntamento non si tocca. Riscriverlo
+  // porterebbe nel database la descrizione arricchita che va solo
+  // all'evento, e il modulo di modifica la mostrerebbe con dentro il
+  // contesto dell'anagrafico — che si accoderebbe a ogni passaggio.
+  rimuoviCollegamentoGoogle(salvato.id);
+  return {
+    ok: true,
+    messaggio: "Appuntamento scollegato da Google Calendar",
+  };
 }
 
 /**
@@ -170,10 +195,18 @@ export async function eliminaAppuntamentoEEvento(id: number): Promise<SyncResult
       await eliminaEvento(salvato.googleEventId, salvato.googleCalendarId ?? "primary");
     }
   } catch (error) {
-    return {
-      ok: false,
-      messaggio: `L'appuntamento non è stato eliminato: ${spiega(error)}`,
-    };
+    // Se l'utente ha cancellato l'evento direttamente da Google Calendar,
+    // l'evento non c'è più: toglierlo dall'agenda è ** già riuscito**, e
+    // trattenere l'appuntamento per questo impedirebbe di eliminarlo del tutto
+    // — ogni nuovo tentativo riceverebbe lo stesso 410. È il caso in cui il
+    // calendario e l'app sono d'accordo sul fatto che l'evento non esiste, e va
+    // trattato come quello che è.
+    if (!eventoMancante(error)) {
+      return {
+        ok: false,
+        messaggio: `L'appuntamento non è stato eliminato: ${spiega(error)}`,
+      };
+    }
   }
   eliminaAppuntamento(salvato.id);
   return {

@@ -24,6 +24,7 @@ import {
   pubblicaAppuntamento,
   sincronizzaAppuntamento,
 } from "../src/lib/google/sync";
+import { eliminaEvento } from "../src/lib/google/calendar";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { AvvisoProvider } from "../src/components/Avvisi";
@@ -97,9 +98,34 @@ interface EventoFinto {
   transparency?: string;
   start?: { dateTime?: string; timeZone?: string };
   end?: { dateTime?: string; timeZone?: string };
+  extendedProperties?: { private?: Record<string, string> };
 }
 
 const eventi = new Map<string, EventoFinto>();
+
+/**
+ * La risposta che dà Google quando l'evento non c'è più. Il corpo è quello
+ * vero, copiato dalla 410 reale: la ragione è `deleted` e il messaggio
+ * "Resource has been deleted".
+ */
+function eventoMorto(stato: 404 | 410) {
+  return risposta(
+    {
+      error: {
+        errors: [
+          {
+            domain: "global",
+            reason: "deleted",
+            message: "Resource has been deleted",
+          },
+        ],
+        code: stato,
+        message: "Resource has been deleted",
+      },
+    },
+    stato,
+  );
+}
 const chiamate: { metodo: string; url: string }[] = [];
 let prossimoId = 1;
 
@@ -121,17 +147,17 @@ const fetchFinto = vi.fn(async (url: string, init: RequestInit = {}) => {
 
   if (String(url).includes("/calendarList")) {
     return risposta({ items: [{ id: "primary", summary: "Calendario principale", primary: true }] });
-  }
-
-  const evento = String(url).match(/\/events\/([^?]+)/);
+  }  const evento = String(url).match(/\/events\/([^?]+)/);
   if (evento) {
     const id = decodeURIComponent(evento[1]);
     if (metodo === "DELETE") {
+      if (!eventi.has(id)) return eventoMorto(410);
       eventi.delete(id);
       return risposta({}, 204);
     }
     if (metodo === "PUT" || metodo === "PATCH") {
-      const aggiornato = { ...(eventi.get(id) ?? { id }), ...(JSON.parse(String(init.body)) as object) };
+      if (!eventi.has(id)) return eventoMorto(410);
+      const aggiornato = { ...(eventi.get(id) as EventoFinto), ...(JSON.parse(String(init.body)) as object) };
       eventi.set(id, aggiornato as EventoFinto);
       return risposta(aggiornato);
     }
@@ -536,6 +562,32 @@ describe("Pubblicazione automatica: cosa fa il modulo quando si salva", () => {
     expect(eventi.size).toBe(1);
   });
 
+  it("lo stato si legge a occhio sull'evento, non solo dalle sue proprietà", async () => {
+    await nuovoDatabase();
+    const { appuntamentoId } = creaSchedaConAppuntamento();
+    const evento = () => [...eventi.values()][0];
+    const appuntamento = () => ottieniAppuntamento(appuntamentoId)!;
+    const descrizione = () => evento()?.description ?? "";
+
+    // `transparency` e `status` non bastano: dicono solo se l'evento occupa
+    // la fascia e se è annullato, ma non distinguono "in attesa" da
+    // "confermato". Chi guarda l'elenco deve poter capire quale dei due sia
+    // senza aprire l'evento, quindi lo stato va scritto in chiaro.
+    await pubblicaAppuntamento(appuntamentoId, "primary");
+    expect(descrizione()).toMatch(/^Stato: confermato/);
+
+    aggiornaAppuntamento(appuntamentoId, { ...appuntamento(), stato: "in-attesa" });
+    await pubblicaAppuntamento(appuntamentoId, "primary");
+    expect(descrizione()).toMatch(/^Stato: in attesa di conferma/);
+
+    aggiornaAppuntamento(appuntamentoId, { ...appuntamento(), stato: "annullato" });
+    await pubblicaAppuntamento(appuntamentoId, "primary");
+    expect(descrizione()).toMatch(/^Stato: annullato/);
+
+    // E resta leggibile da una macchina, per chi legge l'evento e non l'app.
+    expect(evento()?.extendedProperties?.private?.reportiniStato).toBe("annullato");
+  });
+
   it("annullare un appuntamento mai pubblicato non chiama Google", async () => {
     await nuovoDatabase();
     const { appuntamentoId } = creaSchedaConAppuntamento();
@@ -578,6 +630,62 @@ describe("Eliminare un appuntamento toglie anche l'evento", () => {
     expect(esito.messaggio).toBe("Appuntamento eliminato");
     expect(chiamate).toHaveLength(0);
     expect(ottieniAppuntamento(appuntamentoId)).toBeNull();
+  });
+
+  it("se l'evento è già sparito da Google, eliminare riesce lo stesso", async () => {
+    await nuovoDatabase();
+    const { appuntamentoId } = creaSchedaConAppuntamento();
+    await pubblicaAppuntamento(appuntamentoId, "primary");
+
+    // L'utente cancella l'evento direttamente da Google Calendar: l'app non
+    // lo sa, e il collegamento punta a un evento che non esiste più.
+    const eventoId = ottieniAppuntamento(appuntamentoId)!.googleEventId!;
+    await eliminaEvento(eventoId, "primary");
+
+    const esito = await eliminaAppuntamentoEEvento(appuntamentoId);
+
+    // Togliere l'evento dall'agenda è **già** riuscito: il 410 è Google che
+    // conferma che l'evento non c'è. Fallire qui non proteggerebbe nulla e
+    // renderebbe l'appuntamento non eliminabile, perché ogni nuovo tentativo
+    // riceverebbe lo stesso 410.
+    expect(esito.ok).toBe(true);
+    expect(ottieniAppuntamento(appuntamentoId)).toBeNull();
+    expect(esito.messaggio).not.toMatch(/410/);
+  });
+
+  it("scollegare un evento già sparito da Google riesce e pulisce il collegamento", async () => {
+    await nuovoDatabase();
+    const { appuntamentoId } = creaSchedaConAppuntamento();
+    await pubblicaAppuntamento(appuntamentoId, "primary");
+    const eventoId = ottieniAppuntamento(appuntamentoId)!.googleEventId!;
+    await eliminaEvento(eventoId, "primary");
+
+    const esito = await dissociaAppuntamento(appuntamentoId);
+
+    expect(esito.ok).toBe(true);
+    // Il collegamento a un evento che non esiste non può più essere tolto, e
+    // quindi non può più essere ripulito: resterebbe lì per sempre.
+    expect(ottieniAppuntamento(appuntamentoId)?.googleEventId).toBeNull();
+  });
+
+  it("modificare un appuntamento il cui evento è sparito lo ricrea", async () => {
+    await nuovoDatabase();
+    const { appuntamentoId } = creaSchedaConAppuntamento();
+    await pubblicaAppuntamento(appuntamentoId, "primary");
+    const eventoId = ottieniAppuntamento(appuntamentoId)!.googleEventId!;
+    await eliminaEvento(eventoId, "primary");
+
+    await aggiornaTitolo(appuntamentoId, "Ritiro documento (rivisto)");
+    const esito = await sincronizzaAppuntamento(appuntamentoId, "primary");
+
+    // Senza questo, ogni modifica successiva avrebbe ricevuto lo stesso 404
+    // e l'appuntamento sarebbe restato bloccato per sempre, con un collegamento
+    // a un evento morto.
+    expect(esito.ok).toBe(true);
+    expect(eventi.size).toBe(1);
+    expect([...eventi.values()][0].summary).toBe("Ritiro documento (rivisto)");
+    // E il collegamento è tornato a puntare a qualcosa che esiste.
+    expect(ottieniAppuntamento(appuntamentoId)?.googleEventId).toBeTruthy();
   });
 
   it("se Google non risponde l'appuntamento resta: meglio che lasciare un evento orfano", async () => {
