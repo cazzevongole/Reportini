@@ -1,7 +1,26 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="16" fill="#222735" />
-  <path d="M20 18h16a8 8 0 0 1 8 8v22H28a8 8 0 0 1-8-8V18z" fill="#12b394" />
-  <path d="M26 28h12M26 34h12M26 40h7" stroke="#ffffff" stroke-width="3" stroke-linecap="round" />
-  <circle cx="44" cy="44" r="10" fill="#dc6f47" />
-  <path d="M44 39v5.5l3.5 2" stroke="#ffffff" stroke-width="3" stroke-linecap="round" />
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Reportini">
+  <defs>
+    <linearGradient id="notte" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0" stop-color="#363e59" />
+      <stop offset="1" stop-color="#161a25" />
+    </linearGradient>
+  </defs>
+  <!-- Lo stesso disegno di electron/build/icon.png, che si genera con
+       scripts/icona.mjs: il foglio di anagrafiche con l'orologio. -->
+  <rect width="64" height="64" rx="14.1" fill="url(#notte)" />
+  <rect x="9.3" y="10.8" width="31" height="39.4" rx="2.9" fill="#000" opacity=".3" />
+  <rect x="9.3" y="9.7" width="31" height="38.7" rx="2.9" fill="#f7f6f2" />
+  <path d="M9.3 17.8V12.6A2.9 2.9 0 0 1 12.2 9.7h25.2a2.9 2.9 0 0 1 2.9 2.9v5.2z" fill="#12b394" />
+  <g stroke="#4a5468" stroke-width="3.8" stroke-linecap="round">
+    <path d="M13.4 24h22.8" />
+    <path d="M13.4 29.7h22.8" />
+    <path d="M13.4 35.3h15.6" />
+    <path d="M13.4 40.9h11.2" />
+  </g>
+  <circle cx="42.8" cy="42.5" r="11.9" fill="#f7f6f2" />
+  <circle cx="42.8" cy="42.5" r="10.6" fill="#dc6f47" />
+  <g stroke="#f7f6f2" stroke-width="2.6" stroke-linecap="round">
+    <path d="M42.8 42.5v-4.1" />
+    <path d="M42.8 42.5h4.2" />
+  </g>
 </svg>

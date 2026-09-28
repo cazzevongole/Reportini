@@ -23,7 +23,8 @@
     "version:check": "node scripts/versione-check.mjs",
     "version:patch": "node scripts/version.mjs patch",
     "version:minor": "node scripts/version.mjs minor",
-    "version:major": "node scripts/version.mjs major"
+    "version:major": "node scripts/version.mjs major",
+    "icona": "node scripts/icona.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",
