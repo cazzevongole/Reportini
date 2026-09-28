@@ -42,9 +42,16 @@ jobs:
             echo "::error::Mancano VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY nell'ambiente 'prod' (Settings > Secrets and variables > Actions > Variables > prod)."
             exit 1
           fi
+          # Il client id di Google non è bloccante: senza, l'accesso passa da
+          # Supabase e il calendario resta scollegato. Ma il fallimento è
+          # silenzioso — la build pubblica lo stesso — quindi qui si dice.
+          if [ -z "$VITE_GOOGLE_CLIENT_ID" ]; then
+            echo "::warning::VITE_GOOGLE_CLIENT_ID manca nell'ambiente 'prod': l'accesso funziona, ma chiederà solo il profilo e il calendario non sarà collegato."
+          fi
         env:
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+          VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
 
       - name: Build
         run: bun run build
@@ -56,6 +63,10 @@ jobs:
           # chiusa a chiunque.
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+          # Senza questa riga la build pubblica un'app in cui l'accesso con
+          # Google è spento: Vite la sostituisce con una stringa vuota e la
+          # funzione di accesso sparisce dal bundle, senza nessun errore.
+          VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
           VITE_DEV_WHITELIST: ${{ vars.VITE_DEV_WHITELIST }}
 
       # I job girano su runner separati: senza questo passaggio il job di

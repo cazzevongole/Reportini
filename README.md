@@ -459,7 +459,17 @@ Il repository include già `.github/workflows/deploy-pages.yml`. Per attivarlo:
 
 1. Carica il progetto sul branch `main`.
 2. In **Settings → Pages** scegli *Source: GitHub Actions*.
-3. In *Settings → Secrets and variables → Actions → Variables* aggiungi le variabili sopra.
+3. In *Settings → Secrets and variables → Actions → Variables* aggiungi le variabili sopra, nella
+   scheda dell'ambiente **`prod`**.
 
 Il workflow compila con `BASE_PATH=/Reportini`, copia `index.html` in `404.html` perché il router
 funzioni ricaricando una route interna, e usa `public/.nojekyll` per non far intervenire Jekyll.
+
+Ogni variabile `VITE_*` va passata **esplicitamente** allo step *Build*: le variabili dell'ambiente
+non arrivano da sole alla compilazione. Per `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` il
+workflow sbaglia a morte se mancano; per `VITE_GOOGLE_CLIENT_ID` no — la build esce lo stesso
+verde, ma Vite sostituisce la variabile con una stringa vuota, a quel punto `googleConfigured` è
+`false` e l'intera funzione di accesso con Google **viene eliminata dal bundle**. Il risultato è
+un'app pubblicata che funziona e non fa entrare nessuno con Google, senza un errore in console.
+Per questo il workflow avvisa con un `::warning::` quando il client id manca, e l'app nelle
+impostazioni dice "Client Google non configurato".
