@@ -40,6 +40,15 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
           VITE_DEV_WHITELIST: ${{ vars.VITE_DEV_WHITELIST }}
 
+      # I job girano su runner separati: senza questo passaggio il job di
+      # deploy si trova davanti una dist/ inesistente e muore su "tar: dist:
+      # Cannot open".
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: dist
+          retention-days: 1
+
   deploy:
     needs: build
     runs-on: ubuntu-latest
@@ -47,6 +56,11 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: site
+          path: dist
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
