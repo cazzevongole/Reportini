@@ -43,6 +43,7 @@ async function createWindow() {
 }
 
 app.whenReady().then(() => {
+  avviaAggiornamenti();
   createWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -73,6 +74,94 @@ ipcMain.handle("db:write", async (_event, bytes) => {
 ipcMain.handle("db:reveal", async () => {
   shell.showItemInFolder(DB_FILE());
   return DB_FILE();
+});
+
+/* ------------------------ Aggiornamento automatico ----------------------- */
+
+// electron-updater funziona solo sull'app impacchettata: in sviluppo non c'è
+// una release da cui prendere gli aggiornamenti, e una richiesta di rete
+// inutile a ogni avvio non serve a nessuno.
+function caricaAggiornatore() {
+  if (!app.isPackaged) return null;
+  try {
+    return require("electron-updater").autoUpdater;
+  } catch (errore) {
+    console.warn("Aggiornamento automatico non disponibile:", errore.message);
+    return null;
+  }
+}
+
+let aggiornatore = null;
+let versioneInCorso = null;
+/** @type {{ fase: string, versione?: string, percentuale?: number, messaggio?: string }} */
+let stato = { fase: "idle" };
+
+function inviaStato(nuovo) {
+  stato = nuovo;
+  for (const finestra of BrowserWindow.getAllWindows()) {
+    if (!finestra.isDestroyed()) finestra.webContents.send("aggiornamento:stato", nuovo);
+  }
+}
+
+function avviaAggiornamenti() {
+  aggiornatore = caricaAggiornatore();
+  if (!aggiornatore) return;
+
+  // Lo scarico parte da solo appena l'app è aperta: quando l'utente decide
+  // di installare, il pacchetto è già in arrivo e la finestra non resta
+  // appesa a una barra che avanza.
+  aggiornatore.autoDownload = true;
+  // Se l'utente rimanda, l'aggiornamento entra comunque alla chiusura.
+  aggiornatore.autoInstallOnAppQuit = true;
+
+  aggiornatore.on("checking-for-update", () => inviaStato({ fase: "controllo" }));
+
+  aggiornatore.on("update-available", (info) => {
+    versioneInCorso = info?.version ?? null;
+    inviaStato({ fase: "scarico", versione: versioneInCorso ?? undefined, percentuale: 0 });
+  });
+
+  aggiornatore.on("download-progress", (avanzamento) => {
+    const percentuale = Number.isFinite(avanzamento?.percent)
+      ? Math.max(0, Math.min(100, Math.round(avanzamento.percent)))
+      : 0;
+    inviaStato({ fase: "scarico", versione: versioneInCorso ?? undefined, percentuale });
+  });
+
+  aggiornatore.on("update-downloaded", (info) => {
+    inviaStato({ fase: "pronto", versione: info?.version ?? versioneInCorso ?? undefined });
+  });
+
+  aggiornatore.on("update-not-available", () => inviaStato({ fase: "aggiornato" }));
+
+  aggiornatore.on("error", (errore) => {
+    // Un controllo fallito (rete assente) non è un problema dell'utente: va
+    // tenuto in console e non trasformato in un avviso a ogni avvio.
+    console.warn("Aggiornamento automatico non riuscito:", errore?.message ?? errore);
+    inviaStato({ fase: "errore", messaggio: errore?.message ?? "Aggiornamento non riuscito" });
+  });
+}
+
+ipcMain.handle("update:stato", () => (aggiornatore ? stato : null));
+
+ipcMain.handle("update:versione", () => app.getVersion());
+
+ipcMain.handle("update:controlla", async () => {
+  if (!aggiornatore) return null;
+  try {
+    await aggiornatore.checkForUpdates();
+  } catch (errore) {
+    console.warn("Controllo aggiornamenti non riuscito:", errore?.message ?? errore);
+  }
+  return stato;
+});
+
+ipcMain.handle("update:installa", () => {
+  if (!aggiornatore) return false;
+  // silent = false: l'installatore mostra quello che sta facendo; l'app si
+  // riapre da sola quando ha finito.
+  setImmediate(() => aggiornatore.quitAndInstall(false, true));
+  return true;
 });
 
 ipcMain.handle("db:choose-export", async (_event, suggestedName, contents) => {

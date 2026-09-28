@@ -142,12 +142,18 @@ jobs:
           # win-unpacked e linux-unpacked sono centinaia di file che
           # appesantirebbero la release di qualche centinaia di megabyte
           # senza che nessuno li scarichi.
+          #
+          # Insieme ai pacchetti vanno pubblicati anche i file latest*.yml:
+          # sono il menù che electron-updater legge per sapere se c'è una
+          # versione nuova, e senza quelli l'app installata non si aggiorna
+          # da sola. Lo .zip serve sulla mac: aggiornare da .dmg non si può.
           path: |
             electron/release/*.dmg
+            electron/release/*.zip
             electron/release/*.exe
             electron/release/*.AppImage
             electron/release/*.blockmap
-            electron/release/*.yml
+            electron/release/latest*.yml
           if-no-files-found: error
           retention-days: 7
 
@@ -182,6 +188,16 @@ jobs:
           for estensione in dmg exe AppImage; do
             if ! ls dist/*."$estensione" >/dev/null 2>&1; then
               echo "::error::Manca il pacchetto .$estensione"
+              exit 1
+            fi
+          done
+
+          # Gli stessi tre sistemi devono avere anche il menù degli
+          # aggiornamenti: senza latest*.yml l'app installata continua a
+          # restare sulla versione vecchia per sempre, e questo non si vede.
+          for menu in latest.yml latest-mac.yml latest-linux.yml; do
+            if [ ! -f "dist/$menu" ]; then
+              echo "::error::Manca $menu: l'aggiornamento automatico non funzionerebbe"
               exit 1
             fi
           done

@@ -1,4 +1,5 @@
 import { get as idbGet, set as idbSet } from "idb-keyval";
+import type { PonteAggiornamento } from "../aggiornamento";
 
 const IDB_KEY = "reportini.sqlite";
 
@@ -8,6 +9,8 @@ export interface DesktopBridge {
   /** Percorso assoluto del file SQLite, risolto dal preload script. */
   dbPath: string;
   platform: string;
+  /** Aggiornamento automatico: assente se non c'è niente da aggiornare. */
+  aggiornamento?: PonteAggiornamento;
 }
 
 declare global {
