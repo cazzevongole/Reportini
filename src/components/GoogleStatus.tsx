@@ -3,6 +3,7 @@ import {
   connect,
   disconnect,
   googleConfigured,
+  isConnected,
   readProfile,
   type GoogleProfile,
 } from "../lib/google/auth";
@@ -10,11 +11,15 @@ import { Button } from "./ui";
 
 /** Banner che invita a collegare Google Calendar, o mostra l'account collegato. */
 export default function GoogleStatus({ compatto = false }: { compatto?: boolean }) {
+  // Lo stato di collegamento lo decide il token, non il profilo: il profilo
+  // arriva con una richiesta a parte e può arrivare dopo il primo render.
+  const [collegato, setCollegato] = useState(() => isConnected());
   const [profilo, setProfilo] = useState<GoogleProfile | null>(() => readProfile());
   const [occupato, setOccupato] = useState(false);
   const [errore, setErrore] = useState("");
 
   useEffect(() => {
+    setCollegato(isConnected());
     setProfilo(readProfile());
   }, []);
 
@@ -22,7 +27,10 @@ export default function GoogleStatus({ compatto = false }: { compatto?: boolean 
     setOccupato(true);
     setErrore("");
     try {
-      setProfilo(await connect());
+      await connect();
+      // connect() avvia un accesso che lascia la pagina: si arriva qui solo
+      // se è fallito.
+      setCollegato(false);
     } catch (cause) {
       setErrore(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -34,8 +42,12 @@ export default function GoogleStatus({ compatto = false }: { compatto?: boolean 
     return (
       <div className="rounded-2xl border border-ink-100 bg-white/70 p-4 text-xs text-ink-500">
         <p className="font-semibold text-ink-700">Google Calendar</p>
-        <p className="mt-1">{profilo ? `Collegato come ${profilo.email}` : "Non collegato"}</p>
-        {!profilo && googleConfigured ? (
+        <p className="mt-1">
+          {collegato
+            ? `Collegato${profilo?.email ? ` come ${profilo.email}` : ""}`
+            : "Non collegato"}
+        </p>
+        {!collegato && googleConfigured ? (
           <Button
             size="sm"
             variant="secondary"
@@ -50,12 +62,12 @@ export default function GoogleStatus({ compatto = false }: { compatto?: boolean 
     );
   }
 
-  if (profilo) {
+  if (collegato) {
     return (
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3">
         <div className="min-w-0">
           <p className="truncate text-sm font-medium text-brand-900">
-            Google Calendar collegato · {profilo.email}
+            Google Calendar collegato{profilo?.email ? ` · ${profilo.email}` : ""}
           </p>
           <p className="text-xs text-brand-700">
             Gli appuntamenti vengono pubblicati automaticamente quando li invii.
@@ -66,6 +78,7 @@ export default function GoogleStatus({ compatto = false }: { compatto?: boolean 
           variant="secondary"
           onClick={() => {
             disconnect();
+            setCollegato(false);
             setProfilo(null);
           }}
         >
