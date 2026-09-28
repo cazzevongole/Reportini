@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1 — 2026-09-28
+
+- Versione incrementata automaticamente (patch).
+
 ## 0.1.0 — 2026-09-28
 
 - Prima versione pubblicata: anagrafiche, relazioni e appuntamenti con
