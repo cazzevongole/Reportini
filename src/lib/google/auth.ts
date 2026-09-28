@@ -150,8 +150,8 @@ export async function connect(): Promise<GoogleProfile> {
     provider: "google",
     options: {
       redirectTo: urlDiRitorno(window.location.origin, import.meta.env.BASE_URL),
-      // offline + consent fanno arrivare il refresh token a Supabase.
-      scopes: "offline consent",
+      scopes: SCOPO_CALENDARIO,
+      queryParams: { access_type: "offline", prompt: "consent" },
     },
   });
   if (error) throw new Error(error.message);

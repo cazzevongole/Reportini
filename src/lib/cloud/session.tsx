@@ -10,7 +10,7 @@ import {
 import type { Session } from "@supabase/supabase-js";
 import { urlDiRitorno } from "./destinazione";
 import { cloudEnabled, supabase } from "./supabase";
-import { adottaTokenDiSessione } from "../google/auth";
+import { adottaTokenDiSessione, SCOPO_CALENDARIO } from "../google/auth";
 
 /**
  * Email autorizzate a vedere la dashboard di sviluppo, lette dalla variabile
@@ -82,9 +82,13 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       provider: "google",
       options: {
         redirectTo: urlDiRitorno(window.location.origin, import.meta.env.BASE_URL),
-        // Chiede anche lo scope Calendar: è lo stesso accesso, non un secondo
-        // consenso. Senza questo arriva solo il profilo.
-        scopes: "offline consent",
+        // Lo scope Calendar è un accesso solo, non un secondo consenso.
+        // "scopes" finisce nella lista degli scope: qui deve esserci l'URL
+        // esatto, non un'impostazione come "offline".
+        scopes: SCOPO_CALENDARIO,
+        // offline e prompt sono parametri OAuth, non scope: senza, Google non
+        // consegna il refresh token e il rinnovo non è nemmeno ipotizzabile.
+        queryParams: { access_type: "offline", prompt: "consent" },
       },
     });
     if (errore) setError(errore.message);

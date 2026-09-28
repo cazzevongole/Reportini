@@ -172,7 +172,8 @@ describe("Accesso con Google", () => {
       provider: "google",
       options: {
         redirectTo: urlDiRitorno(window.location.origin, import.meta.env.BASE_URL),
-        scopes: "offline consent",
+        scopes: "https://www.googleapis.com/auth/calendar.events",
+        queryParams: { access_type: "offline", prompt: "consent" },
       },
     });
   });
@@ -190,9 +191,10 @@ describe("Accesso con Google", () => {
         provider: "google",
         options: {
           redirectTo: `${window.location.origin}/Reportini`,
-          // Lo scope Calendar viaggia nello stesso accesso, non in un secondo
-          // consenso: senza, il token Calendar non arriva mai.
-          scopes: "offline consent",
+          // scopes finisce nella lista degli scope: deve esserci l'URL
+          // esatto, non "offline", che è un parametro OAuth.
+          scopes: "https://www.googleapis.com/auth/calendar.events",
+          queryParams: { access_type: "offline", prompt: "consent" },
         },
       });
     } finally {

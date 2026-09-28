@@ -14,7 +14,11 @@ const PROFILE_KEY = "reportini.google.profile";
 
 type ChiamataOAuth = {
   provider: string;
-  options: { redirectTo: string; scopes: string };
+  options: {
+    redirectTo: string;
+    scopes: string;
+    queryParams: { access_type: string; prompt: string };
+  };
 };
 
 // vi.hoisted: la factory gira durante l'import dei moduli di production,
@@ -105,10 +109,10 @@ describe("Collegamento", () => {
     expect(finto.signInWithOAuth).toHaveBeenCalled();
     const opzioni = finto.signInWithOAuth.mock.calls[0][0] as ChiamataOAuth;
     expect(opzioni.provider).toBe("google");
-    // offline + consent fanno arrivare il refresh token a Supabase, che lo
-    // usa lato server: nel browser non deve finire nessun secret.
-    expect(opzioni.options.scopes).toContain("offline");
-    expect(opzioni.options.scopes).toContain("consent");
+    // Nella lista degli scope deve esserci l'URL esatto: "offline" e
+    // "consent" finirebbero come scope letterali e non chiederebbero nulla.
+    expect(opzioni.options.scopes).toBe(SCOPO_CALENDARIO);
+    expect(opzioni.options.queryParams).toEqual({ access_type: "offline", prompt: "consent" });
     expect(opzioni.options.redirectTo).toBeTruthy();
     void inCorso;
   });
