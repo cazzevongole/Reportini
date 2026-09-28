@@ -252,6 +252,13 @@ richieste con lo stato — *da leggere*, *in corso*, *risolta* — e la risposta
 Alla URL `/panel/sviluppo` c'è la **sezione nascosta dello sviluppatore**: non è nella barra
 e non la vede nessun altro. Chi non è lo sviluppatore viene rimandato al pannello.
 
+Per arrivarci c'è un puntamento in fondo alla pagina **Impostazioni** — la scheda scura "Su
+questa versione" — che **compare solo se il database ti riconosce come sviluppatore**
+(`src/components/SvoltaSviluppo.tsx`). Non è una riga nascosta da togliere: chi non è
+sviluppatore non la vede nemmeno disegnata, e in più la pagina di destinazione lo riporterebbe
+al pannello. Il ruolo viene chiesto una volta sola per sessione e dimenticato all'uscita
+dall'account, così il secondo utente di un dispositivo non eredita il ruolo del primo.
+
 Come è protetta, e perché conta:
 
 | Cosa | Come è fatto |
@@ -311,7 +318,7 @@ bun install
 bun run dev        # server di sviluppo su http://localhost:5173
 bun run build      # build statica in dist/ (+ 404.html per GitHub Pages)
 bun run typecheck  # tsc -b --noEmit
-bun run test       # test vitest (105 test) + smoke test dello schema
+bun run test       # test vitest (108 test) + smoke test dello schema
 bun run test:ui    # solo i test vitest
 bun run version:check  # la versione è coerente? (lo usa anche il rilascio)
 bun run version:patch  # alza la versione di un patch, come fa il workflow
@@ -354,7 +361,9 @@ I test vitest coprono dodici file:
   applica la stessa regola del database (un utente vede solo le proprie richieste, lo
   sviluppatore tutte): l'email viene dalla sessione, il titolo vuoto non parte, lo stato
   cambia solo da sviluppatore, la sezione nascosta rimanda al pannello chi non lo è, e se lo
-  script SQL non è stato eseguito l'errore viene tradotto in una frase che dice cosa fare.
+  script SQL non è stato eseguito l'errore viene tradotto in una frase che dice cosa fare. Verifica
+  anche il puntamento nelle impostazioni: per un utente non c'è, per lo sviluppatore porta a
+  `/panel/sviluppo`, e il ruolo si chiede una volta sola finché non si cambia account.
 
 `scripts/smoke.mjs` esegue invece lo schema vero su sql.js e controlla che ogni query di
 `repo.ts` sia valida, che le chiavi esterne cancellino in cascata e che l'installazione parta

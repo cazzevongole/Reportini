@@ -218,19 +218,44 @@ export interface EsitoRuolo {
 }
 
 /**
+ * Il ruolo non cambia mentre l'app è aperta, e chiederlo al database a ogni
+ * pagina costerebbe una richiesta inutile. La risposta vale per la sessione:
+ * nella stessa apertura tutte le pagine vedono la stessa cosa.
+ */
+let ruoloMemorizzato: EsitoRuolo | null = null;
+let ruoloInCorso: Promise<EsitoRuolo> | null = null;
+
+/** Dimentica il ruolo: si usa dopo un cambio di account e nei test. */
+export function resettaRuolo(): void {
+  ruoloMemorizzato = null;
+  ruoloInCorso = null;
+}
+
+/**
  * Se l'utente corrente è lo sviluppatore.
  *
  * "errore" è distinto da "utente" di proposito: se lo script non è stato
  * eseguito la risposta è "non lo so", e farlo entrare dalla porta sbagliata
  * (cioè come utente normale) nasconderebbe proprio il problema da segnalare.
  */
-export async function verificaRuolo(): Promise<EsitoRuolo> {
-  if (!supabase) {
-    return { ruolo: "errore", messaggio: "Supabase non è collegato: niente sezione sviluppo." };
-  }
-  const { data, error } = await supabase.rpc("sei_sviluppatore");
-  if (error) return { ruolo: "errore", messaggio: spiega(error).message };
-  return data === true
-    ? { ruolo: "sviluppatore", messaggio: "" }
-    : { ruolo: "utente", messaggio: "" };
+export async function verificaRuolo(forzaNuova = false): Promise<EsitoRuolo> {
+  if (!forzaNuova && ruoloMemorizzato) return ruoloMemorizzato;
+  if (!forzaNuova && ruoloInCorso) return ruoloInCorso;
+
+  const chiedi = (async (): Promise<EsitoRuolo> => {
+    if (!supabase) {
+      return { ruolo: "errore", messaggio: "Supabase non è collegato: niente sezione sviluppo." };
+    }
+    const { data, error } = await supabase.rpc("sei_sviluppatore");
+    if (error) return { ruolo: "errore", messaggio: spiega(error).message };
+    return data === true
+      ? { ruolo: "sviluppatore", messaggio: "" }
+      : { ruolo: "utente", messaggio: "" };
+  })();
+
+  if (!forzaNuova) ruoloInCorso = chiedi;
+  const esito = await chiedi;
+  ruoloMemorizzato = esito;
+  ruoloInCorso = null;
+  return esito;
 }
