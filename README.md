@@ -97,6 +97,28 @@ manutenzione. Non c'è una voce di menu: si arriva alla pagina con l'indirizzo.
 > La whitelist viene compilata nel bundle del browser: protegge contro accessi casuali, **non** è
 > un controllo di sicurezza. Per una barriera vera va verificata lato server.
 
+### Versioni di backup
+
+Ogni volta che il database cambia viene tenuta una copia: **una per ora**, aggiornata a ogni
+modifica dentro quell'ora, e si conservano **tre giorni** (`GIORNI_RITENUTI` in
+`src/lib/backup/archivio.ts`). Non una copia per modifica — sarebbero centinaia al giorno — ma
+un punto a cui tornare: "come erano le cose alle 10:14". Se i byte non sono cambiati la copia non
+si riscrive, e c'è anche un tetto in spazio oltre al quale le versioni più vecchie cadono per
+prime.
+
+La registrazione è accesa dal guard delle pagine (`useRegistrazioneVersioni`), copre tutta la
+sessione ed è una sola per applicazione: le impostazioni la mostrano, non la raddoppiano.
+
+Da **Impostazioni → Versioni di backup** si può:
+
+- **guardare** una versione: si apre la copia in un database a parte e se ne vedono conteggi e
+  nomi, senza toccare nulla (`src/lib/backup/anteprima.ts`);
+- **ripartire da lì**: il database di lavoro diventa quello e le versioni più recenti vengono
+  scartate, perché descrivono un lavoro abbandonato. Non è reversibile, quindi la conferma è
+  esplicita e ricorda di esportare prima una copia.
+
+Le copie stanno in un IndexedDB separato (`reportini-backup`), anche nella versione Electron.
+
 ### Avvisi
 
 Ogni azione che chiama la rete — salvataggio online, pubblicazione su Google Calendar,
@@ -139,11 +161,11 @@ bun install
 bun run dev        # server di sviluppo su http://localhost:5173
 bun run build      # build statica in dist/ (+ 404.html per GitHub Pages)
 bun run typecheck  # tsc -b --noEmit
-bun run test       # test vitest (58 test) + smoke test dello schema
+bun run test       # test vitest (68 test) + smoke test dello schema
 bun run test:ui    # solo i test vitest
 ```
 
-I test vitest coprono cinque file:
+I test vitest coprono sei file:
 
 - `tests/app.test.tsx` monta l'app reale in jsdom con un IndexedDB finto: è la rete che
   intercetta i crash a runtime (per esempio un dereferenziamento di `window.reportini` fatto al
@@ -151,6 +173,9 @@ I test vitest coprono cinque file:
   si veda nessuna pagina interna.
 - `tests/avvisi.test.tsx` verifica il meccanismo degli avvisi: successo, errore con la causa,
   auto-chiusura, durata maggiore per gli errori, tetto di tre avvisi contemporanei.
+- `tests/backup.test.tsx` verifica il versionamento: una copia per ora, potatura a tre giorni,
+  scarto delle versioni successive, anteprima che legge una copia senza toccare il database di
+  lavoro, e il percorso completo "guarda e richiudi" / "riparti da qui" dalle impostazioni.
 - `tests/cloud.test.tsx` verifica con un client Supabase finto l'accesso con Google, il
   caricamento e il ripristino della copia online, il pulsante "Salva subito online" con
   l'id dell'utente e non l'email, l'auto-salvataggio dopo ogni modifica, il
