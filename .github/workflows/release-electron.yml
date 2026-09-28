@@ -172,6 +172,11 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Controlla la configurazione
+        # shell: bash esplicito perché il runner Windows usa PowerShell, dove
+        # `[ -z "$VAR" ]` non è un test: lo script fallirebbe sempre, o peggio
+        # passerebbe senza controllare niente. È lo stesso motivo per cui
+        # esiste scripts/copia-renderer.mjs invece di `rm -rf && cp -R`.
+        shell: bash
         run: |
           if [ -z "$VITE_SUPABASE_URL" ] || [ -z "$VITE_SUPABASE_ANON_KEY" ]; then
             echo "::error::Mancano VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY nell'ambiente 'prod' (Settings > Secrets and variables > Actions > Variables > prod)."
