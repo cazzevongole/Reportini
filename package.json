@@ -12,9 +12,13 @@
     "test:ui": "vitest run",
     "preview": "vite preview",
     "electron:install": "cd electron && npm install",
-    "electron:build": "vite build && rm -rf electron/renderer && cp -R dist electron/renderer",
+    "electron:build": "vite build && node scripts/copia-renderer.mjs",
     "electron:dev": "cd electron && npm run dev",
-    "electron:pack": "bun run electron:build && cd electron && npm run dist"
+    "electron:pack": "bun run electron:build && cd electron && npm run dist",
+    "version:check": "node scripts/versione-check.mjs",
+    "version:patch": "node scripts/version.mjs patch",
+    "version:minor": "node scripts/version.mjs minor",
+    "version:major": "node scripts/version.mjs major"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",
