@@ -1,40 +1,60 @@
-name: Release desktop
+name: Versione e rilascio desktop
 
-# I pacchetti di Electron si costruiscono qui e la release pubblicata su
-# GitHub è quella marcata come latest, così chi scarica "ultima versione"
-# prende sempre l'ultima reale e non una prerelease.
+# Un solo workflow per due cose che non si possono separare: decidere il
+# numero della versione e costruire i pacchetti con quel numero.
 #
-# Parte da due eventi:
-#   - un tag "v<versione>", spinto da una persona (o dal workflow di
-#     versionazione, se avesse un permesso per farlo);
-#   - un push su master, il caso normale.
+# Prima erano due, e la corsa fra loro produceva release sbagliate. Al merge
+# partivano insieme: questo leggeva la versione da package.json **prima** che
+# l'altro la alzasse, quindi costruiva e pubblicava una release con il numero
+# vecchio mentre il tag nuovo restava senza pacchetti. Poi il commit di
+# versione ripartiva il rilascio, che rifaceva tutto da capo con il numero
+# giusto: due release per un merge, una delle quali etichettata come
+# "latest" mentre il pacchetto contiene l'altra versione. E l'aggiornamento
+# automatico leggeva un latest.yml incoerente con il proprio pacchetto.
 #
-# Perché il secondo? Un workflow non ne innesca un altro quando usa
-# GITHUB_TOKEN: il tag creato dal workflow di versionazione partirebbe
-# qui solo se il token non fosse quello del bot, e il rilascio non
-# partirebbe mai. Quindi su master questo workflow risolve la versione da
-# sé, crea il tag se manca, e non fa niente se quella versione è già
-# stata rilasciata.
+# Adesso la versione la decide ed usa la stessa esecuzione che costruisce, e
+# i pacchetti si compilano dal tag: build e release non possono più
+# discordare.
+#
+# Quando parte:
+#   - push su master: alza la versione (patch), fa commit e tag, e rilascia;
+#   - push di un tag v*: rilascia quella versione così com'è, senza alzarla;
+#   - a mano: "livel" per forzare minor o major, "tag" per rilasciare un tag
+#     esistente.
+#
+# paths-ignore vale solo per i push su master e serve a una cosa sola: il
+# commit di versione tocca package.json, electron/package.json e CHANGELOG.md,
+# e senza questo filtro il workflow si rilancierebbe da solo all'infinito.
 
 on:
   push:
     branches: [master]
     tags: ["v*"]
+    paths-ignore:
+      - "package.json"
+      - "electron/package.json"
+      - "CHANGELOG.md"
   workflow_dispatch:
     inputs:
+      livello:
+        description: "Quanto alzare la versione (solo se non è indicato un tag)"
+        type: choice
+        default: patch
+        options: [patch, minor, major]
       tag:
-        description: Tag da rilasciare (vuoto = versione attuale)
+        description: "Tag da rilasciare, vuoto = versione attuale (non lo alza)"
         required: false
 
 permissions:
   contents: write
 
+# Le due esecuzioni non si pestano i piedi: se ne arriva un'altra, aspetta.
 concurrency:
-  group: release-desktop
+  group: rilascio
   cancel-in-progress: false
 
 jobs:
-  prepara:
+  versione:
     runs-on: ubuntu-latest
     outputs:
       versione: ${{ steps.scegli.outputs.versione }}
@@ -45,6 +65,10 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
       - name: Scegli la versione
         id: scegli
         env:
@@ -52,17 +76,40 @@ jobs:
           REF_TIPO: ${{ github.ref_type }}
           REF_NOME: ${{ github.ref_name }}
           TAG_MANUALE: ${{ inputs.tag }}
+          LIVELLO: ${{ inputs.livello || 'patch' }}
         run: |
           set -euo pipefail
+
           TAG="${TAG_MANUALE:-}"
+          # Un tag spinto a mano rilascia quello che è, senza alzare niente:
+          # il numero lo ha già deciso qualcuno.
           if [ "$REF_TIPO" = "tag" ]; then TAG="$REF_NOME"; fi
+
           if [ -z "$TAG" ]; then
-            TAG="v$(node -p "require('./package.json').version")"
-            echo "Nessun tag dato: uso $TAG dalla versione del pacchetto."
+            # Push su master: qui la versione la decidiamo noi, e subito,
+            # nello stesso passaggio che poi costruisce i pacchetti.
+            node scripts/version.mjs "$LIVELLO"
+            VERSIONE=$(node -p "require('./package.json').version")
+            TAG="v$VERSIONE"
+
+            node scripts/versione-check.mjs
+
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add package.json electron/package.json CHANGELOG.md
+            git commit -m "Versione $VERSIONE"
+            git tag "$TAG"
+            git push origin "HEAD:master" "$TAG"
+            echo "Versione alzata a $VERSIONE e tag $TAG pubblicato."
+          else
+            echo "Rilascio della versione $TAG, senza alzarla."
           fi
           echo "versione=$TAG" >> "$GITHUB_OUTPUT"
 
-          node scripts/versione-check.mjs
+          # Coerenza fra i due package.json e il tag: un pacchetto col numero
+          # diverso da quello che si scarica è un rilascio sbagliato, e non
+          # c'è modo di accorgersene dopo.
+          GITHUB_REF_TYPE=tag GITHUB_REF_NAME="$TAG" node scripts/versione-check.mjs
 
           # Se la release c'è già, non si ricostruisce tutto: il tag e gli
           # artefatti esistono e rifare il lavoro sarebbe solo sprecato.
@@ -71,21 +118,11 @@ jobs:
             echo "daRilasciare=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-
-          # Il tag serve comunque: è lui che identifica la versione nei
-          # pacchetti e nelle note.
-          if ! git rev-parse "$TAG" >/dev/null 2>&1; then
-            git tag "$TAG"
-            git push origin "$TAG"
-            echo "Creato e pubblicato il tag $TAG."
-          else
-            echo "Il tag $TAG esiste già."
-          fi
           echo "daRilasciare=true" >> "$GITHUB_OUTPUT"
 
   impacchetta:
-    needs: prepara
-    if: needs.prepara.outputs.daRilasciare == 'true'
+    needs: versione
+    if: needs.versione.outputs.daRilasciare == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -98,7 +135,12 @@ jobs:
             nome: linux
     runs-on: ${{ matrix.os }}
     steps:
+      # Si compila dal tag, non dal commit che ha fatto partire il workflow:
+      # è il tag che contiene il commit di versione, ed è l'unico modo perché
+      # electron-builder metta nel pacchetto lo stesso numero della release.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.versione.outputs.versione }}
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -112,7 +154,7 @@ jobs:
         run: node scripts/versione-check.mjs
         env:
           GITHUB_REF_TYPE: tag
-          GITHUB_REF_NAME: ${{ needs.prepara.outputs.versione }}
+          GITHUB_REF_NAME: ${{ needs.versione.outputs.versione }}
 
       - name: Dipendenze
         run: bun install --frozen-lockfile
@@ -145,7 +187,7 @@ jobs:
           name: reportini-${{ matrix.nome }}
           # Solo i pacchetti installabili, non le cartelle scompattate:
           # win-unpacked e linux-unpacked sono centinaia di file che
-          # appesantirebbero la release di qualche centinaia di megabyte
+          # appesantirebbero la release di qualche centinaio di megabyte
           # senza che nessuno li scarichi.
           #
           # Insieme ai pacchetti vanno pubblicati anche i file latest*.yml:
@@ -163,13 +205,15 @@ jobs:
           retention-days: 7
 
   pubblica:
-    needs: [prepara, impacchetta]
-    if: needs.prepara.outputs.daRilasciare == 'true'
+    needs: [versione, impacchetta]
+    if: needs.versione.outputs.daRilasciare == 'true'
     runs-on: ubuntu-latest
     steps:
       # gh release create lavora su un repository git: senza checkout non
       # trova il tag e si ferma.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.versione.outputs.versione }}
 
       - name: Scarica gli artefatti
         uses: actions/download-artifact@v4
@@ -179,7 +223,7 @@ jobs:
       - name: Crea la release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSIONE: ${{ needs.prepara.outputs.versione }}
+          VERSIONE: ${{ needs.versione.outputs.versione }}
         run: |
           # I pacchetti finiscono sotto pacchetti/<nome>/: si appiattiscono
           # in una directory sola, altrimenti la release avrebbe allegati
