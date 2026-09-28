@@ -74,6 +74,23 @@ export interface EsitoDiagnostica {
  */
 export async function verificaIntegrazione(): Promise<EsitoDiagnostica> {
   const controlli: Controllo[] = [];
+
+  // Google Calendar è un collegamento indipendente da Supabase: usa un
+  // proprio client OAuth della console Google Cloud. Va controllato per primo
+  // perché non dipende dagli altri e deve comparire anche se Supabase manca.
+  const clientCalendar = (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined) ?? "";
+  controlli.push({
+    nome: "Google Calendar",
+    ok: true,
+    dettaglio: clientCalendar
+      ? "Client OAuth configurato."
+      : "Non configurato: ogni appuntamento si esporta comunque in formato .ics.",
+    azione: clientCalendar
+      ? undefined
+      : "Google Cloud → APIs and Services → Library → abilita Google Calendar API → crea un client OAuth di tipo Web application e copiane il Client ID in VITE_GOOGLE_CLIENT_ID.",
+    nonVerificato: clientCalendar ? true : undefined,
+  });
+
   const url = (import.meta.env.VITE_SUPABASE_URL as string | undefined) ?? "";
 
   if (!url) {
@@ -122,8 +139,8 @@ export async function verificaIntegrazione(): Promise<EsitoDiagnostica> {
     const risposta = await fetch(`${url}/auth/v1/settings`, {
       headers: { apikey: (import.meta.env.VITE_SUPABASE_ANON_KEY as string) ?? "" },
     });
-    const dati = (await risposta.json()) as { external?: { google?: boolean } };
-    const google = dati.external?.google === true;
+    const impostazioni = (await risposta.json()) as { external?: { google?: boolean } };
+    const google = impostazioni.external?.google === true;
     controlli.push({
       nome: "Accesso con Google",
       ok: google,
@@ -145,13 +162,11 @@ export async function verificaIntegrazione(): Promise<EsitoDiagnostica> {
     });
   }
 
-  const { data: dati } = await supabase.auth.getSession();
-  const userId = dati?.session?.user?.id;
-  let nonVerificati = 0;
+  const { data: sessione } = await supabase.auth.getSession();
+  const userId = sessione?.session?.user?.id;
   if (userId) {
     controlli.push(await verificaBucketAutenticata(supabase, userId));
   } else {
-    nonVerificati = 1;
     controlli.push({
       nome: `Bucket "${BUCKET}"`,
       // Non è un esito negativo: è un controllo che da anonimo è impossibile.
@@ -163,6 +178,7 @@ select id, public from storage.buckets where id = '${BUCKET}';`,
     });
   }
 
+  const nonVerificati = controlli.filter((c) => c.nonVerificato).length;
   return {
     controlli,
     tuttiOk: controlli.every((c) => c.ok) && nonVerificati === 0,

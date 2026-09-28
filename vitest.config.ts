@@ -14,7 +14,8 @@ export default defineConfig({
     env: {
       VITE_SUPABASE_URL: "https://esempio.supabase.co",
       VITE_SUPABASE_ANON_KEY: "anon-key-di-prova",
-      VITE_DEV_WHITELIST: "mammarellandrea@gmail.com",
+      VITE_DEV_WHITELIST: "sviluppo@example.it",
+      VITE_GOOGLE_CLIENT_ID: "123.apps.googleusercontent.com",
     },
   },
 });

@@ -94,11 +94,16 @@ Gli account la cui email è in `VITE_DEV_WHITELIST` vedono una voce in più nel 
 
 ### Google Calendar (facoltativo)
 
-1. In Google Cloud attiva la **Google Calendar API** e crea un client OAuth 2.0 di tipo
-   *Web application*.
-2. Aggiungi fra le *origini JavaScript autorizzate* `http://localhost:5173` e
-   `https://cazzevongole.github.io`.
-3. Salva il Client ID in `VITE_GOOGLE_CLIENT_ID`.
+1. In Google Cloud attiva la **Google Calendar API** (*APIs and Services → Library*).
+2. Crea un **client OAuth 2.0 di tipo _Web application_** e aggiungi fra le *origini
+   JavaScript autorizzate* `http://localhost:5173`, `https://cazzevongole.github.io` e
+   l'origine dell'anteprima.
+3. Copia **solo il Client ID** in `VITE_GOOGLE_CLIENT_ID` (il client secret non serve e non
+   deve mai entrare in una variabile `VITE_*`).
+
+L'app usa il flusso **authorization code con PKCE** e scambia il codice dal browser: è
+obbligatorio perché è un client pubblico senza backend, quindi non può custodire un secret.
+Il refresh token mantiene il collegamento vivo senza riaprire il popup ogni ora.
 
 Senza questa chiave ogni appuntamento si esporta comunque in formato `.ics`.
 
@@ -111,11 +116,11 @@ bun install
 bun run dev        # server di sviluppo su http://localhost:5173
 bun run build      # build statica in dist/ (+ 404.html per GitHub Pages)
 bun run typecheck  # tsc -b --noEmit
-bun run test       # test vitest (25 test) + smoke test dello schema
+bun run test       # test vitest (37 test) + smoke test dello schema
 bun run test:ui    # solo i test vitest
 ```
 
-I test vitest coprono due file:
+I test vitest coprono tre file:
 
 - `tests/app.test.tsx` monta l'app reale in jsdom con un IndexedDB finto: è la rete che
   intercetta i crash a runtime (per esempio un dereferenziamento di `window.reportini` fatto al
@@ -123,6 +128,10 @@ I test vitest coprono due file:
 - `tests/cloud.test.tsx` verifica con un client Supabase finto l'accesso con Google, il
   caricamento e il ripristino della copia online, l'auto-salvataggio dopo ogni modifica, il
   gating della dashboard sviluppatore per whitelist e il controllo del bucket.
+- `tests/google.test.tsx` copre il flusso OAuth verso Google Calendar con popup e API finte:
+  costruzione dell'URL con `code_challenge` S256, scambio del codice col verifier, rifiuto di
+  uno `state` non corrispondente, rinnovo silenzioso con refresh token e revoca allo
+  scollegamento. La sfida PKCE è confrontata con il vettore di prova della RFC 7636.
 
 `scripts/smoke.mjs` esegue invece lo schema vero su sql.js e controlla che ogni query di
 `repo.ts` sia valida, che le chiavi esterne cancellino in cascata e che l'installazione parta

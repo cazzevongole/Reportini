@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Installa le dipendenze
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      # Test vitest + smoke test dello schema SQLite su sql.js.
+      - name: Test
+        run: bun run test
+
+      - name: Build
+        run: bun run build
+
+      - name: Nessun segreto nel bundle
+        # La build fallirebbe già con una chiave privilegiata (vite.config.ts),
+        # ma qui si controlla anche che non sia finito niente di altro.
+        run: |
+          if grep -rqE "sb_secret_[A-Za-z0-9_-]{10,}|gh[porsu]_[A-Za-z0-9]{20,}|AIza[A-Za-z0-9_-]{30,}|BEGIN [A-Z ]*PRIVATE KEY" dist/; then
+            echo "::error::Trovato un segreto nel bundle pubblico"
+            exit 1
+          fi
+          echo "Nessun segreto nel bundle"

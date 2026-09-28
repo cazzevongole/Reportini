@@ -3,6 +3,12 @@ import type { Appuntamento } from "../types";
 
 const API = "https://www.googleapis.com/calendar/v3";
 
+/**
+ * Fuso orario del dispositivo. Le date sono salvate come ISO con l'ora
+ * locale, quindi è questo il fuso in cui vanno lette.
+ */
+const FUSO = Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Rome";
+
 export interface CalendarInfo {
   id: string;
   summary: string;
@@ -51,8 +57,11 @@ function aEvento(appuntamento: Appuntamento) {
       .filter(Boolean)
       .join("\n\n"),
     location: appuntamento.luogo || undefined,
-    start: { dateTime: appuntamento.inizio },
-    end: { dateTime: appuntamento.fine },
+    // Il fuso va dichiarato: senza, Google interpreta l'ora nel fuso del
+    // calendario di destinazione e un appuntamento delle 10:00 segnato a Roma
+    // finisce a un'ora diversa per chi guarda il calendario da un'altra città.
+    start: { dateTime: appuntamento.inizio, timeZone: FUSO },
+    end: { dateTime: appuntamento.fine, timeZone: FUSO },
     reminders: {
       useDefault: false,
       overrides:

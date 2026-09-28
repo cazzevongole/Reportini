@@ -9,7 +9,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { urlDiRitorno } from "../src/lib/cloud/destinazione";
 
-const CHIAVE = "mammarellandrea@gmail.com";
+const CHIAVE = "sviluppo@example.it";
 
 /* ------------------------------ Supabase finto ----------------------------- */
 
@@ -347,7 +347,7 @@ describe("Verifica del bucket", () => {
 
   it("con un account la verifica scrive davvero e poi ripulisce", async () => {
     const { verificaIntegrazione } = await import("../src/lib/cloud/diagnostica");
-    await entraCome("mammarellandrea@gmail.com");
+    await entraCome("sviluppo@example.it");
     // Il client finto risponde anche all'endpoint delle impostazioni auth.
     vi.stubGlobal(
       "fetch",
@@ -360,7 +360,10 @@ describe("Verifica del bucket", () => {
     expect(bucket?.dettaglio).toMatch(/scrittura e cancellazione riuscite/i);
     // Il file di sonda non deve restare nel bucket.
     expect([...stato.storage.keys()]).toEqual([]);
-    expect(esito.nonVerificati).toBe(0);
+    // Il solo controllo non concluso è Calendar, che la pagina non può
+    // verificare: il bucket, con l'account, è stato provato davvero.
+    expect(esito.controlli.find((c) => c.nome.includes("Bucket"))?.nonVerificato).toBeUndefined();
+    expect(esito.nonVerificati).toBe(1);
   });
 
   it("senza account dichiara il bucket non verificabile invece di darlo per buono", async () => {
@@ -368,8 +371,19 @@ describe("Verifica del bucket", () => {
     const esito = await verificaIntegrazione();
     const bucket = esito.controlli.find((c) => c.nome.includes("Bucket"));
     expect(bucket?.nonVerificato).toBe(true);
-    expect(esito.nonVerificati).toBe(1);
+    expect(esito.nonVerificati).toBe(2);
     expect(esito.tuttiOk).toBe(false);
+  });
+
+  it("riporta Google Calendar come configurato ma non verificabile dalla pagina", async () => {
+    const { verificaIntegrazione } = await import("../src/lib/cloud/diagnostica");
+    const esito = await verificaIntegrazione();
+    const calendar = esito.controlli.find((c) => c.nome === "Google Calendar");
+    expect(calendar?.ok).toBe(true);
+    expect(calendar?.dettaglio).toMatch(/Client OAuth configurato/);
+    // Non si può sapere dalla pagina se la Calendar API è abilitata nel
+    // progetto Google Cloud: dichiararlo pronto sarebbe buggy.
+    expect(calendar?.nonVerificato).toBe(true);
   });
 });
 
