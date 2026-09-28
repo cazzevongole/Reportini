@@ -15,7 +15,11 @@ if (principale !== desktop) {
   problemi.push(`package.json è a ${principale} ma electron/package.json a ${desktop}`);
 }
 
-const tag = process.env.GITHUB_REF_NAME;
+// Il tag si controlla solo quando il run è davvero partito da un tag: su un
+// push su un branch GITHUB_REF_NAME è "master", e confrontarlo con la
+// versione bloccherebbe ogni versionamento.
+const daTag = process.env.GITHUB_REF_TYPE === "tag";
+const tag = daTag ? process.env.GITHUB_REF_NAME : undefined;
 if (tag) {
   const atteso = `v${principale}`;
   if (tag !== atteso) {
