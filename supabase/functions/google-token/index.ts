@@ -92,6 +92,11 @@ function segretiMancanti(env: Env): string[] {
   return [
     env.GOOGLE_CLIENT_ID ? "" : "GOOGLE_CLIENT_ID",
     env.GOOGLE_CLIENT_SECRET ? "" : "GOOGLE_CLIENT_SECRET",
+    // Non servono allo scambio, ma senza questi la funzione non può
+    // verificare la sessione: meglio dirlo qui che rispondere "401 serve un
+    // account" a chi invece ha dimenticato un segreto.
+    env.SUPABASE_URL ? "" : "SUPABASE_URL",
+    env.SUPABASE_ANON_KEY ? "" : "SUPABASE_ANON_KEY",
   ].filter(Boolean);
 }
 
