@@ -1,5 +1,6 @@
 import { Navigate, useLocation } from "react-router-dom";
 import type { ReactNode } from "react";
+import { useSalvataggioCloud } from "../hooks/useSalvataggioCloud";
 import { useAccount } from "../lib/cloud/session";
 
 /**
@@ -13,6 +14,9 @@ import { useAccount } from "../lib/cloud/session";
 export default function RichiedeAccesso({ children }: { children: ReactNode }) {
   const { email, loading } = useAccount();
   const posizione = useLocation();
+  // Con l'account aperto parte il salvataggio online automatico: qui dentro,
+  // perché copra tutte le pagine e non una sola schermata.
+  useSalvataggioCloud();
 
   if (loading) {
     return (

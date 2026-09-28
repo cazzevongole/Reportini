@@ -18,7 +18,10 @@ desktop con Electron, con l'accesso tramite account Google e salvataggio online 
 | Calendario | Google Calendar API (OAuth nel browser) + esportazione `.ics` |
 
 L'app lavora **local-first**: il database è la fonte di lavoro, il cloud è la copia che segue
-l'account. Ogni scrittura viene replicata in background con un cooldown di 5 secondi.
+l'account. Ogni scrittura viene replicata in background con un cooldown di 5 secondi: la
+sincronizzazione parte da `useSalvataggioCloud` (`src/hooks/`), montata nel guard delle pagine, e
+resta accesa per tutta la sessione. Il percorso nel bucket è **`<user-id>/reportini.sqlite`**, non
+l'email: è l'id che le Row Level Security confrontano con l'utente autenticato.
 
 La sincronizzazione distingue due casi, ed è importante conoscerli:
 
@@ -123,7 +126,7 @@ bun install
 bun run dev        # server di sviluppo su http://localhost:5173
 bun run build      # build statica in dist/ (+ 404.html per GitHub Pages)
 bun run typecheck  # tsc -b --noEmit
-bun run test       # test vitest (48 test) + smoke test dello schema
+bun run test       # test vitest (51 test) + smoke test dello schema
 bun run test:ui    # solo i test vitest
 ```
 
@@ -134,7 +137,8 @@ I test vitest coprono quattro file:
   caricamento del modulo, che produceva una pagina bianca). Verifica anche che senza account non
   si veda nessuna pagina interna.
 - `tests/cloud.test.tsx` verifica con un client Supabase finto l'accesso con Google, il
-  caricamento e il ripristino della copia online, l'auto-salvataggio dopo ogni modifica, il
+  caricamento e il ripristino della copia online, il pulsante "Salva subito online" con
+  l'id dell'utente e non l'email, l'auto-salvataggio dopo ogni modifica, il
   gating della dashboard sviluppatore per whitelist, il controllo del bucket, la barra di
   navigazione, l'assenza di sezioni di sviluppo nelle impostazioni e la presenza di account e
   uscita sempre lì, e non in cima alle pagine.

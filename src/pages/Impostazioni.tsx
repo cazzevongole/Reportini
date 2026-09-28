@@ -10,6 +10,7 @@ import {
 } from "../components/icons";
 import { Badge, Button, Card, PageHeader } from "../components/ui";
 import { useLiveQuery } from "../hooks/useLiveQuery";
+import { useSalvataggioCloud } from "../hooks/useSalvataggioCloud";
 import { useAccount } from "../lib/cloud/session";
 import { sincronizza } from "../lib/cloud/sync";
 import { cloudEnabled } from "../lib/cloud/supabase";
@@ -26,6 +27,15 @@ import { sincronizzaInAttesa } from "../lib/google/sync";
 import { creaBackup, elencaAppuntamenti, ripristinaBackup, type Backup } from "../lib/repo";
 import { flush } from "../lib/sqlite/engine";
 
+/** Orario dell'ultimo salvataggio, in formato breve italiano. */
+function orario(iso: string): string {
+  return new Date(iso).toLocaleTimeString("it-IT", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
 export default function Impostazioni() {
   const fileInput = useRef<HTMLInputElement>(null);
   const [messaggio, setMessaggio] = useState("");
@@ -38,10 +48,15 @@ export default function Impostazioni() {
   const sincronizzati = appuntamenti.filter((a) => a.googleEventId).length;
   const {
     email: accountEmail,
+    session,
     isDeveloper,
     signInWithGoogle: signInAccount,
     signOut: signOutAccount,
   } = useAccount();
+  const salvataggio = useSalvataggioCloud();
+  // Il bucket tiene i file in <user-id>/… e le RLS lo confrontano con l'id
+  // dell'utente autenticato: con l'email la scrittura viene respinta.
+  const userId = session?.user?.id ?? null;
 
   useEffect(() => {
     setCollegato(isConnected());
@@ -145,6 +160,20 @@ export default function Impostazioni() {
                 {cloudEnabled ? "attivo" : "disattivato"}
               </dd>
             </div>
+            {cloudEnabled ? (
+              <div className="flex justify-between gap-4">
+                <dt className="text-ink-400">Ultimo salvataggio</dt>
+                <dd
+                  className={`text-right ${salvataggio.stato === "errore" ? "text-clay-700" : "text-ink-800"}`}
+                >
+                  {salvataggio.stato === "errore"
+                    ? salvataggio.messaggio
+                    : salvataggio.ultimoSalvataggio
+                      ? `${orario(salvataggio.ultimoSalvataggio)} · ${salvataggio.messaggio || "salvato"}`
+                      : "in corso…"}
+                </dd>
+              </div>
+            ) : null}
           </dl>
           <div className="mt-4 flex flex-wrap gap-2">
             {accountEmail ? (
@@ -152,12 +181,30 @@ export default function Impostazioni() {
                 <Button
                   variant="secondary"
                   onClick={async () => {
+                    if (!userId) {
+                      setMessaggio("Non riesco a riconoscere l'utente: esci e rientra.");
+                      return;
+                    }
                     setOccupato(true);
-                    const esito = await sincronizza(accountEmail);
-                    setMessaggio(esito.messaggio);
-                    setOccupato(false);
+                    setMessaggio("");
+                    try {
+                      // "solo_upload": il pulsante manda i dati locali al cloud.
+                      // Con la sincronizzazione completa una copia vuota su un
+                      // dispositivo nuovo verrebbe riscaricata al posto di quella
+                      // appena scritta.
+                      const esito = await sincronizza(userId, "solo_upload");
+                      setMessaggio(esito.messaggio);
+                    } catch (errore) {
+                      setMessaggio(
+                        errore instanceof Error
+                          ? `Salvataggio online non riuscito: ${errore.message}`
+                          : "Salvataggio online non riuscito",
+                      );
+                    } finally {
+                      setOccupato(false);
+                    }
                   }}
-                  disabled={occupato}
+                  disabled={occupato || !userId}
                 >
                   Salva subito online
                 </Button>

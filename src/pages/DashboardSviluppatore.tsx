@@ -28,10 +28,13 @@ export default function DashboardSviluppatore() {
   if (!isDeveloper) return <Navigate to="/panel" replace />;
 
   async function forzaSalvataggio() {
-    if (!email) return;
+    // Nel bucket il percorso è <user-id>/…: con l'email la scrittura viene
+    // respinta dalle RLS e il pulsante sembra non fare nulla.
+    const userId = session?.user?.id;
+    if (!userId) return;
     setAzione("Salvataggio in corso…");
     try {
-      const esito = await sincronizza(email);
+      const esito = await sincronizza(userId, "solo_upload");
       setAzione(esito.messaggio);
     } catch (errore) {
       setAzione(errore instanceof Error ? errore.message : "Salvataggio non riuscito");
