@@ -163,7 +163,13 @@ La versione non sta in una discussione: sale da sola.
 | `scripts/version.mjs` | alza la versione in `package.json` e in `electron/package.json` e scrive il `CHANGELOG.md` |
 | `scripts/versione-check.mjs` | controlla che le due versioni coincidano e che il tag sia quello giusto |
 | `.github/workflows/auto-version.yml` | a ogni merge su `master` alza la versione (patch) e crea il tag `v<versione>` |
-| `.github/workflows/release-electron.yml` | al tag `v*` costruisce i pacchetti desktop (mac, Windows, Linux) e pubblica la release |
+| `.github/workflows/release-electron.yml` | costruisce i pacchetti desktop (mac, Windows, Linux) e pubblica la release come **latest** |
+
+Il rilascio parte sia da un tag `v*` spinto a mano, sia da un push su `master`: in quest'ultimo
+caso il workflow prende la versione da `package.json`, crea il tag se manca e non fa niente se
+quella versione è già stata rilasciata. Il motivo è che **un workflow non ne innesca un altro
+quando usa `GITHUB_TOKEN`**: se il tag lo spingesse solo il workflow di versione, la release non
+partirebbe mai.
 
 In pratica: si mergea su `master`, il commit di versione sale da solo, il tag scatta da solo e
 la release desktop viene pubblicata come **latest** (le prerelease restano fuori dal latest, se un
