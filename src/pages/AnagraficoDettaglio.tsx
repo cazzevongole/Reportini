@@ -15,6 +15,7 @@ import { Badge, Button, Card, Sheet } from "../components/ui";
 import { useLiveQuery } from "../hooks/useLiveQuery";
 import { dataLunga, durata, ora, relativo } from "../lib/date";
 import {
+  effettoEliminazioneAnagrafica,
   eliminaAnagrafico,
   elencaAppuntamenti,
   elencaRelazioni,
@@ -107,9 +108,24 @@ export default function AnagraficoDettaglio() {
           size="sm"
           variant="danger"
           onClick={() => {
+            // La conferma elenca quello che sparisce davvero: relazioni e
+            // appuntamenti che resterebbero senza nessun riferimento.
+            const effetto = effettoEliminazioneAnagrafica(anagrafico.id);
+            const extra = [
+              effetto.relazioni > 0
+                ? `${effetto.relazioni} ${effetto.relazioni === 1 ? "relazione" : "relazioni"}`
+                : "",
+              effetto.appuntamenti > 0
+                ? `${effetto.appuntamenti} ${effetto.appuntamenti === 1 ? "appuntamento" : "appuntamenti"}`
+                : "",
+            ].filter(Boolean);
             if (
               confirm(
-                `Eliminare ${nomeCompleto(anagrafico)}? Verranno eliminate anche le sue relazioni.`,
+                `Eliminare ${nomeCompleto(anagrafico)}?${
+                  extra.length > 0
+                    ? ` Verranno eliminati anche: ${extra.join(" e ")}.`
+                    : ""
+                }`,
               )
             ) {
               eliminaAnagrafico(anagrafico.id);

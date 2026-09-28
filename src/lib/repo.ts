@@ -82,7 +82,41 @@ export function aggiornaAnagrafico(id: number, data: AnagraficoInput): void {
   update("anagrafici", id, valoriAnagrafico(data));
 }
 
+/**
+ * Cosa verrebbe eliminato insieme all'anagrafica: le relazioni (in
+ * cascata) e gli appuntamenti che, senza la persona, resterebbero senza
+ * nessun riferimento. Serve alla conferma prima di cancellare: nessuno
+ * deve scoprire dopo che un appuntamento è sparito.
+ */
+export function effettoEliminazioneAnagrafica(id: number): {
+  relazioni: number;
+  appuntamenti: number;
+} {
+  return {
+    relazioni:
+      get<{ n: number }>("SELECT COUNT(*) AS n FROM relazioni WHERE anagraficoId = ?", [id])
+        ?.n ?? 0,
+    appuntamenti:
+      get<{ n: number }>(
+        `SELECT COUNT(*) AS n FROM appuntamenti
+          WHERE anagraficoId = ?
+             OR relazioneId IN (SELECT id FROM relazioni WHERE anagraficoId = ?)`,
+        [id, id],
+      )?.n ?? 0,
+  };
+}
+
 export function eliminaAnagrafico(id: number): void {
+  // Prima gli appuntamenti, poi l'anagrafica: così la cascata sulle
+  // relazioni non può lasciare appuntamenti appesi a un riferimento che
+  // non esiste più, che sulle altre pagine resterebbero visibili come righe
+  // senza nome.
+  run(
+    `DELETE FROM appuntamenti
+      WHERE anagraficoId = ?
+         OR relazioneId IN (SELECT id FROM relazioni WHERE anagraficoId = ?)`,
+    [id, id],
+  );
   run("DELETE FROM anagrafici WHERE id = ?", [id]);
 }
 
@@ -158,7 +192,23 @@ export function aggiornaRelazione(id: number, data: RelazioneInput): void {
   update("relazioni", id, valoriRelazione(data));
 }
 
+/**
+ * Appuntamenti che, cancellando la relazione, perderebbero l'ultimo
+ * riferimento: hanno la relazione ma non una persona. Quelli che hanno
+ * anche l'anagrafica restano: la persona esiste ancora.
+ */
+export function effettoEliminazioneRelazione(id: number): { appuntamenti: number } {
+  return {
+    appuntamenti:
+      get<{ n: number }>(
+        "SELECT COUNT(*) AS n FROM appuntamenti WHERE relazioneId = ? AND anagraficoId IS NULL",
+        [id],
+      )?.n ?? 0,
+  };
+}
+
 export function eliminaRelazione(id: number): void {
+  run("DELETE FROM appuntamenti WHERE relazioneId = ? AND anagraficoId IS NULL", [id]);
   run("DELETE FROM relazioni WHERE id = ?", [id]);
 }
 

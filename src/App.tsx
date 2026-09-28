@@ -62,7 +62,15 @@ export default function App() {
       {/* Gli avvisi stanno fuori dal router: un'azione che chiama la rete deve
           poter parlare anche cambiando pagina (per esempio uscendo). */}
       <AvvisoProvider>
-        <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        {/* basename: su GitHub Pages l'app vive in /Reportini/. Senza, ogni
+            link punterebbe a /panel e lascerebbe la sottocartella: dopo
+            l'accesso l'utente finiva su una pagina di profilo e poi su un
+            404 al ricaricare. BASE_URL è "/" in locale e "/Reportini/" in
+            produzione, e li mette in fila. */}
+        <BrowserRouter
+          basename={import.meta.env.BASE_URL}
+          future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        >
           <Routes>
             {/* Unica rotta aperta: senza account non si vede nient'altro. */}
             <Route path="/accedi" element={<Accesso />} />

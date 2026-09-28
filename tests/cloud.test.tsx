@@ -550,6 +550,25 @@ describe("Accesso obbligatorio", () => {
     expect(contenitore.textContent).not.toContain("Schede anagrafiche");
   });
 
+  it("su GitHub Pages i link restano dentro /Reportini", async () => {
+    // Senza basename ogni link punterebbe a /panel e lascerebbe la
+    // sottocartella: dopo l'accesso si finiva fuori dall'app e al
+    // ricaricare si prendeva un 404.
+    vi.stubEnv("BASE_URL", "/Reportini/");
+    try {
+      await entraCome("utente@esempio.it");
+      await monta("/Reportini/panel");
+      expect(contenitore.textContent).toContain("La tua scrivania");
+
+      const link = [...contenitore.querySelectorAll("a")].find((a) =>
+        a.getAttribute("href")?.includes("anagrafici"),
+      );
+      expect(link?.getAttribute("href")).toBe("/Reportini/panel/anagrafici");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("con la sessione le pagine si aprono normalmente", async () => {
     await entraCome("utente@esempio.it");
     await monta("/panel");

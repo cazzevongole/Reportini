@@ -62,6 +62,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_appuntamenti_google ON appuntamenti(google
  * PRAGMA le ON DELETE CASCADE / SET NULL non verrebbero mai applicate.
  */
 export function runMigrations(db: Database): void {
-  db.run("PRAGMA foreign_keys = ON");
+  db.run(PRAGMA_CHIAVI_ESTERNE);
   db.run(SCHEMA);
 }
+
+/**
+ * sql.js chiude e riapre il database a ogni export: le impostazioni di
+ * sessione tornano al valore di default, e `foreign_keys` è una di
+ * queste. Va rimessa dopo ogni esportazione, altrimenti le ON DELETE
+ * CASCADE e SET NULL smettono di funzionare e restano righe appese a
+ * riferimenti che non esistono più.
+ */
+export const PRAGMA_CHIAVI_ESTERNE = "PRAGMA foreign_keys = ON";
