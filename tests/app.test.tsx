@@ -84,10 +84,10 @@ afterEach(async () => {
 });
 
 describe("Reportini", () => {
-  it("monta la landing senza errori", async () => {
-    await monta("/");
+  it("mostra la pagina di accesso a chi non ha un account", async () => {
+    await monta("/accedi");
     expect(contenitore.textContent).toContain("Reportini");
-    expect(contenitore.textContent).toContain("anagrafici");
+    expect(contenitore.textContent).toContain("Accedi con Google");
   });
 
   it("non accede a window.reportini in un browser senza Electron", async () => {
@@ -97,8 +97,16 @@ describe("Reportini", () => {
     expect(contenitore.innerHTML).not.toBe("");
   });
 
-  it("raggiunge il pannello dal percorso /panel", async () => {
-    await monta("/panel");
-    expect(contenitore.textContent).toContain("La tua scrivania");
+  it("non lascia vedere le pagine interne senza accesso", async () => {
+    for (const scheda of ["/", "/panel", "/panel/anagrafici", "/panel/impostazioni"]) {
+      await monta(scheda);
+      expect(window.location.pathname).toBe("/accedi");
+      // Nessun dato, nemmeno una schermata di benvenuto con dentro l'app.
+      expect(contenitore.textContent).not.toContain("La tua scrivania");
+      expect(contenitore.textContent?.toLowerCase()).not.toContain("sqlite");
+      // Ogni scheda parte da una radice pulita: createRoot sullo stesso
+      // contenitore lascerebbe il render precedente dentro.
+      await act(async () => radice.unmount());
+    }
   });
 });

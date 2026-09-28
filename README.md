@@ -59,8 +59,9 @@ salvataggio online.
 > una chiave privilegiata, e in sviluppo l'app mostra un avviso e resta in sola modalità locale.
 > Se ti è capitato di usarla per sbaglio, **revocala** dalla pagina API keys di Supabase.
 
-La pagina *Impostazioni → Verifica integrazione* controlla endpoint, tipo di chiave, provider
-Google e bucket, e dice cosa sistemare quando qualcosa non torna.
+Il modulo `src/lib/cloud/diagnostica.ts` controlla endpoint, tipo di chiave, provider Google e
+bucket, e dice cosa sistemare quando qualcosa non torna. Non è una pagina dell'app: gira nei
+test, dove un guasto lo blocca prima di arrivare in giro.
 
 > Il controllo del bucket **richiede un account**: con la sola chiave pubblica un bucket privato e
 > un bucket inesistente sono indistinguibili (l'elenco restituisce una lista vuota in entrambi i
@@ -86,8 +87,9 @@ solo i propri file, perché il percorso nel bucket è `<user-id>/reportini.sqlit
 
 ### Dashboard sviluppatore
 
-Gli account la cui email è in `VITE_DEV_WHITELIST` vedono una voce in più nel menu e la pagina
+Gli account la cui email è in `VITE_DEV_WHITELIST` vedono un badge *Sviluppo* e possono aprire
 `/panel/sviluppo`, con stato dei dati, controllo della sincronizzazione e azioni di manutenzione.
+Non c'è una voce di menu: si arriva alla pagina con l'indirizzo.
 
 > La whitelist viene compilata nel bundle del browser: protegge contro accessi casuali, **non** è
 > un controllo di sicurezza. Per una barriera vera va verificata lato server.
@@ -121,22 +123,24 @@ bun install
 bun run dev        # server di sviluppo su http://localhost:5173
 bun run build      # build statica in dist/ (+ 404.html per GitHub Pages)
 bun run typecheck  # tsc -b --noEmit
-bun run test       # test vitest (37 test) + smoke test dello schema
+bun run test       # test vitest (47 test) + smoke test dello schema
 bun run test:ui    # solo i test vitest
 ```
 
-I test vitest coprono tre file:
+I test vitest coprono quattro file:
 
 - `tests/app.test.tsx` monta l'app reale in jsdom con un IndexedDB finto: è la rete che
   intercetta i crash a runtime (per esempio un dereferenziamento di `window.reportini` fatto al
-  caricamento del modulo, che produceva una pagina bianca).
+  caricamento del modulo, che produceva una pagina bianca). Verifica anche che senza account non
+  si veda nessuna pagina interna.
 - `tests/cloud.test.tsx` verifica con un client Supabase finto l'accesso con Google, il
   caricamento e il ripristino della copia online, l'auto-salvataggio dopo ogni modifica, il
-  gating della dashboard sviluppatore per whitelist e il controllo del bucket.
-- `tests/google.test.tsx` copre il flusso OAuth verso Google Calendar con popup e API finte:
-  costruzione dell'URL con `code_challenge` S256, scambio del codice col verifier, rifiuto di
-  uno `state` non corrispondente, rinnovo silenzioso con refresh token e revoca allo
-  scollegamento. La sfida PKCE è confrontata con il vettore di prova della RFC 7636.
+  gating della dashboard sviluppatore per whitelist, il controllo del bucket, la barra di
+  navigazione e l'assenza di sezioni di sviluppo nelle impostazioni.
+- `tests/google.test.tsx` copre il token Calendar che arriva sulla sessione Supabase: custodia,
+  scadenza con un'ora di margine, revoca allo scollegamento e i parametri OAuth richiesti.
+- `tests/calendar.e2e.test.tsx` crea un appuntamento, esce e rientra, e verifica che non venga
+  pubblicato due volte.
 
 `scripts/smoke.mjs` esegue invece lo schema vero su sql.js e controlla che ogni query di
 `repo.ts` sia valida, che le chiavi esterne cancellino in cascata e che l'installazione parta

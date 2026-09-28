@@ -3,9 +3,7 @@ import GoogleStatus from "../components/GoogleStatus";
 import {
   CalendarIcon,
   CheckIcon,
-  CloseIcon,
   DownloadIcon,
-  InfoIcon,
   SparkIcon,
   UploadIcon,
   UserIcon,
@@ -15,8 +13,6 @@ import { useLiveQuery } from "../hooks/useLiveQuery";
 import { useAccount } from "../lib/cloud/session";
 import { sincronizza } from "../lib/cloud/sync";
 import { cloudEnabled } from "../lib/cloud/supabase";
-import { verificaIntegrazione, type Controllo } from "../lib/cloud/diagnostica";
-import { urlDiRitorno } from "../lib/cloud/destinazione";
 import { connect, disconnect, googleConfigured, readProfile } from "../lib/google/auth";
 import { scaricaTuttiGliAppuntamenti } from "../lib/google/calendar";
 import { sincronizzaInAttesa } from "../lib/google/sync";
@@ -26,9 +22,6 @@ import { flush } from "../lib/sqlite/engine";
 export default function Impostazioni() {
   const fileInput = useRef<HTMLInputElement>(null);
   const [messaggio, setMessaggio] = useState("");
-  const [controlli, setControlli] = useState<Controllo[]>([]);
-  const urlRitorno = urlDiRitorno(window.location.origin, import.meta.env.BASE_URL);
-  const [verificaInCorso, setVerificaInCorso] = useState(false);
   const [occupato, setOccupato] = useState(false);
   const profilo = readProfile();
   const appuntamenti = useLiveQuery(() => elencaAppuntamenti());
@@ -38,23 +31,6 @@ export default function Impostazioni() {
     signInWithGoogle: signInAccount,
     signOut: signOutAccount,
   } = useAccount();
-
-  async function eseguiVerifica() {
-    setVerificaInCorso(true);
-    try {
-      const esito = await verificaIntegrazione();
-      setControlli(esito.controlli);
-      setMessaggio(
-        esito.tuttiOk
-          ? "Integrazione pronta."
-          : esito.nonVerificati > 0
-            ? "Integrazione quasi pronta: accedi per completare i controlli che da anonimo non si possono concludere."
-            : "Integrazione incompleta: correggi i punti segnalati sopra.",
-      );
-    } finally {
-      setVerificaInCorso(false);
-    }
-  }
 
   async function esportaCopia() {
     await flush();
@@ -174,75 +150,6 @@ export default function Impostazioni() {
               Esporta .ics
             </Button>
           </div>
-        </Card>
-      </section>
-
-      <section className="mb-5">
-        <Card className="p-5">
-          <h2 className="flex items-center gap-2 text-lg">
-            <CheckIcon className="h-5 w-5 text-ink-400" />
-            Verifica integrazione
-          </h2>
-          <p className="mt-1.5 text-sm text-ink-500">
-            Controlla che il progetto sia pronto: endpoint, tipo di chiave, accesso con Google e
-            bucket.
-          </p>
-          <div className="mt-4 rounded-xl bg-ink-50 p-3 text-sm">
-            <p className="font-medium text-ink-800">URL di ritorno dopo l&apos;accesso</p>
-            <p className="mt-1 text-xs text-ink-500">
-              Supabase rimanda l&apos;utente qui solo se questo URL è in
-              <span className="font-medium"> Authentication → URL Configuration → Redirect URLs</span>.
-              Se manca, il login finisce sul Site URL e sembra non funzionare.
-            </p>
-            <div className="mt-2 flex items-center gap-2">
-              <code className="min-w-0 flex-1 truncate rounded-lg bg-white px-2.5 py-1.5 text-xs text-ink-700">
-                {urlRitorno}
-              </code>
-              <Button
-                variant="secondary"
-                className="shrink-0"
-                onClick={() => {
-                  void navigator.clipboard
-                    ?.writeText(urlRitorno)
-                    .then(() => setMessaggio("URL di ritorno copiato negli appunti."));
-                }}
-              >
-                Copia
-              </Button>
-            </div>
-          </div>
-          <Button
-            variant="secondary"
-            className="mt-4"
-            onClick={() => void eseguiVerifica()}
-            disabled={verificaInCorso}
-          >
-            {verificaInCorso ? "Verifica in corso…" : "Esegui verifica"}
-          </Button>
-          {controlli.length > 0 ? (
-            <ul className="mt-4 space-y-2.5">
-              {controlli.map((controllo) => (
-                <li key={controllo.nome} className="flex items-start gap-2.5 text-sm">
-                  {controllo.nonVerificato ? (
-                    <InfoIcon className="mt-0.5 h-4 w-4 shrink-0 text-ink-400" />
-                  ) : controllo.ok ? (
-                    <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" />
-                  ) : (
-                    <CloseIcon className="mt-0.5 h-4 w-4 shrink-0 text-clay-600" />
-                  )}
-                  <span>
-                    <span className="font-medium text-ink-800">{controllo.nome}</span>
-                    <span className="block text-xs text-ink-500">{controllo.dettaglio}</span>
-                    {controllo.azione ? (
-                      <span className="mt-1 block rounded-lg bg-ink-50 px-2.5 py-1.5 text-xs text-ink-600">
-                        {controllo.azione}
-                      </span>
-                    ) : null}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : null}
         </Card>
       </section>
 
