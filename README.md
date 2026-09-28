@@ -188,6 +188,48 @@ La build desktop usa `BASE_PATH` vuoto (l'app si apre da `file://`), e `scripts/
 sostituisce `rm -rf && cp -R` perché su Windows la shell di GitHub Actions è PowerShell: senza,
 i pacchetti si costruirebbero solo su Linux e macOS.
 
+### Aggiornamento automatico dell'app
+
+L'app **installata** si aggiorna da sola: non va riscaricata a mano.
+
+Il meccanismo è `electron-updater`, montato in `electron/main.cjs`. Al primo avvio — otto
+secondi dopo, per non occupare la rete mentre l'app si apre — cerca una versione nuova sulle
+release GitHub, la scarica in sottofondo e, quando il pacchetto è pronto, lo dice: una barra in
+alto con **Aggiorna ora**. Se l'utente preferisce rimandare, l'aggiornamento entra comunque alla
+chiusura dell'app. Nelle impostazioni c'è anche **Controlla adesso**, che risponde anche quando
+non c'è niente da aggiornare.
+
+| Dove | Cosa fa |
+| --- | --- |
+| `electron/package.json` (`build.publish`) | dice a electron-updater dove cercare: GitHub, repository `cazzevongole/Reportini` |
+| `electron/main.cjs` | avvia i controlli, tiene lo stato e lo manda a ogni finestra via IPC |
+| `electron/preload.cjs` | espone `window.reportini.aggiornamento` (stato, controlla, installa, eventi) |
+| `src/lib/aggiornamento.ts` | store condiviso e decisione su cosa mostrare |
+| `src/components/Aggiornamento.tsx` | la barra in alto |
+
+Due dettagli che sembrano secondari e non lo sono:
+
+- **I `latest*.yml` nella release.** Sono il menù che l'app installata legge per capire se
+  c'è qualcosa di nuovo. Il workflow li pubblica e, se mancano, **fallisce**: senza
+  `latest.yml`, `latest-mac.yml` e `latest-linux.yml` l'aggiornamento non funzionerebbe e
+  nessuno se ne accorgerebbe.
+- **Lo `.zip` su macOS.** Sulla mac l'aggiornamento automatico può solo sostituire un `.zip`,
+  non un `.dmg`: il `.dmg` resta per chi scarica a mano, lo `.zip` serve solo all'auto-update.
+
+Cosa aspettarsi davvero:
+
+- le release pubblicate **prima** di questa modifica non hanno i `latest*.yml`: un'app
+  installata allora si aggiorna dalla prima release che li contiene in poi, non prima;
+- i pacchetti **non sono firmati** (non c'è un certificato). Su Windows e mac l'installatore
+  mostra sempre l'avviso di applicazione non verificata, e su mac una prima apertura può
+  richiedere di confermare. Firmarli (certificato + notarizzazione Apple) è il passo dopo, se
+  un giorno serve;
+- nel browser non c'è niente da aggiornare: la versione web è sempre l'ultima pubblicata.
+
+La via manuale resta valida e funziona sempre: scaricare il pacchetto dalla
+[release](https://github.com/cazzevongole/Reportini/releases) e installarlo sopra a quello
+vecchio.
+
 ### Avvisi
 
 Ogni azione che chiama la rete — salvataggio online, pubblicazione su Google Calendar,
@@ -200,6 +242,45 @@ pagina, per esempio dopo un'uscita dalla sessione.
 
 Le azioni che scrivono solo in locale (anagrafiche, relazioni, appuntamenti, copie di sicurezza)
 non fanno richieste di rete e quindi non hanno bisogno di avvisi.
+
+### Chiedilo allo sviluppatore
+
+Nelle impostazioni c'è una sezione **Chiedilo allo sviluppatore**: si scrive cosa non va
+(fix) o cosa dovrebbe poter fare il programma (funzionalità), e sotto si vanno le proprie
+richieste con lo stato — *da leggere*, *in corso*, *risolta* — e la risposta quando arriva.
+
+Alla URL `/panel/sviluppo` c'è la **sezione nascosta dello sviluppatore**: non è nella barra
+e non la vede nessun altro. Chi non è lo sviluppatore viene rimandato al pannello.
+
+Come è protetta, e perché conta:
+
+| Cosa | Come è fatto |
+| --- | --- |
+| Chi è sviluppatore | la riga nella tabella `sviluppatori`, non una variabile d'ambiente |
+| Chi vede cosa | tre regole RLS su `public.richieste` (`supabase/richieste.sql`) |
+| Chi può evasorla | solo lo sviluppatore: la *update* policy chiama `sei_sviluppatore()` |
+| L'email della richiesta | la prende la sessione, non il modulo |
+
+La scelta che regge tutto è una sola: **l'elenco degli sviluppatori sta nel database e non nel
+bundle**. Un mese fa la sezione sviluppo era una `VITE_DEV_WHITELIST` dentro l'app, e finiva
+pubblicata su GitHub Pages: chiunque leggendo il JavaScript poteva aggiungersi. Con la tabella
+la lista non esiste lato browser — nessun client può ampliarla, e la funzione che la consulta
+gira con i permessi del database.
+
+Per attivarla, una volta sola, nella console SQL di Supabase
+(*Dashboard → SQL Editor → New query*):
+
+```bash
+# incolla e esegui il file
+supabase/richieste.sql
+```
+
+Poi la riga unica da scrivere a mano, dentro lo stesso script, è in fondo al file:
+`insert into public.sviluppatori (email) values ('<la tua email>')`.
+
+Se lo script non è stato eseguito l'app **non si rompe e lo dice**: al posto del modulo compare
+un avviso che nomina il file da eseguire, e la sezione nascosta spiega lo stesso invece di
+mandarti fuori con un errore generico.
 
 ### Google Calendar (facoltativo)
 
@@ -230,13 +311,13 @@ bun install
 bun run dev        # server di sviluppo su http://localhost:5173
 bun run build      # build statica in dist/ (+ 404.html per GitHub Pages)
 bun run typecheck  # tsc -b --noEmit
-bun run test       # test vitest (85 test) + smoke test dello schema
+bun run test       # test vitest (105 test) + smoke test dello schema
 bun run test:ui    # solo i test vitest
 bun run version:check  # la versione è coerente? (lo usa anche il rilascio)
 bun run version:patch  # alza la versione di un patch, come fa il workflow
 ```
 
-I test vitest coprono dieci file:
+I test vitest coprono dodici file:
 
 - `tests/app.test.tsx` monta l'app reale in jsdom con un IndexedDB finto: è la rete che
   intercetta i crash a runtime (per esempio un dereferenziamento di `window.reportini` fatto al
@@ -265,6 +346,15 @@ I test vitest coprono dieci file:
   scadenza con un'ora di margine, revoca allo scollegamento e i parametri OAuth richiesti.
 - `tests/calendar.e2e.test.tsx` crea un appuntamento, esce e rientra, e verifica che non venga
   pubblicato due volte.
+- `tests/aggiornamento.test.tsx` guida l'aggiornamento automatico con un ponte finto (Electron
+  non serve): verifica che un controllo automatico fallito resti silenzioso, che quello chiesto a
+  mano risponda, che l'avanzamento e il pacchetto pronto si vedano, che «più tardi» nasconda solo
+  quella versione e  che nel browser non compaia niente.
+- `tests/richieste.test.tsx` prova "Chiedilo allo sviluppatore" con un Supabase finto che
+  applica la stessa regola del database (un utente vede solo le proprie richieste, lo
+  sviluppatore tutte): l'email viene dalla sessione, il titolo vuoto non parte, lo stato
+  cambia solo da sviluppatore, la sezione nascosta rimanda al pannello chi non lo è, e se lo
+  script SQL non è stato eseguito l'errore viene tradotto in una frase che dice cosa fare.
 
 `scripts/smoke.mjs` esegue invece lo schema vero su sql.js e controlla che ogni query di
 `repo.ts` sia valida, che le chiavi esterne cancellino in cascata e che l'installazione parta
@@ -278,9 +368,9 @@ bun run electron:build     # compila la web e la copia in electron/renderer
 bun run electron:pack      # impacchetta (dmg / nsis / AppImage)
 ```
 
-`electron/main.cjs` apre `electron/renderer/index.html` ed espone via IPC solo tre operazioni:
-leggere il file SQLite, scriverlo e mostrarlo nel file manager. Il renderer gira con
-`contextIsolation` e senza accesso a Node.
+`electron/main.cjs` apre `electron/renderer/index.html` ed espone via IPC solo quattro operazioni:
+leggere il file SQLite, scriverlo, mostrarlo nel file manager e chiedere lo stato
+dell'aggiornamento automatico. Il renderer gira con `contextIsolation` e senza accesso a Node.
 
 ---
 

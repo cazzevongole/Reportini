@@ -54,6 +54,17 @@ const supabaseFinto = {
       }),
     }),
   },
+  // Le richieste allo sviluppatore stanno su una tabella, non nel bucket: qui
+  // nessuno è sviluppatore e non c'è nessuna richiesta da leggere.
+  from: vi.fn((tabella: string) => {
+    if (tabella !== "richieste") return supabaseFinto.storage.from();
+    const catena = {
+      eq: () => catena,
+      order: () => ({ limit: async () => ({ data: [], error: null }) }),
+    };
+    return { select: () => catena };
+  }),
+  rpc: vi.fn(async () => ({ data: false, error: null })),
 };
 
 vi.mock("@supabase/supabase-js", () => ({
@@ -427,10 +438,10 @@ describe("Verifica del bucket", () => {
 });
 
 describe("Sezione sviluppo", () => {
-  it("non esiste più: la rotta riporta al pannello", async () => {
+  it("resta nascosta: chi non è lo sviluppatore viene riportato al pannello", async () => {
     await entraCome("sviluppo@example.it");
     await monta("/panel/sviluppo");
-    expect(contenitore.textContent).not.toContain("Dashboard sviluppatore");
+    expect(contenitore.textContent).not.toContain("Richieste degli utenti");
     expect(window.location.pathname).toBe("/panel");
   });
 

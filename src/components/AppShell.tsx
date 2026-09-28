@@ -1,4 +1,5 @@
 import { NavLink, Outlet } from "react-router-dom";
+import Aggiornamento from "./Aggiornamento";
 import { CalendarIcon, FileTextIcon, HomeIcon, SettingsIcon, UsersIcon } from "./icons";
 
 /**
@@ -47,6 +48,9 @@ export default function AppShell() {
       {/* Account e collegamenti stanno nelle impostazioni: sopra ogni pagina
           finirebbero solo per ripetere le stesse righe a ogni passaggio. */}
       <main className="min-w-0 flex-1">
+        {/* Sopra la pagina, non sopra lo schermo: se c'è una versione nuova la
+            dice, e non lascia nulla coperto. */}
+        <Aggiornamento />
         <Outlet />
       </main>
 

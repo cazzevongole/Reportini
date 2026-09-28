@@ -11,6 +11,7 @@ import Appuntamenti from "./pages/Appuntamenti";
 import Impostazioni from "./pages/Impostazioni";
 import Panel from "./pages/Panel";
 import Relazioni from "./pages/Relazioni";
+import Sviluppo from "./pages/Sviluppo";
 import { initDatabase } from "./lib/sqlite/engine";
 
 /**
@@ -98,6 +99,10 @@ export default function App() {
                 <Route path="/panel/relazioni" element={<Relazioni />} />
                 <Route path="/panel/appuntamenti" element={<Appuntamenti />} />
                 <Route path="/panel/impostazioni" element={<Impostazioni />} />
+                {/* Nascosta per scelta: nessuna voce nella barra, e chi non è
+                    lo sviluppatore viene rimandato al pannello dalla pagina
+                    stessa. Nell'elenco pubblico questa rotta non compare. */}
+                <Route path="/panel/sviluppo" element={<Sviluppo />} />
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

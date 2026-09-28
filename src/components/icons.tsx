@@ -189,3 +189,17 @@ export const RotateIcon = (p: IconProps) => (
     <path d="M20 4v4.5h-4.5" />
   </Icon>
 );
+
+export const MessageIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M20.5 12.5a7.5 7.5 0 0 1-10.9 6.7L4 20.5l1.4-5.4A7.5 7.5 0 1 1 20.5 12.5Z" />
+    <path d="M9 12h6" />
+  </Icon>
+);
+
+export const SendIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M21 3 10.5 13.5" />
+    <path d="M21 3l-6.8 18-3.7-7.5L3 9.8 21 3Z" />
+  </Icon>
+);

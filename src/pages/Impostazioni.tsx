@@ -3,16 +3,19 @@ import {
   CalendarIcon,
   CloudIcon,
   DownloadIcon,
+  RotateIcon,
   SparkIcon,
   UploadIcon,
   UserIcon,
 } from "../components/icons";
 import { Button, Card, PageHeader } from "../components/ui";
 import { useAvvisi } from "../components/Avvisi";
+import ChiediloAlloSviluppatore from "../components/ChiediloAlloSviluppatore";
 import VersioniBackup from "../components/VersioniBackup";
 import { useLiveQuery } from "../hooks/useLiveQuery";
 import { useSalvataggioCloud } from "../hooks/useSalvataggioCloud";
 import { useAccount } from "../lib/cloud/session";
+import { useAggiornamento } from "../lib/aggiornamento";
 import { sincronizza } from "../lib/cloud/sync";
 import { cloudEnabled } from "../lib/cloud/supabase";
 import {
@@ -54,6 +57,7 @@ export default function Impostazioni() {
     signOut: signOutAccount,
   } = useAccount();
   const salvataggio = useSalvataggioCloud();
+  const aggiornamento = useAggiornamento();
   // Il bucket tiene i file in <user-id>/… e le RLS lo confrontano con l'id
   // dell'utente autenticato: con l'email la scrittura viene respinta.
   const userId = session?.user?.id ?? null;
@@ -303,7 +307,47 @@ export default function Impostazioni() {
         </Card>
       </section>
 
+      <ChiediloAlloSviluppatore />
+
       <VersioniBackup />
+
+      <section className="mb-8">
+        <Card className="p-5">
+          <h2 className="text-lg">Aggiornamenti</h2>
+          <p className="mt-1.5 text-sm text-ink-500">
+            {aggiornamento.disponibile
+              ? "L'app controlla da sola se c'è una versione nuova e la scarica in sottofondo. Quando è pronta la trovi in alto, e un clic la installa."
+              : "Qui Reportini gira nel browser: non c'è niente da installare, ogni volta che torni basta ricaricare la pagina per avere l'ultima versione."}
+          </p>
+          <p className="mt-3 text-sm text-ink-400">
+            {aggiornamento.descrizione ??
+              (aggiornamento.disponibile
+                ? "Nessun aggiornamento da mettere."
+                : "Versione web.")}
+            {aggiornamento.versione ? ` Versione installata ${aggiornamento.versione}.` : ""}
+          </p>
+          {aggiornamento.disponibile ? (
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => void aggiornamento.controlla()}
+                disabled={aggiornamento.occupato}
+              >
+                <RotateIcon className="h-4 w-4" />
+                Controlla adesso
+              </Button>
+              {aggiornamento.pronto ? (
+                <Button
+                  onClick={() => void aggiornamento.installa()}
+                  disabled={aggiornamento.occupato}
+                >
+                  {aggiornamento.occupato ? "Installo…" : "Installa l'aggiornamento"}
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+        </Card>
+      </section>
 
       <section>
         <Card className="bg-ink-950 p-5 text-white">

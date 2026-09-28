@@ -23,13 +23,25 @@
   "build": {
     "appId": "app.reportini.desktop",
     "productName": "Reportini",
-    "files": ["main.cjs", "preload.cjs", "renderer/**/*"],
-    "publish": null,
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "renderer/**/*"
+    ],
+    "publish": {
+      "provider": "github",
+      "owner": "cazzevongole",
+      "repo": "Reportini",
+      "releaseType": "release"
+    },
     "directories": {
       "output": "release"
     },
     "mac": {
-      "target": "dmg",
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "category": "public.app-category.productivity"
     },
     "win": {
@@ -39,5 +51,8 @@
       "target": "AppImage",
       "category": "Office"
     }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }
