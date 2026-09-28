@@ -253,12 +253,17 @@ jobs:
         with:
           ref: ${{ needs.versione.outputs.versione }}
 
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
       - name: Scarica gli artefatti
         uses: actions/download-artifact@v8
         with:
           path: pacchetti
 
       - name: Crea la release
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSIONE: ${{ needs.versione.outputs.versione }}
@@ -288,6 +293,17 @@ jobs:
               exit 1
             fi
           done
+
+          # Ogni nome che i menù promettono devono essere un file davvero
+          # pubblicato. electron-builder può scrivere nel menù un nome diverso
+          # da quello del file che produce: è successo su Windows, dove il
+          # menù prometteva "Reportini-Setup-0.1.24.exe" e l'allegato si
+          # chiamava "Reportini.Setup.0.1.24.exe". L'aggiornamento finiva in
+          # un 404, l'app installata restava sulla versione vecchia, e
+          # l'unico sintomo era che "non si aggiorna" — senza un errore da
+          # nessuna parte. Qui il rilascio si ferma invece di pubblicare un
+          # aggiornamento che non si può scaricare.
+          node scripts/verifica-menu-aggiornamento.mjs dist
 
           gh release create "$VERSIONE" dist/* \
             --title "Reportini $VERSIONE" \

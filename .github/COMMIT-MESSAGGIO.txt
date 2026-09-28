@@ -1,28 +1,31 @@
-Un fallimento di Google non può più passare per un successo
+Il menù dell'aggiornamento prometteva un file che non esisteva
 
-`pubblicaAppuntamento()` non solleva mai: ritorna `{ ok: false }`. Passata a
-`esegui()` come `successo: (r) => r.messaggio`, un fallimento arrivava a
-schermo come una **notifica verde** con dentro la frase dell'errore — e poi
-spariva di lì a pochi secondi. L'appuntamento restava in lista identico a uno
-pubblicato, l'utente aveva visto un avviso di successo, e in agenda non c'era
-niente. Lo stesso in `Appuntamenti.tsx`, su sincronizza e scollega.
+Scaricando l'aggiornamento su Windows si finiva in un 404: il `latest.yml`
+prometteva `Reportini-Setup-0.1.24.exe` e l'allegato si chiamava
+`Reportini.Setup.0.1.24.exe`. Un trattino contro un punto.
 
-Ora l'esito decide il colore dell'avviso, e il motivo resta **sull'appuntamento**
-in una colonna nuova, `googleErrore`: la riga "Non pubblicato su Google
-Calendar" compare sulla scheda finché non si riesce, con il pulsato "Invia a
-Google" per riprovare accanto. Un avviso sparisce e un riavvio lo cancella, un
-campo no. Al primo tentativo riuscito la colonna si svuota, perché un
-appuntamento finito in agenda non deve continuare ad accusare un 500.
+Non è un caso: electron-builder ricava in due posti diversi il nome che finisce
+nel file e quello che finisce nel menù — `artifactName` per l'uno,
+`generateGitHubInstallerName()` per l'altro — e con il nome NSIS di default
+("Reportini Setup 0.1.24") i due non coincidono. Su mac e Linux coincidono,
+quindi il difetto stava in un sistema solo e ogni controllo fatto a occhio o
+sull'uno dei due nomi passava.
 
-La colonna arriva anche ai database già esistenti: lo schema è
-`CREATE TABLE IF NOT EXISTS`, che su una tabella già presente non aggiunge
-niente, quindi senza migrazione chi ha il database dalla versione precedente
-avrebbe avuto una tabella senza la colonna e ogni query che la nomina sarebbe
-fallita con un errore che non c'entrava niente con la modifica.
+Due cose, quindi.
 
-Quattro test nuovi, e uno è la ripetizione delle migrazioni: al secondo avvio
-l'app riapplica gli schemi, e un controllo fatto male (`db.exec` su un PRAGMA
-restituisce tutte le righe, non una) faceva eseguire l'ALTER TABLE ogni volta,
-con "duplicate column name" e l'app che non apriva più.
+**`win.artifactName` esplicito**, uguale al nome che electron-builder scrive
+nel menù. Il file si chiama come il menù promette, e non può più succedere.
 
-164 test verdi.
+**`scripts/verifica-menu-aggiornamento.mjs`**, che il job `pubblica` esegue
+prima di `gh release create`: legge ogni `url` e ogni `path` dei tre menù e
+fallisce se il file non è fra gli allegati. Un aggiornamento che non si può
+scaricare non si pubblica, perché il sintomo — "l'app non si aggiorna" — non
+dà nessun errore e non si collega a niente.
+
+Lo script è in `scripts/` e ha il suo test (`tests/menu-aggiornamento.test.ts`,
+169 in tutto) invece di essere una riga nel workflow: i casi sono quello reale
+sulla differenza trattino/punto, un allegato mancante su un solo sistema, un
+menù assente, e il caso in cui il controllo non deve diventare rumoroso,
+perché `sha512` e `size` nel yml sembrano nomi e non lo sono.
+
+169 test verdi.
