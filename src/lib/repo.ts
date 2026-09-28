@@ -305,6 +305,25 @@ export function marcaAppuntamentoSincronizzato(
   });
 }
 
+/**
+ * Toglie solo i marcatori di Google, senza toccare il resto dell'appuntamento.
+ *
+ * Serve perché "scollegare l'evento" non è un salvataggio dell'appuntamento:
+ * farlo con aggiornaAppuntamento richiederebbe di riscrivere la descrizione,
+ * e quella che si manda a Google è arricchita con il contesto dell'anagrafico.
+ * Riscrivendola, il contesto finirebbe nel database e da lì nel modulo di
+ * modifica, dove si accumulerebbe a ogni passaggio.
+ */
+export function rimuoviCollegamentoGoogle(id: number): void {
+  update("appuntamenti", id, {
+    googleEventId: null,
+    googleCalendarId: null,
+    googleHtmlLink: null,
+    googleSyncAt: null,
+    updatedAt: now(),
+  });
+}
+
 export function eliminaAppuntamento(id: number): void {
   run("DELETE FROM appuntamenti WHERE id = ?", [id]);
 }

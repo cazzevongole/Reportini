@@ -43,6 +43,7 @@ vi.mock("sql.js", () => ({
 vi.mock("sql.js/dist/sql-wasm.wasm?url", () => ({ default: "/fake.wasm" }));
 
 import App from "../src/App";
+import { SchermataErrore } from "../src/components/ErroreAvvio";
 import { AccountProvider } from "../src/lib/cloud/session";
 
 let contenitore: HTMLDivElement;
@@ -108,5 +109,37 @@ describe("Reportini", () => {
       // contenitore lascerebbe il render precedente dentro.
       await act(async () => radice.unmount());
     }
+  });
+});
+
+describe("Un errore non può diventare una pagina bianca", () => {
+  it("la schermata dice che cosa è andato storto e che i dati ci sono", async () => {
+    radice = createRoot(contenitore);
+    await act(async () => {
+      radice.render(
+        <SchermataErrore
+          errore={new Error("asset non trovato: ./assets/index-xyz.js")}
+          desktop={false}
+        />,
+      );
+    });
+
+    expect(contenitore.textContent).toContain("Impossibile mostrare l'app");
+    expect(contenitore.textContent).toContain("asset non trovato");
+    // La paura numero uno di chi trova una finestra bianca: aver perso i
+    // dati. Il messaggio dice subito il contrario.
+    expect(contenitore.textContent).toContain("I tuoi dati non sono persi");
+    expect(contenitore.innerHTML).not.toBe("");
+  });
+
+  it("sul desktop dice dove trovare il dettaglio completo", async () => {
+    radice = createRoot(contenitore);
+    await act(async () => {
+      radice.render(
+        <SchermataErrore errore={new Error("boom")} desktop={true} />,
+      );
+    });
+    expect(contenitore.textContent).toContain("renderer.log");
+    expect(contenitore.textContent).toContain("APPDATA");
   });
 });

@@ -17,8 +17,12 @@ import { useLiveQuery } from "../hooks/useLiveQuery";
 import { dataLunga, giornoISO, durata, ora, relativo } from "../lib/date";
 import { isConnected } from "../lib/google/auth";
 import { scaricaIcs } from "../lib/google/calendar";
-import { dissociaAppuntamento, sincronizzaAppuntamento } from "../lib/google/sync";
-import { eliminaAppuntamento, elencaAppuntamenti } from "../lib/repo";
+import {
+  dissociaAppuntamento,
+  eliminaAppuntamentoEEvento,
+  sincronizzaAppuntamento,
+} from "../lib/google/sync";
+import { elencaAppuntamenti } from "../lib/repo";
 import type { Appuntamento, AppuntamentoDettagliato, StatoAppuntamento } from "../lib/types";
 
 const FILTRI: Array<{ valore: StatoAppuntamento | "tutti" | "prossimi"; etichetta: string }> = [
@@ -79,6 +83,15 @@ export default function Appuntamenti() {
     await esegui(() => dissociaAppuntamento(appuntamento.id), {
       successo: (r) => r.messaggio,
       errore: "Scollegamento dall'evento non riuscito",
+    });
+  }
+
+  async function elimina(appuntamento: Appuntamento) {
+    if (!confirm(`Eliminare l'appuntamento “${appuntamento.titolo}”?`)) return;
+    notifica("info", "Elimino l'appuntamento…");
+    await esegui(() => eliminaAppuntamentoEEvento(appuntamento.id), {
+      successo: (r) => r.messaggio,
+      errore: "Eliminazione non riuscita",
     });
   }
 
@@ -229,11 +242,7 @@ export default function Appuntamenti() {
                       <Button
                         size="sm"
                         variant="danger"
-                        onClick={() => {
-                          if (confirm(`Eliminare l'appuntamento “${appuntamento.titolo}”?`)) {
-                            eliminaAppuntamento(appuntamento.id);
-                          }
-                        }}
+                        onClick={() => elimina(appuntamento)}
                       >
                         <TrashIcon className="h-4 w-4" />
                       </Button>

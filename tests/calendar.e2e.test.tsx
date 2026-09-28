@@ -20,6 +20,7 @@ import {
 import { resetSincronizzazione, sincronizza } from "../src/lib/cloud/sync";
 import {
   dissociaAppuntamento,
+  eliminaAppuntamentoEEvento,
   pubblicaAppuntamento,
   sincronizzaAppuntamento,
 } from "../src/lib/google/sync";
@@ -90,6 +91,7 @@ interface EventoFinto {
   id: string;
   htmlLink?: string;
   summary?: string;
+  description?: string;
   start?: { dateTime?: string; timeZone?: string };
   end?: { dateTime?: string; timeZone?: string };
 }
@@ -335,6 +337,61 @@ describe("Reportini end-to-end: dati, Calendar, logout e rientro", () => {
   });
 });
 
+/* ---------------- la descrizione non deve crescere a ogni modifica ---------- */
+
+describe("Il contesto dell'anagrafico non si duplica", () => {
+  const CONTESTO = "Anagrafico: Mario Rossi\nDocumento: VR123456A";
+
+  it("scollegare non scrive il contesto nella descrizione salvata", async () => {
+    await nuovoDatabase();
+    const { appuntamentoId } = creaSchedaConAppuntamento();
+    await sincronizzaAppuntamento(appuntamentoId, "primary");
+
+    await dissociaAppuntamento(appuntamentoId);
+
+    // Il contesto sta solo nell'evento: nel database la descrizione è
+    // ancora quella scritta dall'utente, altrimenti il modulo di modifica
+    // la mostrerebbe e ogni sincronizzazione aggiungerebbe un blocco.
+    const salvato = ottieniAppuntamento(appuntamentoId);
+    expect(salvato).toBeTruthy();
+    expect(salvato?.descrizione).toBe("");
+    expect(salvato?.titolo).toBe("Ritiro documento");
+  });
+
+  it("scollegare e ripubblicare non accumula blocchi", async () => {
+    await nuovoDatabase();
+    const { appuntamentoId } = creaSchedaConAppuntamento();
+    for (let giro = 0; giro < 3; giro += 1) {
+      await sincronizzaAppuntamento(appuntamentoId, "primary");
+      await dissociaAppuntamento(appuntamentoId);
+    }
+    await sincronizzaAppuntamento(appuntamentoId, "primary");
+
+    const descrizione = [...eventi.values()][0].description ?? "";
+    const occorrenze = descrizione.split("Anagrafico: Mario Rossi").length - 1;
+    expect(occorrenze).toBe(1);
+    expect(ottieniAppuntamento(appuntamentoId)?.descrizione).toBe("");
+  });
+
+  it("una descrizione che contiene già il contesto non lo riceve una seconda volta", async () => {
+    await nuovoDatabase();
+    const { appuntamentoId } = creaSchedaConAppuntamento();
+    // Come le righe scritte dalle versioni precedenti, che avevano salvato
+    // qui la descrizione arricchita: il modulo la mostrava e ogni
+    // sincronizzazione ne aggiungeva un'altra copia.
+    const attuale = ottieniAppuntamento(appuntamentoId)!;
+    aggiornaAppuntamento(appuntamentoId, { ...attuale, descrizione: CONTESTO });
+
+    await sincronizzaAppuntamento(appuntamentoId, "primary");
+    await aggiornaTitolo(appuntamentoId, "Ritiro documento (rivisto)");
+    await sincronizzaAppuntamento(appuntamentoId, "primary");
+
+    const descrizione = [...eventi.values()][0].description ?? "";
+    expect(descrizione.split("Anagrafico: Mario Rossi").length - 1).toBe(1);
+    expect(descrizione.split("Documento: VR123456A").length - 1).toBe(1);
+  });
+});
+
 /** Modifica il titolo passando dalla stessa API del repository. */
 async function aggiornaTitolo(id: number, titolo: string) {
   const { aggiornaAppuntamento } = await import("../src/lib/repo");
@@ -399,6 +456,51 @@ describe("Pubblicazione automatica: cosa fa il modulo quando si salva", () => {
     expect(esito.ok).toBe(true);
     expect(esito.messaggio).toMatch(/non era su Google Calendar/i);
     expect(chiamate).toHaveLength(0);
+  });
+});
+
+describe("Eliminare un appuntamento toglie anche l'evento", () => {
+  it("l'evento sparisce da Google e l'appuntamento dal database", async () => {
+    await nuovoDatabase();
+    const { appuntamentoId } = creaSchedaConAppuntamento();
+    await pubblicaAppuntamento(appuntamentoId, "primary");
+    expect(eventi.size).toBe(1);
+
+    const esito = await eliminaAppuntamentoEEvento(appuntamentoId);
+
+    expect(esito.ok).toBe(true);
+    expect(esito.messaggio).toMatch(/Google Calendar/);
+    expect(eventi.size).toBe(0);
+    expect(ottieniAppuntamento(appuntamentoId)).toBeNull();
+    expect(chiamate.some((c) => c.metodo === "DELETE")).toBe(true);
+  });
+
+  it("un appuntamento mai pubblicato si elimina senza chiamare Google", async () => {
+    await nuovoDatabase();
+    const { appuntamentoId } = creaSchedaConAppuntamento();
+    chiamate.length = 0;
+
+    const esito = await eliminaAppuntamentoEEvento(appuntamentoId);
+
+    expect(esito.ok).toBe(true);
+    expect(esito.messaggio).toBe("Appuntamento eliminato");
+    expect(chiamate).toHaveLength(0);
+    expect(ottieniAppuntamento(appuntamentoId)).toBeNull();
+  });
+
+  it("se Google non risponde l'appuntamento resta: meglio che lasciare un evento orfano", async () => {
+    await nuovoDatabase();
+    const { appuntamentoId } = creaSchedaConAppuntamento();
+    await pubblicaAppuntamento(appuntamentoId, "primary");
+    fetchFinto.mockImplementationOnce(async () => risposta({ error: "rateLimitExceeded" }, 429));
+
+    const esito = await eliminaAppuntamentoEEvento(appuntamentoId);
+
+    expect(esito.ok).toBe(false);
+    expect(esito.messaggio).toMatch(/429/);
+    // Ancora in lista, con il collegamento all'evento: premere Elimina
+    // di nuovo riprova senza dover riscriverlo.
+    expect(ottieniAppuntamento(appuntamentoId)?.googleEventId).toBe("evt-1");
   });
 });
 

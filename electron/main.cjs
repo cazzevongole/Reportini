@@ -3,7 +3,25 @@ const path = require("node:path");
 const fs = require("node:fs/promises");
 
 const DB_FILE = () => path.join(app.getPath("userData"), "reportini.sqlite");
+const LOG_FILE = () => path.join(app.getPath("userData"), "renderer.log");
 const DEV_URL = process.env.VITE_DEV_SERVER_URL;
+
+/**
+ * Scrive una riga nel log accanto ai dati.
+ *
+ * Nell'app impacchettata non esiste una console: quello che il renderer
+ * scrive va su devtools, che l'utente non apre mai. Un errore di caricamento
+ * — per esempio i suoi asset non trovati — si manifesta come pagina bianca e
+ * basta. Con questo file il motivo è leggibile, e la schermata d'errore dice
+ * dove cercarlo.
+ */
+async function registra(riga) {
+  try {
+    await fs.appendFile(LOG_FILE(), `${new Date().toISOString()} ${riga}\n`, "utf8");
+  } catch {
+    // Se il log non si può scrivere, l'app deve comunque aprire.
+  }
+}
 
 /** @type {BrowserWindow | null} */
 let ventana = null;
@@ -28,6 +46,27 @@ async function createWindow() {
   });
 
   ventana.once("ready-to-show", () => ventana && ventana.show());
+
+  // Quello che il renderer scrive, su file. Le due forme del evento sono
+  // entrambe gestite: Electron 31 passa ancora i parametri posizionali, le
+  // versioni più recenti un oggetto.
+  ventana.webContents.on("console-message", (...argomenti) => {
+    const evento = argomenti[0];
+    const riga =
+      evento && typeof evento === "object" && "message" in evento
+        ? `[${evento.level}] ${evento.message} (${evento.sourceId}:${evento.lineNumber})`
+        : `[${argomenti[1]}] ${argomenti[2]} (${argomenti[4]}:${argomenti[3]})`;
+    registra(riga);
+  });
+  ventana.webContents.on("render-process-gone", (_evento, dettagli) => {
+    registra(`render process gone: ${JSON.stringify(dettagli)}`);
+  });
+  ventana.webContents.on("did-fail-load", (_evento, codice, descrizione, url) => {
+    registra(`did-fail-load ${codice} ${descrizione} ${url}`);
+  });
+  ventana.webContents.on("preload-error", (_evento, percorso, errore) => {
+    registra(`preload-error ${percorso}: ${errore.message}`);
+  });
 
   // I link esterni (Google Calendar, documentazione) si aprono nel browser vero.
   ventana.webContents.setWindowOpenHandler(({ url }) => {
