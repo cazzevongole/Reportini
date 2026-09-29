@@ -630,13 +630,38 @@ bun run test       # test vitest + smoke test dello schema
 bun run test:ui    # solo i test vitest
 bun run version:check  # la versione è coerente? (lo usa anche il rilascio)
 bun run version:patch  # alza la versione di un patch, come fa il workflow
+bun run dimensioni    # quanto pesa la web, e rispetta i tetti?
 ```
 
 `lint` e `format:check` girano in CI, e girano in **modalità segnalazione**: non
 correggono e non scrivono. Un controllo che riscrive il codice al posto tuo
 lascia il lavoro a metà e un check verde su un file che nessuno ha scritto.
 
-I test vitest coprono tredici file:
+### La dimensione della web
+
+`bun run dimensioni` divide i file di `dist/` in tre gruppi, perché vengono
+scaricati in tre momenti diversi e misurarli insieme darebbe un totale che non
+corrisponde a nessuna situazione reale:
+
+| gruppo | chi lo scarica | adesso |
+| --- | --- | --- |
+| pagina | chi apre l'app, anche senza account | 135 kB gzip |
+| installazione | le icone, solo se l'utente installa l'app | 26 kB gzip |
+| dopo l'accesso | il database nel browser e le pagine differite | 359 kB gzip |
+
+Il primo caricamento è l'unico numero che conta per la velocità con cui
+l'app compare, ed è quello col tetto più stretto. Il grosso di "dopo l'accesso"
+è il WASM di SQLite (643 kB, 315 kB compressi): è il database stesso e non si
+può alleggerire senza rinunciarci.
+
+Il controllo gira in CI e **serve la build con `VITE_SUPABASE_URL` e
+`VITE_SUPABASE_ANON_KEY` valorizzate**: senza, esbuild elimina staticamente
+`@supabase/supabase-js` dal bundle e la misura risulta più leggera di quella
+reale di oltre 50 kB. I tetti sono in `scripts/dimensioni.mjs`, con scritti
+accanto i numeri di riferimento: alzarli è una decisione, non un effetto
+collaterale di un upgrade.
+
+I test vitest coprono ventuno file; questi sono quelli che meritano una riga:
 
 - `tests/app.test.tsx` monta l'app reale in jsdom con un IndexedDB finto: è la rete che
   intercetta i crash a runtime (per esempio un dereferenziamento di `window.reportini` fatto al

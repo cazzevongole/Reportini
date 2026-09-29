@@ -1,4 +1,4 @@
-import initSqlJs, { type Database, type SqlJsStatic } from "sql.js";
+import type { Database, SqlJsStatic } from "sql.js";
 import wasmUrl from "sql.js/dist/sql-wasm.wasm?url";
 
 /**
@@ -14,7 +14,10 @@ import wasmUrl from "sql.js/dist/sql-wasm.wasm?url";
 let SQL: SqlJsStatic | null = null;
 
 async function caricaSql(): Promise<SqlJsStatic> {
-  if (!SQL) SQL = await initSqlJs({ locateFile: () => wasmUrl });
+  if (!SQL) {
+    const { default: initSqlJs } = await import("sql.js");
+    SQL = await initSqlJs({ locateFile: () => wasmUrl });
+  }
   return SQL;
 }
 

@@ -26,6 +26,7 @@
     "version:minor": "node scripts/versione.mjs minor",
     "version:major": "node scripts/versione.mjs major",
     "icona": "node scripts/icona.mjs",
+    "dimensioni": "node scripts/dimensioni.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",

@@ -1,4 +1,4 @@
-import initSqlJs, { type Database, type SqlJsStatic } from "sql.js";
+import type { Database, SqlJsStatic } from "sql.js";
 import wasmUrl from "sql.js/dist/sql-wasm.wasm?url";
 import { storage } from "./storage";
 import { PRAGMA_CHIAVI_ESTERNE, runMigrations } from "./migrations";
@@ -29,6 +29,11 @@ export function notifyChange(): void {
 
 async function loadSql(): Promise<SqlJsStatic> {
   if (!SQL) {
+    // Import dinamico: il collante di sql.js sono circa 15 kB gzip e serve
+    // solo quando il database si apre davvero, cioè dopo l'accesso.
+    // Con l'import statico finiva nel chunk principale e lo scaricava
+    // anche chi non arriva mai a entrare.
+    const { default: initSqlJs } = await import("sql.js");
     SQL = await initSqlJs({ locateFile: () => wasmUrl });
   }
   return SQL;

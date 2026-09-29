@@ -54,7 +54,21 @@ jobs:
         run: bun run test
 
       - name: Build
+        # Le stesse variabili del deploy. Senza di queste esbuild elimina
+        # staticamente @supabase/supabase-js dal bundle: la build riuscirebbe,
+        # ma sarebbe più leggera di quella che va davvero online di oltre
+        # 50 kB, e ogni misura fatta su quella build mentirebbe.
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
         run: bun run build
+
+      - name: La web non è cresciuta troppo
+        # Il bundle principale è l'unica cosa che scarica chi apre l'app, e
+        # cresce da solo: un aggiornamento di una dipendenza può aggiungervi
+        # decine di kB senza che nessuno se ne accorga. Il tetto è su
+        # dimensioni.mjs, con i numeri di riferimento scritti accanto.
+        run: node scripts/dimensioni.mjs
 
       - name: Nessun segreto nel bundle
         # La build fallirebbe già con una chiave privilegiata (vite.config.ts),
