@@ -654,12 +654,19 @@ l'app compare, ed è quello col tetto più stretto. Il grosso di "dopo l'accesso
 è il WASM di SQLite (643 kB, 315 kB compressi): è il database stesso e non si
 può alleggerire senza rinunciarci.
 
-Il controllo gira in CI e **serve la build con `VITE_SUPABASE_URL` e
-`VITE_SUPABASE_ANON_KEY` valorizzate**: senza, esbuild elimina staticamente
-`@supabase/supabase-js` dal bundle e la misura risulta più leggera di quella
-reale di oltre 50 kB. I tetti sono in `scripts/dimensioni.mjs`, con scritti
-accanto i numeri di riferimento: alzarli è una decisione, non un effetto
-collaterale di un upgrade.
+Il controllo gira in CI e **ha bisogno che `@supabase/supabase-js` resti nel
+bundle**: senza `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` esbuild lo
+elimina in modo statico, e la misura risulta più leggera di quella reale di
+oltre 50 kB. Le variabili vere stanno nell'ambiente `prod`, che il job di CI non
+dichiara, quindi il build in CI riceve un segnaposto della stessa forma quando
+non le trova: la chiave pubblica è pubblica per definizione, e per misurare
+basta che la libreria ci sia. I tetti sono in `scripts/dimensioni.mjs`, con
+scritti accanto i numeri di riferimento: alzarli è una decisione, non un
+effetto collaterale di un upgrade.
+
+> Il numero più facile da sbagliare è proprio questo. Una build senza le
+> variabili Supabase **rientra nei tetti e il controllo passa**: per accorgersene
+> guarda che `dist/assets/index-*.js` sia sui 400 kB circa, non sui 200.
 
 I test vitest coprono ventuno file; questi sono quelli che meritano una riga:
 

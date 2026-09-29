@@ -54,20 +54,28 @@ jobs:
         run: bun run test
 
       - name: Build
-        # Le stesse variabili del deploy. Senza di queste esbuild elimina
-        # staticamente @supabase/supabase-js dal bundle: la build riuscirebbe,
-        # ma sarebbe più leggera di quella che va davvero online di oltre
-        # 50 kB, e ogni misura fatta su quella build mentirebbe.
+        # VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY servono a tenere
+        # @supabase/supabase-js dentro il bundle: senza di esse esbuild lo
+        # elimina in modo statico e la build riescirebbe, ma sarebbe più
+        # leggera di quella che va online di oltre 50 kB, e ogni misura di
+        # peso fatta su quella build mentirebbe.
+        #
+        # Le variabili vere stanno nell'ambiente "prod", che questo job non
+        # dichiara, quindi qui arriverebbero vuote. Non serve la chiave vera:
+        # per misurare basta che la libreria resti nel bundle, e la chiave
+        # pubblica è pubblica per definizione (finisce nel bundle online).
+        # Il ||= tiene la vera quando c'è, altrimenti un segnaposto della
+        # stessa forma, così la misura resta quella giusta in entrambi i casi.
         env:
-          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || 'https://esempio.supabase.co' }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY || 'sb_publishable_00000000000000000000000000000000' }}
         run: bun run build
 
       - name: La web non è cresciuta troppo
         # Il bundle principale è l'unica cosa che scarica chi apre l'app, e
         # cresce da solo: un aggiornamento di una dipendenza può aggiungervi
-        # decine di kB senza che nessuno se ne accorga. Il tetto è su
-        # dimensioni.mjs, con i numeri di riferimento scritti accanto.
+        # decine di kB senza che nessuno se ne accorga. I tetti sono su
+        # scripts/dimensioni.mjs, con scritti accanto i numeri di riferimento.
         run: node scripts/dimensioni.mjs
 
       - name: Nessun segreto nel bundle
