@@ -23,7 +23,12 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          # Bun bloccato, non "latest": le due cose che devono dare lo stesso
+          # risultato -- la misura del bundle e il formato del lockfile -- non
+          # possono dipendere dalla versione di bun che trova il runner. Quando
+          # si alza bun, si alza anche questo numero: `bun upgrade` in locale e
+          # un commit di package.json/bun.lock insieme a questa riga.
+          bun-version: 1.4.2
 
       - name: Installa le dipendenze
         run: bun install --frozen-lockfile
