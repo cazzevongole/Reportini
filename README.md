@@ -419,6 +419,23 @@ supabase secrets set PROGETTO_CHIAVE=<chiave pubblica>
 supabase secrets set ORIGINI_AMMESSE=https://reportini.cazzevongole.com,http://localhost:5173
 ```
 
+In `ORIGINI_AMMESSE` le origini si separano con la **virgola**, e la virgola va
+messa fra apici se la shell o il terminale potrebbe mangiarla: uno spazio al suo
+posto non dà alcun errore, ma la funzione legge l'intera stringa come se fosse
+un'unica origine, nessuna corrisponde e ogni richiesta del browser viene
+rifiutata. Il sintomo è che l'accesso con Google fallisce con un errore CORS
+senza che niente dica il perché. Per capire quale sia l'elenco effettivamente
+in uso, senza indovinare:
+
+```bash
+curl -sI -X OPTIONS https://<ref>.supabase.co/functions/v1/google-token \
+  -H "Origin: https://reportini.cazzevongole.com" | grep -i allow-origin
+```
+
+Se la risposta contiene l'origine esatta che hai chiesto, l'elenco la
+riconosce; se contiene altro, è il valore di ripiego e quell'origine non è in
+lista.
+
 5. Metti il **Client ID** (solo quello, non il secret) in `VITE_GOOGLE_CLIENT_ID` nelle
    variabili d'ambiente della web.
 
