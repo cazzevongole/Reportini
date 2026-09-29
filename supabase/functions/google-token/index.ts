@@ -31,7 +31,7 @@
 //   supabase secrets set GOOGLE_CLIENT_SECRET=<client secret>
 //   supabase secrets set PROGETTO_URL=<project url>
 //   supabase secrets set PROGETTO_CHIAVE=<chiave pubblica>
-//   supabase secrets set ORIGINI_AMMESSE=https://cazzevongole.github.io,http://localhost:5173
+//   supabase secrets set ORIGINI_AMMESSE=https://reportini.cazzevongole.com,http://localhost:5173
 //
 // `ORIGINI_AMMESSE` non c'è bisogno di elencarci la porta del pacchetto
 // desktop: le origini in loopback (127.0.0.1 e localhost, con qualsiasi
@@ -64,6 +64,7 @@ interface Env {
 }
 
 const PREDEFINITE = [
+  "https://reportini.cazzevongole.com",
   "https://cazzevongole.github.io",
   "http://localhost:5173",
   "http://127.0.0.1:5173",

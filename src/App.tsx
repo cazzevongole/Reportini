@@ -89,11 +89,12 @@ export default function App() {
         {/* Gli avvisi stanno fuori dal router: un'azione che chiama la rete deve
             poter parlare anche cambiando pagina (per esempio uscendo). */}
         <AvvisoProvider>
-          {/* basename: su GitHub Pages l'app vive in /Reportini/. Senza, ogni
-              link punterebbe a /panel e lascerebbe la sottocartella: dopo
-              l'accesso l'utente finiva su una pagina di profilo e poi su un
-              404 al ricaricare. Nell'app desktop, che si apre da file://, la
-              base è "./" e per il router vale la radice. */}
+          {/* basename: sulla web vale la base di Vite, cioè "/" sia in locale
+              sia su reportini.cazzevongole.com. Senza, ogni link punterebbe a
+              /panel e lascerebbe la radice: dopo l'accesso l'utente finiva su
+              una pagina di profilo e poi su un 404 al ricaricare. Nell'app
+              desktop, che si apre da file://, la base è "./" e per il router
+              vale la radice. */}
           <Router
             basename={baseRoutte()}
             future={{ v7_startTransition: true, v7_relativeSplatPath: true }}

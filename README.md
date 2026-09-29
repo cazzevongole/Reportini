@@ -95,9 +95,8 @@ test, dove un guasto lo blocca prima di arrivare in giro.
    Secret del tuo progetto Google Cloud. Per il calendario ne serve uno **solo**: è lo stesso
    client che va in `VITE_GOOGLE_CLIENT_ID` (vedi la sezione sotto).
 3. In **Authentication → URL Configuration** aggiungi in *Redirect URLs* `http://localhost:5173`,
-   `http://127.0.0.1:42720` (il pacchetto desktop) e l'URL delle GitHub Pages. Con il workflow di
-   questo repository l'app è pubblicata in una sottocartella, quindi gli URL sono
-   `https://cazzevongole.github.io/Reportini/` e `https://cazzevongole.github.io/Reportini/**`.
+   `http://127.0.0.1:42720` (il pacchetto desktop) e l'URL della web, cioè
+   `https://reportini.cazzevongole.com`.
 4. Crea il bucket e le relative politiche RLS: apri `supabase/setup.sql`, copialo tutto ed
    eseguilo nel **SQL Editor** del progetto Supabase (sidebar → *SQL Editor* → *New query* → *Run*).
    È idempotente, quindi puoi rieseguirlo. In fondo ci sono le due query di verifica.
@@ -160,8 +159,9 @@ gratis):
    *Google Auth Platform → Branding*);
 2. stato del rilascio: da **In test** a **In produzione**;
 3. compila *Informazioni sull'app*: nome, logo, email di supporto, homepage
-   (`https://cazzevongole.github.io/Reportini/`), privacy policy e condizioni;
-4. nei *Domini autorizzati* aggiungi `cazzevongole.github.io`.
+   (`https://reportini.cazzevongole.com`), privacy policy e condizioni;
+4. nei *Domini autorizzati* aggiungi `cazzevongole.com` (il dominio, non
+   l'host: così vale anche per `reportini.`).
 
 Finché l'app resta in "In test" Google mostra anche il banner "App in fase di test" e limita a
 100 utenti e 7 giorni la validità del token: per un uso normale conviene la produzione.
@@ -401,7 +401,7 @@ l'app non potrebbe rinnovare niente.
    Client ID del progetto, quindi i due devono coincidere.
 2. Nei *URI di reindirizzamento autorizzati* metti:
    - l'URL di callback di Supabase (lo trovi in *Authentication → Providers → Google*),
-   - `https://cazzevongole.github.io/Reportini`,
+   - `https://reportini.cazzevongole.com`,
    - `http://localhost:5173`,
    - `http://127.0.0.1:42720`, che è l'indirizzo a cui il pacchetto desktop fa tornare
      l'utente: non serve un secondo client OAuth.
@@ -416,7 +416,7 @@ supabase secrets set GOOGLE_CLIENT_ID=<client id>
 supabase secrets set GOOGLE_CLIENT_SECRET=<client secret>
 supabase secrets set PROGETTO_URL=<project url>
 supabase secrets set PROGETTO_CHIAVE=<chiave pubblica>
-supabase secrets set ORIGINI_AMMESSE=https://cazzevongole.github.io,http://localhost:5173
+supabase secrets set ORIGINI_AMMESSE=https://reportini.cazzevongole.com,http://localhost:5173
 ```
 
 5. Metti il **Client ID** (solo quello, non il secret) in `VITE_GOOGLE_CLIENT_ID` nelle

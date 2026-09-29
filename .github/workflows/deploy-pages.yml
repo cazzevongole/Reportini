@@ -59,8 +59,11 @@ jobs:
       - name: Build
         run: bun run build
         env:
-          # Assets are served from https://<user>.github.io/Reportini/
-          BASE_PATH: /Reportini
+          # Nessuna BASE_PATH: il sito sta nella radice di
+          # https://reportini.cazzevongole.com, quindi gli asset si chiedono da
+          # "/". Vite usa "/" anche quando la variabile manca, e impostarla a
+          # "/" produrrebbe una base "//": da li i percorsi raddoppierebbero e
+          # nulla caricherebbe.
           # Account Google + salvataggio online (Supabase). Obbligatorie per il
           # deploy: in locale l'app parte anche senza, ma online resterebbe
           # chiusa a chiunque.

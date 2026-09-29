@@ -107,8 +107,9 @@ export function AccountProvider({ children }: { children: ReactNode }) {
         return "navigazione";
       }
     }
-    // Su GitHub Pages l'app vive in una sottocartella (/Reportini/): tornare
-    // all'origine finirebbe sulla pagina del profilo, non sull'app.
+    // Su una web in sottocartella tornare all'origine finirebbe su una pagina
+    // che non è l'app: meglio aggiungere la base. Su reportini.cazzevongole.com
+    // la base è "/" e l'origine va bene così com'è.
     const rientro = urlDiRitorno(window.location.origin, baseRoutte());
     // Stessa guardia del percorso con il calendario: senza un'origine
     // utilizzabile non c'è dove tornare, e senza controllo l'accesso fallisce

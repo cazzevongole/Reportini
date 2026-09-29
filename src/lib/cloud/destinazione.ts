@@ -9,9 +9,10 @@
  * stringa che va incollata nella lista di Supabase, mostrata anche in
  * Impostazioni per evitare di indovinarla.
  *
- * Su GitHub Pages l'app vive in una sottocartella (/Reportini/), quindi va
- * concatenato BASE_URL: tornare alla sola origine finirebbe sulla pagina del
- * profilo invece che sull'app.
+ * Su una web servita da una sottocartella (non è il caso di Reportini, che
+ * sta nella radice di reportini.cazzevongole.com, ma può esserlo in un
+ * self-hosting) va concatenato BASE_URL: tornare alla sola origine finirebbe
+ * su una pagina che non è l'app.
  */
 export function urlDiRitorno(origine: string, base: string): string {
   const percorso = base === "/" ? "" : base.replace(/\/+$/, "");
@@ -21,8 +22,9 @@ export function urlDiRitorno(origine: string, base: string): string {
 /**
  * Il percorso base da dare al router e agli URL di rientro.
  *
- * Sulla web vale quello di Vite ("/" in locale, "/Reportini/" su GitHub
- * Pages). Nell'app desktop la base è "./" — gli asset devono essere relativi,
+ * Sulla web vale quello di Vite, cioè "/" sia in locale sia sul dominio
+ * reportini.cazzevongole.com. Nell'app desktop la base è "./" — gli asset
+ * devono essere relativi,
  * perché da file:// un "/assets/app.js" punta alla radice del filesystem e non
  * a nulla — ma "./" non è un percorso che un router possa usare: qui si
  * traduce in radice, che è la stessa app vista dal suo file.
