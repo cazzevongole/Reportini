@@ -1,7 +1,7 @@
 {
   "name": "reportini",
   "private": true,
-  "version": "0.2.7",
+  "version": "0.2.8",
   "type": "module",
   "description": "Gestione delle relazioni anagrafiche e degli appuntamenti su Google Calendar",
   "repository": {
