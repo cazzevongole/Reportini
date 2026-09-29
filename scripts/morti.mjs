@@ -7,7 +7,7 @@
 // morto durante la pulizia, non a fare da guardia in CI — un export può
 // essere usato solo da un test o da uno script, e qui non lo si distingue.
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 
 const RADICE = "src";
@@ -81,16 +81,66 @@ const morti = dichiarati.filter(({ nome }) => {
   return (ovunque.match(new RegExp(`\\b${nome}\\b`, "g")) ?? []).length <= 1;
 });
 
-// I file che nessun `from "..."` raggiunge.
+// I file che nessun import raggiunge.
+//
+// La risoluzione va sul file vero, con le estensioni che il progetto usa: se
+// si fermasse alla cartella, basterebbe importare un file qualsiasi di
+// quella cartella per far sembrare raggiunti anche tutti gli altri, e il
+// controllo non troverebbe più niente.
+//
+// Conta anche `import("./x")` e non solo `from "./x"`: con il caricamento
+// differito le pagine si importano così, e senza questo passaggio sembrerebbero
+// tutte orfane il giorno in cui si adotta React.lazy.
+const ESTENSIONI = [".ts", ".tsx"];
+function risolvi(partenza) {
+  const percorso = resolve(partenza).replace(/\\/g, "/");
+  if (existsSync(percorso)) return percorso;
+  for (const e of ESTENSIONI) {
+    if (existsSync(percorso + e)) return percorso + e;
+  }
+  for (const e of ESTENSIONI) {
+    const indice = `${percorso}/index${e}`;
+    if (existsSync(indice)) return indice;
+  }
+  return percorso;
+}
+
 const raggiunti = new Set();
+// Due forme, e i due separatori non si possono confondere: `from "./x"`
+// (import statico, senza parentesi) e `import("./x")` (caricamento
+// differito, con le parentesi). Scrivere `from\s*\(` pretenderebbe la
+// parentesi anche agli import statici e non troverebbe nulla.
+const MODULO = /(?:from\s+|import\s*\(\s*)"(.[^"]+)"/g;
 for (const [f, t] of sorgenti) {
-  for (const m of t.matchAll(/from\s+"(\.[^"]+)"/g)) {
-    const parti = m[1].split("/");
-    const base = parti.length > 1 ? parti.slice(0, -1).join("/") : ".";
-    raggiunti.add(resolve(dirname(f), `${base}/x`).replace(/\\/g, "/"));
+  for (const m of t.matchAll(MODULO)) {
+    raggiunti.add(risolvi(resolve(dirname(f), m[1])));
   }
 }
-const orfani = file.filter((f) => !raggiunti.has(resolve(f, "../x").replace(/\\/g, "/")));
+// Anche i test e gli script importano da src, e conta quanto conta nel
+// codice: `diagnostica.ts` non lo chiama nessuna pagina ma lo provano sei
+// test, quindi è vivo. Senza questo passaggio verrebbe dato per morto a ogni
+// esecuzione, e la prossima volta qualcuno lo avrebbe cancellato davvero.
+for (const d of ALTRI) {
+  let voci = [];
+  try {
+    voci = readdirSync(d);
+  } catch {
+    continue;
+  }
+  for (const n of voci) {
+    const p = join(d, n);
+    if (!statSync(p).isFile() || !/\.tsx?$|\.mjs$/.test(n)) continue;
+    const testoFile = readFileSync(p, "utf8");
+    for (const m of testoFile.matchAll(MODULO)) {
+      // I test scrivono "../src/lib/...": il percorso parte da loro, quindi
+      // si risolve da lì come per qualsiasi altro import.
+      raggiunti.add(risolvi(resolve(d, m[1])));
+    }
+  }
+}
+// Il punto d'ingresso non lo importa nessuno: lo carica index.html.
+raggiunti.add(resolve("src/main.tsx").replace(/\\/g, "/"));
+const orfani = file.filter((f) => !raggiunti.has(resolve(f).replace(/\\/g, "/")));
 
 console.log(`File analizzati: ${file.length}`);
 if (morti.length === 0) {

@@ -64,8 +64,15 @@ async function monta(scheda = "/") {
   });
   // L'apertura dei dati è asincrona e, con IS_REACT_ACT_ENVIRONMENT attivo,
   // React non committa fuori da act(): quindi ogni attesa va dentro un act().
+  //
+  // Si aspetta anche la pagina differita: le rotte dentro l'area autenticata
+  // si scaricano a parte, quindi il database può essere pronto mentre la
+  // pagina è ancora in volo. Il segnale è il fallback di Suspense, che porta
+  // role="status".
   for (let tentativo = 0; tentativo < 100; tentativo += 1) {
-    if (!contenitore.textContent?.includes(IN_CARICAMENTO)) return;
+    const inApertura = contenitore.textContent?.includes(IN_CARICAMENTO);
+    const paginaInVolo = contenitore.querySelector('[role="status"]') !== null;
+    if (!inApertura && !paginaInVolo) return;
     await act(async () => {
       await new Promise((risolvi) => setTimeout(risolvi, 10));
     });

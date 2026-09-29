@@ -1,20 +1,31 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { BrowserRouter, HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import AppShell from "./components/AppShell";
 import { AvvisoProvider } from "./components/Avvisi";
 import RichiedeAccesso from "./components/RichiedeAccesso";
 import SchermataApertura from "./components/SchermataApertura";
 import Accesso from "./pages/Accesso";
-import AnagraficoDettaglio from "./pages/AnagraficoDettaglio";
-import Anagrafici from "./pages/Anagrafici";
-import Appuntamenti from "./pages/Appuntamenti";
-import Impostazioni from "./pages/Impostazioni";
-import Panel from "./pages/Panel";
-import Relazioni from "./pages/Relazioni";
-import Sviluppo from "./pages/Sviluppo";
 import { initDatabase } from "./lib/sqlite/engine";
 import { isDesktop } from "./lib/sqlite/storage";
 import { baseRoutte } from "./lib/cloud/destinazione";
+
+// Le pagine dietro l'accesso si scaricano quando servono.
+//
+// Sono tutte dentro `RichiedeAccesso`: chi non ha un account non le vede
+// mai, e chi ce l'ha arriva dalla schermata di accesso, cioè dopo che la
+// pagina è già a posto. Tenerle nel pacchetto iniziale costava a chi apre
+// l'app una banda e una decina di richieste che non avrebbe mai usato.
+//
+// Il caricamento differito funziona anche sul desktop perché l'app non si
+// apre da file:// ma da un server locale (electron/main.cjs): un `import()`
+// su file:// fallirebbe, e qui non è il caso.
+const Panel = lazy(() => import("./pages/Panel"));
+const Anagrafici = lazy(() => import("./pages/Anagrafici"));
+const AnagraficoDettaglio = lazy(() => import("./pages/AnagraficoDettaglio"));
+const Relazioni = lazy(() => import("./pages/Relazioni"));
+const Appuntamenti = lazy(() => import("./pages/Appuntamenti"));
+const Impostazioni = lazy(() => import("./pages/Impostazioni"));
+const Sviluppo = lazy(() => import("./pages/Sviluppo"));
 
 /**
  * Il database viene aperto qui, prima di montare le pagine: così ogni vista
@@ -57,6 +68,22 @@ function DatabaseGate({ children }: { children: ReactNode }) {
   }
 
   return <>{children}</>;
+}
+
+/**
+ * Mentre una pagina differita si scarica.
+ *
+ * Girando dentro AppShell, il fallback non toglie la barra né la pagina
+ * corrente: mostra solo che sotto sta arrivando altro. Un `null` qui
+ * lascerebbe la pagina a metà, che è peggio di una pausa.
+ */
+function CaricamentoPagina() {
+  return (
+    <div className="flex min-h-[50vh] items-center justify-center p-6" role="status">
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-ink-100 border-t-brand-500" />
+      <span className="sr-only">Caricamento della pagina…</span>
+    </div>
+  );
 }
 
 export default function App() {
@@ -111,16 +138,68 @@ export default function App() {
                   </RichiedeAccesso>
                 }
               >
-                <Route path="/panel" element={<Panel />} />
-                <Route path="/panel/anagrafici" element={<Anagrafici />} />
-                <Route path="/panel/anagrafici/:id" element={<AnagraficoDettaglio />} />
-                <Route path="/panel/relazioni" element={<Relazioni />} />
-                <Route path="/panel/appuntamenti" element={<Appuntamenti />} />
-                <Route path="/panel/impostazioni" element={<Impostazioni />} />
+                {/* Il fallback è la stessa schermata di apertura: dentro
+                    AppShell c'è già la barra e il resto, e rimetterla a zero
+                    durante il caricamento farebbe saltare il layout. */}
+                <Route
+                  path="/panel"
+                  element={
+                    <Suspense fallback={<CaricamentoPagina />}>
+                      <Panel />
+                    </Suspense>
+                  }
+                />
+                <Route
+                  path="/panel/anagrafici"
+                  element={
+                    <Suspense fallback={<CaricamentoPagina />}>
+                      <Anagrafici />
+                    </Suspense>
+                  }
+                />
+                <Route
+                  path="/panel/anagrafici/:id"
+                  element={
+                    <Suspense fallback={<CaricamentoPagina />}>
+                      <AnagraficoDettaglio />
+                    </Suspense>
+                  }
+                />
+                <Route
+                  path="/panel/relazioni"
+                  element={
+                    <Suspense fallback={<CaricamentoPagina />}>
+                      <Relazioni />
+                    </Suspense>
+                  }
+                />
+                <Route
+                  path="/panel/appuntamenti"
+                  element={
+                    <Suspense fallback={<CaricamentoPagina />}>
+                      <Appuntamenti />
+                    </Suspense>
+                  }
+                />
+                <Route
+                  path="/panel/impostazioni"
+                  element={
+                    <Suspense fallback={<CaricamentoPagina />}>
+                      <Impostazioni />
+                    </Suspense>
+                  }
+                />
                 {/* Nascosta per scelta: nessuna voce nella barra, e chi non è
                     lo sviluppatore viene rimandato al pannello dalla pagina
                     stessa. Nell'elenco pubblico questa rotta non compare. */}
-                <Route path="/panel/sviluppo" element={<Sviluppo />} />
+                <Route
+                  path="/panel/sviluppo"
+                  element={
+                    <Suspense fallback={<CaricamentoPagina />}>
+                      <Sviluppo />
+                    </Suspense>
+                  }
+                />
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

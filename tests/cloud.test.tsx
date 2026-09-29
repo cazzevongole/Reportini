@@ -127,12 +127,18 @@ async function monta(scheda: string) {
       </AccountProvider>,
     );
   });
+  // Due attese, non una: il database e poi la pagina, che dentro l'area
+  // autenticata si scarica a parte. Il fallback di Suspense porta
+  // role="status" e sparisce quando la pagina è a posto.
   for (let i = 0; i < 100; i += 1) {
-    if (!contenitore.textContent?.includes("Apertura dei tuoi dati")) return;
+    const inApertura = contenitore.textContent?.includes("Apertura dei tuoi dati");
+    const paginaInVolo = contenitore.querySelector('[role="status"]') !== null;
+    if (!inApertura && !paginaInVolo) return;
     await act(async () => {
       await new Promise((r) => setTimeout(r, 5));
     });
   }
+  throw new Error("La pagina non è uscita dal caricamento");
 }
 
 beforeEach(() => {

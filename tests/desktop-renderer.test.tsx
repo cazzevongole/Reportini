@@ -82,8 +82,13 @@ async function monta(percorso: string) {
       </AccountProvider>,
     );
   });
+  // Anche qui la pagina dentro l'area autenticata si scarica a parte: il
+  // database pronto non basta, il fallback di Suspense ha role="status" e
+  // sparisce solo quando la pagina è pronta.
   for (let tentativo = 0; tentativo < 100; tentativo += 1) {
-    if (!contenitore.textContent?.includes("Apertura dei tuoi dati")) return;
+    const inApertura = contenitore.textContent?.includes("Apertura dei tuoi dati");
+    const paginaInVolo = contenitore.querySelector('[role="status"]') !== null;
+    if (!inApertura && !paginaInVolo) return;
     await act(async () => {
       await new Promise((risolvi) => setTimeout(risolvi, 10));
     });

@@ -28,6 +28,23 @@ jobs:
       - name: Installa le dipendenze
         run: bun install --frozen-lockfile
 
+      - name: Formattazione
+        # Non riformatta: segnala e basta. Riformattare in CI lascerebbe
+        # il lavoro a metà e il check verde su un file che nessuno ha
+        # scritto, che è il peggiore dei due.
+        #
+        # Prettier è eseguito con `bunx` su una versione fissata e non è fra
+        # le dipendenze: aggiungerlo richiederebbe aggiornare bun.lock, e con
+        # `--frozen-lockfile` un lockfile indietro fa fallire tutta la build.
+        # Va messo fra le dipendenze di sviluppo appena si può lanciare
+        # `bun install` in locale.
+        run: bunx prettier@3.9.9 --check "src/**/*.{ts,tsx,css}" "tests/**/*.{ts,tsx}" "scripts/*.mjs" "*.ts"
+
+      - name: Codice mai usato
+        # Avvisa, non blocca: un export può essere usato solo da un test o da
+        # uno script, e un controllo che sbaglia fa perdere fiducia.
+        run: node scripts/morti.mjs
+
       - name: Typecheck
         run: bun run typecheck
 
