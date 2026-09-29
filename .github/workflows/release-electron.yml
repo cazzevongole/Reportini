@@ -22,18 +22,48 @@ name: Versione e rilascio desktop
 #   - a mano: "livel" per forzare minor o major, "tag" per rilasciare un tag
 #     esistente.
 #
-# paths-ignore vale solo per i push su master e serve a una cosa sola: il
-# commit di versione tocca package.json, electron/package.json e CHANGELOG.md,
-# e senza questo filtro il workflow si rilancierebbe da solo all'infinito.
+# paths-ignore vale solo per i push su master. Il workflow parte se almeno un
+# file toccati dal commit non è in elenco, quindi un commit mistro (qualcosa
+# dentro src/ più un README) rilascia normalmente.
+#
+# Nell'elenco ci sono due categorie, e la seconda è quella che evita i
+# rilasci inutili.
+#
+# 1. Il commit di versione tocca package.json, electron/package.json e
+#    CHANGELOG.md: senza questo filtro il workflow si rilancierebbe da solo
+#    all'infinito.
+#
+# 2. Ciò che non entra nel pacchetto desktop. La web e il desktop sono lo
+#    stesso codice — il pacchetto è la build di src/ copiata in
+#    electron/renderer — quindi qui si possono ignorare solo i file che
+#    davvero non ci arrivano: le funzioni Supabase, la documentazione, i
+#    workflow di CI e di deploy della web, e i test. src/, public/, index.html
+#    e la configurazione di build non ci sono e non possono esserci: un
+#    commit che li tocca cambia l'app che l'utente scarica, e per quello il
+#    rilascio serve.
 
 on:
   push:
     branches: [master]
     tags: ["v*"]
     paths-ignore:
+      # Il commit di versione, per non ripartire da solo.
       - "package.json"
       - "electron/package.json"
       - "CHANGELOG.md"
+      # Non finisce nel pacchetto: backend, documenti, CI, deploy della web.
+      - "supabase/**"
+      - "tests/**"
+      - "README.md"
+      - ".gitignore"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/deploy-pages.yml"
+      # Anche questo workflow è "non finisce nel pacchetto", e per la stessa
+      # ragione: cambiarlo non cambia l'app che l'utente scarica. Senza questa
+      # riga, il commit che introduce il filtro rilascierebbe una versione
+      # identica alla precedente. Per provare una modifica al workflow si
+      # usa il rilascio a mano qui sotto, che il filtro non riguarda.
+      - ".github/workflows/release-electron.yml"
   workflow_dispatch:
     inputs:
       livello:
