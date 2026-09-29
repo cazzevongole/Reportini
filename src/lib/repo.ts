@@ -187,16 +187,6 @@ export function elencaRelazioni(filtro: {
   );
 }
 
-export function ottieniRelazione(id: number): RelazioneDettagliata | null {
-  return get<RelazioneDettagliata>(
-    `SELECT r.*, a.nome AS anagraficoNome, a.cognome AS anagraficoCognome,
-            a.documento AS anagraficoDocumento
-     FROM relazioni r JOIN anagrafici a ON a.id = r.anagraficoId
-     WHERE r.id = ?`,
-    [id],
-  );
-}
-
 export type RelazioneInput = Omit<Relazione, "id" | "createdAt" | "updatedAt">;
 
 function valoriRelazione(data: RelazioneInput) {

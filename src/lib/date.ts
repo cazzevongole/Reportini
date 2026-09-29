@@ -14,10 +14,6 @@ const MESI = [
   "dicembre",
 ];
 
-export function maiuscola(value: string): string {
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
 export function dataLunga(iso: string): string {
   const data = new Date(iso);
   return `${GIORNI[data.getDay()]} ${data.getDate()} ${MESI[data.getMonth()]}`;
@@ -95,12 +91,6 @@ export function aggiungiMinuti(iso: string, minuti: number): string {
 export function inizioGiorno(data = new Date()): string {
   const copia = new Date(data);
   copia.setHours(0, 0, 0, 0);
-  return copia.toISOString();
-}
-
-export function fineGiorno(data = new Date()): string {
-  const copia = new Date(data);
-  copia.setHours(23, 59, 59, 999);
   return copia.toISOString();
 }
 

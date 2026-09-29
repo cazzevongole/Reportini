@@ -10,13 +10,6 @@ const API = "https://www.googleapis.com/calendar/v3";
  */
 const FUSO = Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Rome";
 
-export interface CalendarInfo {
-  id: string;
-  summary: string;
-  primary: boolean;
-  accessRole?: string;
-}
-
 export interface CalendarEvent {
   id: string;
   htmlLink?: string;
@@ -68,15 +61,8 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
-}
-
-export async function elencaCalendar(): Promise<CalendarInfo[]> {
-  const data = await request<{ items?: CalendarInfo[] }>("/users/me/calendarList");
-  return data.items ?? [];
-}
-
-/**
- * Come lo stato dell'appuntamento silegge a occhio.
+}/**
+ * Come lo stato dell'appuntamento si legge a occhio.
  *
  * `transparency` dice gia che un evento in attesa non occupa la fascia, ma è
  * una proprietà che si vede solo aprendo l'evento: in elenco due appuntamenti
@@ -205,19 +191,6 @@ export async function eliminaEvento(eventId: string, calendarId = "primary"): Pr
   await request<void>(
     `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
     { method: "DELETE" },
-  );
-}
-
-export async function eventiTra(da: string, a: string, calendarId = "primary") {
-  const params = new URLSearchParams({
-    timeMin: da,
-    timeMax: a,
-    singleEvents: "true",
-    orderBy: "startTime",
-    maxResults: "250",
-  });
-  return request<{ items?: CalendarEvent[] }>(
-    `/calendars/${encodeURIComponent(calendarId)}/events?${params.toString()}`,
   );
 }
 

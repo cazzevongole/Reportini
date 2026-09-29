@@ -141,14 +141,6 @@ export const HomeIcon = (p: IconProps) => (
   </Icon>
 );
 
-export const DatabaseIcon = (p: IconProps) => (
-  <Icon {...p}>
-    <ellipse cx="12" cy="6" rx="7.5" ry="3" />
-    <path d="M4.5 6v12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3V6" />
-    <path d="M4.5 12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3" />
-  </Icon>
-);
-
 export const SparkIcon = (p: IconProps) => (
   <Icon {...p}>
     <path d="M12 3v4M12 17v4M4.5 12h-2M21.5 12h-2M6.7 6.7 5.3 5.3M18.7 18.7l-1.4-1.4M6.7 17.3l-1.4 1.4M18.7 5.3l-1.4 1.4" />
@@ -166,13 +158,6 @@ export const UserIcon = (p: IconProps) => (
 export const CloudIcon = (p: IconProps) => (
   <Icon {...p}>
     <path d="M7 18a4 4 0 0 1-.6-7.95 5.5 5.5 0 0 1 10.6-1.3A3.75 3.75 0 0 1 17.5 18z" />
-  </Icon>
-);
-
-export const BugIcon = (p: IconProps) => (
-  <Icon {...p}>
-    <rect x="8" y="8" width="8" height="12" rx="4" />
-    <path d="M8 12H4M20 12h-4M8 16H5M19 16h-3M9 8l-2-3M15 8l2-3" />
   </Icon>
 );
 
