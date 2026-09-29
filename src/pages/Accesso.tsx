@@ -115,8 +115,8 @@ export default function Accesso() {
           </div>
 
           <p className="mt-4 text-xs leading-relaxed text-ink-400">
-            Nessuna password da ricordare: l&apos;accesso passa da Google. Esci quando vuoi, i
-            dati restano dove sono.
+            Nessuna password da ricordare: l&apos;accesso passa da Google. Esci quando vuoi, i dati
+            restano dove sono.
           </p>
         </div>
 

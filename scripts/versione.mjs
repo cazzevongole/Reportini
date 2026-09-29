@@ -82,8 +82,7 @@ export function problemi({ versione, eco, tag } = {}) {
  */
 export function controlla() {
   const versione = leggi(SORGENTE);
-  const tag =
-    process.env.GITHUB_REF_TYPE === "tag" ? process.env.GITHUB_REF_NAME : undefined;
+  const tag = process.env.GITHUB_REF_TYPE === "tag" ? process.env.GITHUB_REF_NAME : undefined;
   const errori = problemi({ versione, eco: leggi(ECO), tag });
   if (errori.length > 0) {
     console.error(errori.map((p) => `ERRORE: ${p}`).join("\n"));

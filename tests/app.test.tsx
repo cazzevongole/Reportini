@@ -135,9 +135,7 @@ describe("Un errore non può diventare una pagina bianca", () => {
   it("sul desktop dice dove trovare il dettaglio completo", async () => {
     radice = createRoot(contenitore);
     await act(async () => {
-      radice.render(
-        <SchermataErrore errore={new Error("boom")} desktop={true} />,
-      );
+      radice.render(<SchermataErrore errore={new Error("boom")} desktop={true} />);
     });
     expect(contenitore.textContent).toContain("renderer.log");
     expect(contenitore.textContent).toContain("APPDATA");

@@ -45,10 +45,7 @@ export default function Relazioni() {
   const [aperto, setAperto] = useState(false);
   const [inModifica, setInModifica] = useState<Relazione | null>(null);
 
-  const relazioni = useLiveQuery(
-    () => elencaRelazioni({ ricerca, stato }),
-    [ricerca, stato],
-  );
+  const relazioni = useLiveQuery(() => elencaRelazioni({ ricerca, stato }), [ricerca, stato]);
 
   function apriNuova() {
     setInModifica(null);
@@ -139,10 +136,12 @@ export default function Relazioni() {
                   onClick={() =>
                     scaricaTesto(
                       `${relazione.titolo}.txt`,
-                      `${relazione.titolo}\n${"—".repeat(relazione.titolo.length)}\n\nAnagrafico: ${nomeCompleto({
-                        nome: relazione.anagraficoNome,
-                        cognome: relazione.anagraficoCognome,
-                      })} (${relazione.anagraficoDocumento})\nData: ${relazione.data}\n\n${relazione.contenuto}`,
+                      `${relazione.titolo}\n${"—".repeat(relazione.titolo.length)}\n\nAnagrafico: ${nomeCompleto(
+                        {
+                          nome: relazione.anagraficoNome,
+                          cognome: relazione.anagraficoCognome,
+                        },
+                      )} (${relazione.anagraficoDocumento})\nData: ${relazione.data}\n\n${relazione.contenuto}`,
                       "text/plain",
                     )
                   }

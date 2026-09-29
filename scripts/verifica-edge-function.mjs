@@ -73,7 +73,10 @@ export function confronta({ locale, pubblicato }) {
 function impostazioni() {
   const token = process.env.SUPABASE_ACCESS_TOKEN;
   const ref = process.env.SUPABASE_PROJECT_REF;
-  if (!token || !ref) return { mancanti: [!token && "SUPABASE_ACCESS_TOKEN", !ref && "SUPABASE_PROJECT_REF"].filter(Boolean) };
+  if (!token || !ref)
+    return {
+      mancanti: [!token && "SUPABASE_ACCESS_TOKEN", !ref && "SUPABASE_PROJECT_REF"].filter(Boolean),
+    };
   return { token, ref };
 }
 
@@ -89,8 +92,9 @@ async function sorgentePubblicato(token, ref) {
   const dati = await risposta.json();
   // La risposta è un array di file: quello del punto d'ingresso è l'unico
   // che conta, e arriva con il nome relativo ("google-token/index.ts").
-  const file = (Array.isArray(dati) ? dati : []).find((f) => f?.name === `${FUNZIONE}/index.ts`)
-    ?? (Array.isArray(dati) ? dati[0] : undefined);
+  const file =
+    (Array.isArray(dati) ? dati : []).find((f) => f?.name === `${FUNZIONE}/index.ts`) ??
+    (Array.isArray(dati) ? dati[0] : undefined);
   if (!file?.content) throw new Error("la risposta non contiene il sorgente della funzione");
   return file.content;
 }
@@ -101,34 +105,34 @@ async function sorgentePubblicato(token, ref) {
 // la domanda va posta solo se il percorso c'è.
 const ingresso = process.argv[1] ? pathToFileURL(process.argv[1]).href : null;
 if (ingresso === import.meta.url) {
-const { token, ref, mancanti } = impostazioni();
-if (mancanti?.length) {
-  // Non è un fallimento: è un controllo che in questo ambiente non può
-  // girare. Si dice quale serve e si esce senza rompere la build.
-  console.log(
-    `Edge Function non confrontata: manca ${mancanti.join(" e ")}. ` +
-      "Su GitHub Actions il secret si chiama SUPABASE_ACCESS_TOKEN e si imposta in " +
-      "Settings > Secrets and variables > Actions; l'ambiente 'prod' non serve, " +
-      "perché il confronto non pubblica niente.",
-  );
-  process.exit(0);
-}
-
-try {
-  const errori = confronta({
-    locale: readFileSync(SORGENTE, "utf8"),
-    pubblicato: await sorgentePubblicato(token, ref),
-  });
-  if (errori.length > 0) {
-    console.error(errori.map((e) => `ERRORE: ${e}`).join("\n"));
-    process.exit(1);
+  const { token, ref, mancanti } = impostazioni();
+  if (mancanti?.length) {
+    // Non è un fallimento: è un controllo che in questo ambiente non può
+    // girare. Si dice quale serve e si esce senza rompere la build.
+    console.log(
+      `Edge Function non confrontata: manca ${mancanti.join(" e ")}. ` +
+        "Su GitHub Actions il secret si chiama SUPABASE_ACCESS_TOKEN e si imposta in " +
+        "Settings > Secrets and variables > Actions; l'ambiente 'prod' non serve, " +
+        "perché il confronto non pubblica niente.",
+    );
+    process.exit(0);
   }
-  console.log(`Edge Function ${FUNZIONE}: il codice pubblicato è quello del repository`);
-} catch (causa) {
-  // Un controllo che non riesce a girare non deve far fallire la build: si
-  // segnala e si lascia decidere a chi guarda. Il fallimento vero, il codice
-  // diverso, è già gestito sopra e lì l'uscita è 1.
-  console.log(`Edge Function non confrontata: ${causa.message}`);
-  process.exit(0);
-}
+
+  try {
+    const errori = confronta({
+      locale: readFileSync(SORGENTE, "utf8"),
+      pubblicato: await sorgentePubblicato(token, ref),
+    });
+    if (errori.length > 0) {
+      console.error(errori.map((e) => `ERRORE: ${e}`).join("\n"));
+      process.exit(1);
+    }
+    console.log(`Edge Function ${FUNZIONE}: il codice pubblicato è quello del repository`);
+  } catch (causa) {
+    // Un controllo che non riesce a girare non deve far fallire la build: si
+    // segnala e si lascia decidere a chi guarda. Il fallimento vero, il codice
+    // diverso, è già gestito sopra e lì l'uscita è 1.
+    console.log(`Edge Function non confrontata: ${causa.message}`);
+    process.exit(0);
+  }
 }

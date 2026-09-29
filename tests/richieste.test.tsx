@@ -160,17 +160,19 @@ function testo() {
 }
 
 function perEtichetta(nome: string): HTMLElement {
-  const campi = [
-    ...contenitore.querySelectorAll<HTMLElement>("input, textarea, button"),
-  ];
-  const trovato = campi.find((c) => c.getAttribute("aria-label") === nome || c.textContent === nome);
+  const campi = [...contenitore.querySelectorAll<HTMLElement>("input, textarea, button")];
+  const trovato = campi.find(
+    (c) => c.getAttribute("aria-label") === nome || c.textContent === nome,
+  );
   if (!trovato) throw new Error(`elemento non trovato: ${nome}`);
   return trovato;
 }
 
 function scrivi(elemento: HTMLInputElement | HTMLTextAreaElement, testo: string) {
   const setter = Object.getOwnPropertyDescriptor(
-    elemento instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype,
+    elemento instanceof HTMLTextAreaElement
+      ? HTMLTextAreaElement.prototype
+      : HTMLInputElement.prototype,
     "value",
   )?.set;
   setter?.call(elemento, testo);
@@ -221,7 +223,10 @@ describe("Richieste allo sviluppatore", () => {
   });
 
   it("l'utente vede solo le proprie richieste", async () => {
-    stato.righe = [riga(), riga({ id: "r-2", user_id: Sviluppatore.id, email: Sviluppatore.email })];
+    stato.righe = [
+      riga(),
+      riga({ id: "r-2", user_id: Sviluppatore.id, email: Sviluppatore.email }),
+    ];
     const mie = await elencaRichieste();
     expect(mie.map((r) => r.id)).toEqual(["r-1"]);
   });
@@ -229,7 +234,10 @@ describe("Richieste allo sviluppatore", () => {
   it("anche lo sviluppatore, nelle impostazioni, vede solo le sue", async () => {
     stato.sviluppatore = true;
     stato.sessione = { user: Sviluppatore };
-    stato.righe = [riga(), riga({ id: "r-2", user_id: Sviluppatore.id, email: Sviluppatore.email })];
+    stato.righe = [
+      riga(),
+      riga({ id: "r-2", user_id: Sviluppatore.id, email: Sviluppatore.email }),
+    ];
     expect((await elencaRichieste(true)).map((r) => r.id)).toEqual(["r-2"]);
   });
 
@@ -355,7 +363,10 @@ describe("Sezione nascosta dello sviluppatore", () => {
 
   it("lo sviluppatore trova le richieste e le evade", async () => {
     stato.sviluppatore = true;
-    stato.righe = [riga(), riga({ id: "r-2", user_id: Sviluppatore.id, email: Sviluppatore.email })];
+    stato.righe = [
+      riga(),
+      riga({ id: "r-2", user_id: Sviluppatore.id, email: Sviluppatore.email }),
+    ];
     await montaSviluppo();
     expect(testo()).toContain("Richieste degli utenti");
     expect(testo()).toContain("anna@esempio.it");

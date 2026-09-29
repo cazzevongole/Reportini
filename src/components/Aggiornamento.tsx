@@ -20,15 +20,8 @@ import { Button, Sheet } from "./ui";
  * dell'aggiornamento stesso.
  */
 export default function Aggiornamento() {
-  const {
-    stato,
-    descrizione,
-    pronto,
-    daDecidere,
-    occupato,
-    installa,
-    rimanda,
-  } = useAggiornamento();
+  const { stato, descrizione, pronto, daDecidere, occupato, installa, rimanda } =
+    useAggiornamento();
 
   // I controlli automatici partono da qui, una volta sola: il componente è
   // montato per tutta la vita dell'app, quindi il timer vive quanto lei.
@@ -61,15 +54,15 @@ export default function Aggiornamento() {
             <li className="rounded-xl border border-ink-100 p-3">
               <p className="font-medium text-ink-900">Aggiorna adesso</p>
               <p className="mt-1 text-ink-500">
-                Reportini si chiude, l'installazione parte e l'app si riapre già nuova. I
-                tuoi dati restano dove sono: non vengono toccati.
+                Reportini si chiude, l'installazione parte e l'app si riapre già nuova. I tuoi dati
+                restano dove sono: non vengono toccati.
               </p>
             </li>
             <li className="rounded-xl border border-ink-100 p-3">
               <p className="font-medium text-ink-900">Alla chiusura dell'app</p>
               <p className="mt-1 text-ink-500">
-                Continui a lavorare come ora. L'aggiornamento entra quando chiudi Reportini,
-                e da solo al prossimo avvio se lo chiudi di colpo. Non te lo chiedo più.
+                Continui a lavorare come ora. L'aggiornamento entra quando chiudi Reportini, e da
+                solo al prossimo avvio se lo chiudi di colpo. Non te lo chiedo più.
               </p>
             </li>
           </ul>

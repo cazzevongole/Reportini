@@ -15,8 +15,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 const radice = process.cwd();
-const sorgente = (file: string) =>
-  readFileSync(path.join(radice, "electron", file), "utf8");
+const sorgente = (file: string) => readFileSync(path.join(radice, "electron", file), "utf8");
 
 function canali(sorgentePreload: string): string[] {
   return [...sorgentePreload.matchAll(/ipcRenderer\.invoke\("([^"]+)"/g)].map((m) => m[1]);
@@ -56,16 +55,12 @@ describe("Ponte dell'aggiornamento", () => {
     const libreria = readFileSync(path.join(radice, "src/lib/aggiornamento.ts"), "utf8");
     const interfaccia = libreria.match(/export interface PonteAggiornamento \{([\s\S]*?)\n\}/);
     expect(interfaccia).toBeTruthy();
-    const dichiarati = [...(interfaccia?.[1] ?? "").matchAll(/^ {2}(\w+)\(/gm)].map(
-      (m) => m[1],
-    );
+    const dichiarati = [...(interfaccia?.[1] ?? "").matchAll(/^ {2}(\w+)\(/gm)].map((m) => m[1]);
     expect(dichiarati.length).toBeGreaterThan(0);
 
     const blocco = sorgente("preload.cjs").match(/aggiornamento:\s*\{([\s\S]*?)\n {2}\}/);
     expect(blocco).toBeTruthy();
-    const esposti = new Set(
-      [...(blocco?.[1] ?? "").matchAll(/(\w+):/g)].map((m) => m[1]),
-    );
+    const esposti = new Set([...(blocco?.[1] ?? "").matchAll(/(\w+):/g)].map((m) => m[1]));
 
     for (const metodo of dichiarati) {
       expect(esposti.has(metodo), `metodo "${metodo}" assente nel preload`).toBe(true);

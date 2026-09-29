@@ -52,10 +52,7 @@ function scenario(partiDa: string): string {
   mkdirSync(join(cartella, "electron"), { recursive: true });
   mkdirSync(join(cartella, "scripts"), { recursive: true });
   writeFileSync(join(cartella, SORGENTE), JSON.stringify({ name: "x", version: partiDa }, null, 2));
-  writeFileSync(
-    join(cartella, ECO),
-    JSON.stringify({ name: "y", version: partiDa }, null, 2),
-  );
+  writeFileSync(join(cartella, ECO), JSON.stringify({ name: "y", version: partiDa }, null, 2));
   writeFileSync(join(cartella, SCRIPT), readFileSync(SCRIPT));
   return cartella;
 }
@@ -98,7 +95,9 @@ describe("Versione del pacchetto", () => {
   });
 
   it("rifiuta un livello di incremento che non esiste", () => {
-    expect(() => execFileSync("node", [SCRIPT, "enorme"], { stdio: ["ignore", "pipe", "pipe"] })).toThrow();
+    expect(() =>
+      execFileSync("node", [SCRIPT, "enorme"], { stdio: ["ignore", "pipe", "pipe"] }),
+    ).toThrow();
   });
 
   it.each([

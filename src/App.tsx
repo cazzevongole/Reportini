@@ -1,11 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import {
-  BrowserRouter,
-  HashRouter,
-  Navigate,
-  Route,
-  Routes,
-} from "react-router-dom";
+import { BrowserRouter, HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import AppShell from "./components/AppShell";
 import { AvvisoProvider } from "./components/Avvisi";
 import RichiedeAccesso from "./components/RichiedeAccesso";

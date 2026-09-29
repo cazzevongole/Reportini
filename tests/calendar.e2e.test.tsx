@@ -152,8 +152,11 @@ const fetchFinto = vi.fn(async (url: string, init: RequestInit = {}) => {
   if (String(url).includes("oauth2.googleapis.com")) return risposta({ access_token: "x" });
 
   if (String(url).includes("/calendarList")) {
-    return risposta({ items: [{ id: "primary", summary: "Calendario principale", primary: true }] });
-  }  const evento = String(url).match(/\/events\/([^?]+)/);
+    return risposta({
+      items: [{ id: "primary", summary: "Calendario principale", primary: true }],
+    });
+  }
+  const evento = String(url).match(/\/events\/([^?]+)/);
   if (evento) {
     const id = decodeURIComponent(evento[1]);
     if (metodo === "DELETE") {
@@ -163,7 +166,10 @@ const fetchFinto = vi.fn(async (url: string, init: RequestInit = {}) => {
     }
     if (metodo === "PUT" || metodo === "PATCH") {
       if (!eventi.has(id)) return eventoMorto(410);
-      const aggiornato = { ...(eventi.get(id) as EventoFinto), ...(JSON.parse(String(init.body)) as object) };
+      const aggiornato = {
+        ...(eventi.get(id) as EventoFinto),
+        ...(JSON.parse(String(init.body)) as object),
+      };
       eventi.set(id, aggiornato as EventoFinto);
       return risposta(aggiornato);
     }
@@ -383,7 +389,9 @@ describe("Reportini end-to-end: dati, Calendar, logout e rientro", () => {
   it("l'appuntamento mostra il motivo e il pulsato per riprovare", async () => {
     await nuovoDatabase();
     const { appuntamentoId } = creaSchedaConAppuntamento();
-    fetchFinto.mockImplementationOnce(async () => risposta({ error: "insufficientPermissions" }, 403));
+    fetchFinto.mockImplementationOnce(async () =>
+      risposta({ error: "insufficientPermissions" }, 403),
+    );
     await sincronizzaAppuntamento(appuntamentoId, "primary");
     // Qui la pagina non serve: il motivo e il pulsato stanno sull'appuntamento,
     // e senza una traccia sul record un salvataggio riuscito con la
@@ -633,9 +641,8 @@ describe("Pubblicazione automatica: cosa fa il modulo quando si salva", () => {
   it("il colore che l'utente sceglie nelle impostazioni è quello che va su Google", async () => {
     await nuovoDatabase();
     const { appuntamentoId } = creaSchedaConAppuntamento();
-    const { scriviColore, ripristinaColori, COLORI_PREDEFINITI } = await import(
-      "../src/lib/google/colori"
-    );
+    const { scriviColore, ripristinaColori, COLORI_PREDEFINITI } =
+      await import("../src/lib/google/colori");
 
     // L'utente sceglie il blu per "confermato" e lascia gli altri due.
     scriviColore("confermato", "9");
@@ -877,10 +884,10 @@ describe("Il modulo dell'appuntamento", () => {
   }
 
   function perEtichetta(nome: string): HTMLElement {
-    const campi = [
-      ...contenitore.querySelectorAll<HTMLElement>("input, button, select, textarea"),
-    ];
-    const trovato = campi.find((c) => c.textContent?.includes(nome) || c.getAttribute("aria-label") === nome);
+    const campi = [...contenitore.querySelectorAll<HTMLElement>("input, button, select, textarea")];
+    const trovato = campi.find(
+      (c) => c.textContent?.includes(nome) || c.getAttribute("aria-label") === nome,
+    );
     if (!trovato) throw new Error(`elemento non trovato: ${nome}`);
     return trovato;
   }
@@ -917,9 +924,7 @@ describe("Il modulo dell'appuntamento", () => {
     expect(eventi.size).toBe(1);
     expect([...eventi.values()][0].summary).toBe("Appuntamento allo sportello");
     // C'è anche l'appuntamento della scheda di prova: conta quello del modulo.
-    const salvato = elencaAppuntamenti({}).find(
-      (a) => a.titolo === "Appuntamento allo sportello",
-    );
+    const salvato = elencaAppuntamenti({}).find((a) => a.titolo === "Appuntamento allo sportello");
     expect(salvato?.googleEventId).toBe("evt-1");
   });
 
@@ -940,9 +945,7 @@ describe("Il modulo dell'appuntamento", () => {
 
     expect(eventi.size).toBe(0);
     expect(chiamate.some((c) => c.metodo === "POST")).toBe(false);
-    const salvato = elencaAppuntamenti({}).find(
-      (a) => a.titolo === "Appuntamento allo sportello",
-    );
+    const salvato = elencaAppuntamenti({}).find((a) => a.titolo === "Appuntamento allo sportello");
     expect(salvato).toBeTruthy();
     expect(salvato?.googleEventId).toBeNull();
   });
@@ -966,7 +969,9 @@ describe("Il modulo dell'appuntamento", () => {
 
     // L'appuntamento è salvato — quello non deve mai andare perso — ma
     // l'avviso è di errore, non di successo.
-    expect(elencaAppuntamenti({}).some((a) => a.titolo === "Appuntamento allo sportello")).toBe(true);
+    expect(elencaAppuntamenti({}).some((a) => a.titolo === "Appuntamento allo sportello")).toBe(
+      true,
+    );
     expect(document.body.textContent).toContain("Non pubblicato");
   });
 });

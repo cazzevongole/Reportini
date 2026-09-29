@@ -80,7 +80,9 @@ describe("Migrazioni del database locale", () => {
     expect(colonne(db, "appuntamenti")).toContain("googleErrore");
     // E la colonna è utilizzabile, non solo presente: è quello che serve per
     // scriverci dentro il motivo di una pubblicazione fallita.
-    db.run("INSERT INTO appuntamenti (titolo, inizio, fine, createdAt, updatedAt) VALUES ('t', 'a', 'b', 'c', 'd')");
+    db.run(
+      "INSERT INTO appuntamenti (titolo, inizio, fine, createdAt, updatedAt) VALUES ('t', 'a', 'b', 'c', 'd')",
+    );
     db.run("UPDATE appuntamenti SET googleErrore = 'perché no'");
     const letta = db.exec("SELECT googleErrore FROM appuntamenti");
     expect(letta[0]?.values[0]?.[0]).toBe("perché no");
@@ -117,7 +119,9 @@ describe("Migrazioni del database locale", () => {
     // dispositivo, e quindi devono stare nel database che sale nel cloud.
     expect(colonne(db, "preferenze")).toEqual(["chiave", "valore", "updatedAt"]);
     db.run("INSERT INTO preferenze (chiave, valore, updatedAt) VALUES ('colori-stato', '{}', 'c')");
-    db.run("INSERT INTO preferenze (chiave, valore, updatedAt) VALUES ('colori-stato', '{\"confermato\":\"9\"}', 'd') ON CONFLICT(chiave) DO UPDATE SET valore = excluded.valore");
+    db.run(
+      "INSERT INTO preferenze (chiave, valore, updatedAt) VALUES ('colori-stato', '{\"confermato\":\"9\"}', 'd') ON CONFLICT(chiave) DO UPDATE SET valore = excluded.valore",
+    );
     const letta = db.exec("SELECT valore FROM preferenze WHERE chiave = 'colori-stato'");
     expect(JSON.parse(String(letta[0]?.values[0]?.[0]))).toEqual({ confermato: "9" });
 

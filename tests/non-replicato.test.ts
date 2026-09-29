@@ -15,11 +15,7 @@ vi.mock("sql.js/dist/sql-wasm.wasm?url", () => ({
   default: `${process.cwd()}/node_modules/sql.js/dist/sql-wasm.wasm`,
 }));
 
-import {
-  initDatabase,
-  nonReplicato,
-  segnaReplicato,
-} from "../src/lib/sqlite/engine";
+import { initDatabase, nonReplicato, segnaReplicato } from "../src/lib/sqlite/engine";
 import { creaAnagrafico, eliminaAnagrafico, elencaAnagrafici } from "../src/lib/repo";
 
 const ANAGRAFICO = {

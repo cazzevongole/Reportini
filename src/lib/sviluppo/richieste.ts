@@ -144,9 +144,7 @@ export async function elencaRichieste(mie = false): Promise<Richiesta[]> {
     const utente = await utenteCorrente();
     domanda = domanda.eq("user_id", utente.id);
   }
-  const { data, error } = await domanda
-    .order("created_at", { ascending: false })
-    .limit(200);
+  const { data, error } = await domanda.order("created_at", { ascending: false }).limit(200);
   if (error) throw spiega(error);
   return ((data ?? []) as RigaRichiesta[]).map(rigaARichiesta);
 }

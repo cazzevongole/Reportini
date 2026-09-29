@@ -56,7 +56,11 @@ afterEach(async () => {
 
 async function chiedi(percorso: string, intestazioni: Record<string, string> = {}) {
   const risposta = await fetch(`${origine}${percorso}`, { headers: intestazioni });
-  return { stato: risposta.status, tipo: risposta.headers.get("content-type"), testo: await risposta.text() };
+  return {
+    stato: risposta.status,
+    tipo: risposta.headers.get("content-type"),
+    testo: await risposta.text(),
+  };
 }
 
 describe("Il server locale dell'app desktop", () => {
@@ -114,7 +118,12 @@ describe("Il server locale dell'app desktop", () => {
     // l'intestazione Host, ed è proprio quella che si sta cercando di forzare.
     const stato = await new Promise<number>((pronto, rifiuta) => {
       const richiesta = http.request(
-        { host: "127.0.0.1", port: Number(new URL(origine).port), path: "/", headers: { Host: "reportini.example.com" } },
+        {
+          host: "127.0.0.1",
+          port: Number(new URL(origine).port),
+          path: "/",
+          headers: { Host: "reportini.example.com" },
+        },
         (risposta) => {
           risposta.resume();
           pronto(risposta.statusCode ?? 0);
@@ -221,9 +230,9 @@ describe("Dove viene portato il rientro", () => {
     const { finestra, mosse } = finestraFinta(true);
     // La finestra non va manovrata: senza il passaggio, il rientro non
     // arriverebbe da nessuna parte e l'accesso si perderebbe in silenzio.
-    await expect(
-      riportaAllaApp(finestra, "http://127.0.0.1:42720", "code=abc"),
-    ).rejects.toThrow(/non riesco a portare il rientro dentro l'app/);
+    await expect(riportaAllaApp(finestra, "http://127.0.0.1:42720", "code=abc")).rejects.toThrow(
+      /non riesco a portare il rientro dentro l'app/,
+    );
     expect(mosse.some((m) => m.startsWith("load "))).toBe(false);
   });
 
@@ -251,7 +260,9 @@ describe("Dove viene portato il rientro", () => {
         },
       },
     };
-    await expect(riportaAllaApp(distrutta, "http://127.0.0.1:42720", "code=abc")).resolves.toBe(false);
+    await expect(riportaAllaApp(distrutta, "http://127.0.0.1:42720", "code=abc")).resolves.toBe(
+      false,
+    );
     expect(mosse).toEqual([]);
   });
 });

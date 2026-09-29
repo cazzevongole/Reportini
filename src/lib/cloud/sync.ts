@@ -18,12 +18,7 @@ interface RemoteMeta {
   bytes: number;
 }
 
-export type SincronizzazioneStato =
-  | "spento"
-  | "inattivo"
-  | "in corso"
-  | "sincronizzato"
-  | "errore";
+export type SincronizzazioneStato = "spento" | "inattivo" | "in corso" | "sincronizzato" | "errore";
 
 export interface SincronizzazioneInfo {
   stato: SincronizzazioneStato;
@@ -67,9 +62,7 @@ function percorso(userId: string, nome: string): string {
 }
 
 async function scarica(userId: string, nome: string): Promise<Uint8Array | null> {
-  const { data, error } = await supabase!.storage
-    .from(BUCKET)
-    .download(percorso(userId, nome));
+  const { data, error } = await supabase!.storage.from(BUCKET).download(percorso(userId, nome));
   if (error || !data) return null;
   return new Uint8Array(await data.arrayBuffer());
 }

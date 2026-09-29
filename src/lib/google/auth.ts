@@ -270,7 +270,9 @@ export type EsitoAvvio = "browser" | "navigazione";
  */
 export async function avviaAccessoGoogle(): Promise<EsitoAvvio> {
   if (!clientId) {
-    throw new Error("Manca VITE_GOOGLE_CLIENT_ID: senza il client Google l'accesso passa da Supabase.");
+    throw new Error(
+      "Manca VITE_GOOGLE_CLIENT_ID: senza il client Google l'accesso passa da Supabase.",
+    );
   }
   // Deve combaciare al segno con uno registrato in Google Cloud, altrimenti
   // lo scambio del code si ferma con redirect_uri_mismatch.
@@ -334,9 +336,15 @@ async function chiamaBackend<T>(corpo: Record<string, unknown>): Promise<T> {
 
   let risposta: Response;
   try {
-    risposta = await fetch(FUNZIONE, { method: "POST", headers: intestazioni, body: JSON.stringify(corpo) });
+    risposta = await fetch(FUNZIONE, {
+      method: "POST",
+      headers: intestazioni,
+      body: JSON.stringify(corpo),
+    });
   } catch {
-    throw new Error("Backend non raggiungibile: controlla che la funzione google-token sia pubblicata.");
+    throw new Error(
+      "Backend non raggiungibile: controlla che la funzione google-token sia pubblicata.",
+    );
   }
 
   const dati = (await risposta.json().catch(() => ({}))) as { errore?: string } & T;
@@ -468,7 +476,11 @@ async function arricchisciProfilo(accessToken: string): Promise<void> {
     const dati = (await risposta.json()) as { email: string; name: string; picture?: string };
     localStorage.setItem(
       PROFILE_KEY,
-      JSON.stringify({ email: dati.email, name: dati.name, picture: dati.picture } satisfies GoogleProfile),
+      JSON.stringify({
+        email: dati.email,
+        name: dati.name,
+        picture: dati.picture,
+      } satisfies GoogleProfile),
     );
   } catch {
     // Il profilo è solo cosmetico: senza nome l'app funziona lo stesso.
@@ -529,9 +541,12 @@ export async function disconnect(): Promise<{ revocato: boolean }> {
   // autorizzata su myaccount.google.com/permissions. Non è bloccante per
   // l'utente, quindi una revoca fallita va detta, non nascosta.
   try {
-    await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(token.accessToken)}`, {
-      method: "POST",
-    });
+    await fetch(
+      `https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(token.accessToken)}`,
+      {
+        method: "POST",
+      },
+    );
     return { revocato: true };
   } catch {
     return { revocato: false };

@@ -21,7 +21,9 @@ export default defineConfig(({ command, mode }) => {
     ...loadEnv(mode ?? "development", process.cwd(), ""),
     // Alcuni ambienti (CI, Freebuff) iniettano le variabili nel processo
     // invece di esporle in un file .env.
-    ...(process.env.VITE_SUPABASE_ANON_KEY ? { VITE_SUPABASE_ANON_KEY: process.env.VITE_SUPABASE_ANON_KEY } : {}),
+    ...(process.env.VITE_SUPABASE_ANON_KEY
+      ? { VITE_SUPABASE_ANON_KEY: process.env.VITE_SUPABASE_ANON_KEY }
+      : {}),
   };
   const chiave = env.VITE_SUPABASE_ANON_KEY ?? "";
 

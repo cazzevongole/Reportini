@@ -64,7 +64,9 @@ export default function Panel() {
         <Stat
           label="Prossimo"
           value={dati.prossimoAppuntamento ? ora(dati.prossimoAppuntamento.inizio) : "—"}
-          hint={dati.prossimoAppuntamento ? relativo(dati.prossimoAppuntamento.inizio) : "da fissare"}
+          hint={
+            dati.prossimoAppuntamento ? relativo(dati.prossimoAppuntamento.inizio) : "da fissare"
+          }
           tone="neutral"
         />
       </div>

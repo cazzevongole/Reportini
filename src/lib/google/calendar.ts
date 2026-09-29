@@ -61,7 +61,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
-}/**
+} /**
  * Come lo stato dell'appuntamento si legge a occhio.
  *
  * `transparency` dice gia che un evento in attesa non occupa la fascia, ma è
@@ -197,7 +197,10 @@ export async function eliminaEvento(eventId: string, calendarId = "primary"): Pr
 /* ----------------------------- Export .ics ------------------------------- */
 
 function dataIcs(iso: string): string {
-  return new Date(iso).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+  return new Date(iso)
+    .toISOString()
+    .replace(/[-:]/g, "")
+    .replace(/\.\d{3}/, "");
 }
 
 function escapeIcs(value: string): string {
@@ -229,7 +232,11 @@ export function scaricaIcs(appuntamento: Appuntamento): void {
     "END:VEVENT",
     "END:VCALENDAR",
   ].filter(Boolean);
-  scaricaTesto(`${slug(appuntamento.titolo || "appuntamento")}.ics`, righe.join("\r\n"), "text/calendar");
+  scaricaTesto(
+    `${slug(appuntamento.titolo || "appuntamento")}.ics`,
+    righe.join("\r\n"),
+    "text/calendar",
+  );
 }
 
 export function scaricaTuttiGliAppuntamenti(appuntamenti: Appuntamento[]): void {

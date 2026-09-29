@@ -34,7 +34,13 @@ const TONE_STATO: Record<StatoRichiesta, "brand" | "clay" | "muted"> = {
   risolta: "muted",
 };
 
-function RichiestaCard({ richiesta, mostraEmail }: { richiesta: Richiesta; mostraEmail?: boolean }) {
+function RichiestaCard({
+  richiesta,
+  mostraEmail,
+}: {
+  richiesta: Richiesta;
+  mostraEmail?: boolean;
+}) {
   return (
     <li className="rounded-xl border border-ink-100 p-3.5">
       <div className="flex flex-wrap items-center gap-2">
@@ -102,8 +108,7 @@ export default function ChiediloAlloSviluppatore() {
         <Card className="p-5">
           <h2 className="text-lg">Chiedilo allo sviluppatore</h2>
           <p className="mt-1.5 text-sm text-ink-500">
-            Le richieste viaggiano su Supabase. Senza un account collegato non c'è dove
-            scriverle.
+            Le richieste viaggiano su Supabase. Senza un account collegato non c'è dove scriverle.
           </p>
         </Card>
       </section>
@@ -118,9 +123,8 @@ export default function ChiediloAlloSviluppatore() {
           Chiedilo allo sviluppatore
         </h2>
         <p className="mt-1.5 text-sm text-ink-500">
-          Qualcosa non va, o manca un passaggio che ti servirebbe? Scrivilo qui: arriva
-          direttamente allo sviluppatore, e sotto vedi cosa è già stato chiesto e se ha
-          risposto.
+          Qualcosa non va, o manca un passaggio che ti servirebbe? Scrivilo qui: arriva direttamente
+          allo sviluppatore, e sotto vedi cosa è già stato chiesto e se ha risposto.
         </p>
 
         {problema ? (
@@ -201,8 +205,8 @@ export default function ChiediloAlloSviluppatore() {
 
         {elenco.length === 0 ? (
           <p className="mt-2 text-sm text-ink-400">
-            Non hai ancora scritto niente. Quando lo fai, la richiesta resta qui e puoi
-            seguire quello che succede.
+            Non hai ancora scritto niente. Quando lo fai, la richiesta resta qui e puoi seguire
+            quello che succede.
           </p>
         ) : (
           <ul className="mt-2 flex flex-col gap-2.5">

@@ -169,7 +169,9 @@ export default function Appuntamenti() {
                         {appuntamento.anagraficoNome ? (
                           <p className="mt-0.5 truncate text-xs text-ink-400">
                             {appuntamento.anagraficoNome} {appuntamento.anagraficoCognome}
-                            {appuntamento.relazioneTitolo ? ` · ${appuntamento.relazioneTitolo}` : ""}
+                            {appuntamento.relazioneTitolo
+                              ? ` · ${appuntamento.relazioneTitolo}`
+                              : ""}
                           </p>
                         ) : null}
                       </div>
@@ -200,7 +202,8 @@ export default function Appuntamenti() {
                         <p className="font-semibold">Non pubblicato su Google Calendar</p>
                         <p className="mt-0.5 break-words">{appuntamento.googleErrore}</p>
                         <p className="mt-1 text-clay-700">
-                          Il pulsato “Invia a Google” qui sotto riprova senza perdere quello che hai scritto.
+                          Il pulsato “Invia a Google” qui sotto riprova senza perdere quello che hai
+                          scritto.
                         </p>
                       </div>
                     ) : null}
@@ -220,7 +223,9 @@ export default function Appuntamenti() {
                               : "Invia a Google Calendar"
                           }
                           onClick={() =>
-                            appuntamento.googleEventId ? dissocia(appuntamento) : sincronizza(appuntamento)
+                            appuntamento.googleEventId
+                              ? dissocia(appuntamento)
+                              : sincronizza(appuntamento)
                           }
                         >
                           {appuntamento.googleEventId ? (
@@ -267,11 +272,7 @@ export default function Appuntamenti() {
                         <EditIcon className="h-4 w-4" />
                         Modifica
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="danger"
-                        onClick={() => elimina(appuntamento)}
-                      >
+                      <Button size="sm" variant="danger" onClick={() => elimina(appuntamento)}>
                         <TrashIcon className="h-4 w-4" />
                       </Button>
                     </div>

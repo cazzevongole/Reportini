@@ -158,7 +158,10 @@ export function insert(table: string, values: Record<string, SqlValue>): number 
   const sql = `INSERT INTO ${table} (${keys.join(", ")}) VALUES (${keys
     .map(() => "?")
     .join(", ")})`;
-  getDatabase().run(sql, keys.map((key) => values[key]));
+  getDatabase().run(
+    sql,
+    keys.map((key) => values[key]),
+  );
   // `last_insert_rowid()` vale per l'ultimo inserimento riuscito: va letto
   // subito, prima di avvisare gli ascoltatori. Dopo `notifyChange()` un
   // ascoltatore che scrivesse a sua volta farebbe cambiare la risposta, e
@@ -171,15 +174,9 @@ export function insert(table: string, values: Record<string, SqlValue>): number 
   return result?.id ?? 0;
 }
 
-export function update(
-  table: string,
-  id: number,
-  values: Record<string, SqlValue>,
-): void {
+export function update(table: string, id: number, values: Record<string, SqlValue>): void {
   const keys = Object.keys(values);
-  const sql = `UPDATE ${table} SET ${keys
-    .map((key) => `${key} = ?`)
-    .join(", ")} WHERE id = ?`;
+  const sql = `UPDATE ${table} SET ${keys.map((key) => `${key} = ?`).join(", ")} WHERE id = ?`;
   getDatabase().run(sql, [...keys.map((key) => values[key]), id]);
   segnaNonReplicato();
   schedulePersist();

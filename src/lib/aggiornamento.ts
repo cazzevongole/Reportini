@@ -14,12 +14,7 @@ import { useCallback, useEffect, useSyncExternalStore } from "react";
  */
 
 export type FaseAggiornamento =
-  | "idle"
-  | "controllo"
-  | "scarico"
-  | "pronto"
-  | "aggiornato"
-  | "errore";
+  "idle" | "controllo" | "scarico" | "pronto" | "aggiornato" | "errore";
 
 export interface StatoAggiornamento {
   fase: FaseAggiornamento;
@@ -107,12 +102,11 @@ function arrivo(nuovo: StatoAggiornamento) {
   if (nuovo.fase === "pronto") {
     // "Più tardi" vale per quella versione, non per tutte: se ne arriva una
     // nuova la domanda si ripete.
-    const rimandato =
-      nuovo.versione != null && nuovo.versione === istante.versioneRimandata;
+    const rimandato = nuovo.versione != null && nuovo.versione === istante.versioneRimandata;
     scrivi({
       stato: nuovo,
       rimandato,
-      versioneRimandata: rimandato ? nuovo.versione ?? null : null,
+      versioneRimandata: rimandato ? (nuovo.versione ?? null) : null,
     });
     return;
   }
@@ -215,13 +209,9 @@ export function descrizioneAggiornamento(
     case "controllo":
       return manuale ? "Sto controllando se c'è una versione nuova…" : null;
     case "scarico": {
-      const cosa = stato.versione
-        ? `Reportini ${stato.versione}`
-        : "l'aggiornamento";
+      const cosa = stato.versione ? `Reportini ${stato.versione}` : "l'aggiornamento";
       const percentuale =
-        stato.percentuale != null && stato.percentuale > 0
-          ? ` ${stato.percentuale}%`
-          : "";
+        stato.percentuale != null && stato.percentuale > 0 ? ` ${stato.percentuale}%` : "";
       return `Sto scaricando ${cosa}…${percentuale}`;
     }
     case "pronto":
@@ -229,9 +219,7 @@ export function descrizioneAggiornamento(
     case "aggiornato":
       return manuale ? "Sei già all'ultima versione." : null;
     case "errore":
-      return manuale
-        ? `Aggiornamento non riuscito: ${stato.messaggio ?? "prova fra poco"}`
-        : null;
+      return manuale ? `Aggiornamento non riuscito: ${stato.messaggio ?? "prova fra poco"}` : null;
     default:
       return null;
   }
@@ -306,11 +294,7 @@ export function useAggiornamento(): AggiornamentoApi {
 
   return {
     stato: corrente.stato,
-    descrizione: descrizioneAggiornamento(
-      corrente.stato,
-      corrente.manuale,
-      corrente.rimandato,
-    ),
+    descrizione: descrizioneAggiornamento(corrente.stato, corrente.manuale, corrente.rimandato),
     pronto: corrente.stato.fase === "pronto" && !corrente.rimandato,
     daDecidere: corrente.stato.fase === "pronto" && !corrente.rimandato && !corrente.installando,
     disponibile: Boolean(ponte()),

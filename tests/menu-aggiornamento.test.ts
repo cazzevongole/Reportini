@@ -34,7 +34,10 @@ function release(nomeInstaller: string, ancheIlFile: string): void {
     path.join(pacchetti, "latest-mac.yml"),
     "version: 1.0.0\npath: Reportini-1.0.0-arm64-mac.zip\n",
   );
-  writeFileSync(path.join(pacchetti, "latest-linux.yml"), "version: 1.0.0\npath: Reportini-1.0.0.AppImage\n");
+  writeFileSync(
+    path.join(pacchetti, "latest-linux.yml"),
+    "version: 1.0.0\npath: Reportini-1.0.0.AppImage\n",
+  );
   writeFileSync(path.join(pacchetti, "Reportini-1.0.0-arm64-mac.zip"), "zip");
   writeFileSync(path.join(pacchetti, "Reportini-1.0.0.AppImage"), "appimage");
   writeFileSync(path.join(pacchetti, ancheIlFile), "installer");

@@ -54,7 +54,11 @@ const importati = new Set();
 for (const t of sorgenti.values()) {
   for (const m of t.matchAll(/import\s+(?:type\s+)?\{([^}]*)\}\s+from/g)) {
     for (const pezzo of m[1].split(",")) {
-      const nome = pezzo.trim().split(/\s+as\s+/).pop()?.trim();
+      const nome = pezzo
+        .trim()
+        .split(/\s+as\s+/)
+        .pop()
+        ?.trim();
       if (nome) importati.add(nome);
     }
   }

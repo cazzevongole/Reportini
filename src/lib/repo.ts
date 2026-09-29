@@ -17,7 +17,7 @@ export function nomeCompleto(a: Pick<Anagrafico, "nome" | "cognome">): string {
 export function iniziali(a: Pick<Anagrafico, "nome" | "cognome">): string {
   const parti = `${a.nome} ${a.cognome}`.trim().split(/\s+/);
   const primo = parti[0]?.[0] ?? "?";
-  const ultimo = parti.length > 1 ? parti[parti.length - 1][0] ?? "" : "";
+  const ultimo = parti.length > 1 ? (parti[parti.length - 1][0] ?? "") : "";
   return (primo + ultimo).toUpperCase();
 }
 
@@ -94,8 +94,8 @@ export function effettoEliminazioneAnagrafica(id: number): {
 } {
   return {
     relazioni:
-      get<{ n: number }>("SELECT COUNT(*) AS n FROM relazioni WHERE anagraficoId = ?", [id])
-        ?.n ?? 0,
+      get<{ n: number }>("SELECT COUNT(*) AS n FROM relazioni WHERE anagraficoId = ?", [id])?.n ??
+      0,
     appuntamenti:
       get<{ n: number }>(
         `SELECT COUNT(*) AS n FROM appuntamenti
@@ -154,11 +154,13 @@ export function appuntamentiConEventoDaEliminareRelazione(id: number): {
 
 /* --------------------------------- Relazioni ------------------------------ */
 
-export function elencaRelazioni(filtro: {
-  anagraficoId?: number | null;
-  stato?: string | null;
-  ricerca?: string;
-} = {}): RelazioneDettagliata[] {
+export function elencaRelazioni(
+  filtro: {
+    anagraficoId?: number | null;
+    stato?: string | null;
+    ricerca?: string;
+  } = {},
+): RelazioneDettagliata[] {
   const condizioni: string[] = [];
   const parametri: Array<string | number> = [];
   if (filtro.anagraficoId) {
@@ -235,11 +237,13 @@ export function eliminaRelazione(id: number): void {
 }
 /* ------------------------------- Appuntamenti ---------------------------- */
 
-export function elencaAppuntamenti(filtro: {
-  da?: string | null;
-  a?: string | null;
-  anagraficoId?: number | null;
-} = {}): AppuntamentoDettagliato[] {
+export function elencaAppuntamenti(
+  filtro: {
+    da?: string | null;
+    a?: string | null;
+    anagraficoId?: number | null;
+  } = {},
+): AppuntamentoDettagliato[] {
   const condizioni: string[] = [];
   const parametri: Array<string | number> = [];
   if (filtro.da) {
@@ -316,7 +320,11 @@ export function aggiornaAppuntamento(id: number, data: AppuntamentoInput): void 
 
 export function marcaAppuntamentoSincronizzato(
   id: number,
-  dati: { googleEventId: string | null; googleCalendarId: string | null; googleHtmlLink: string | null },
+  dati: {
+    googleEventId: string | null;
+    googleCalendarId: string | null;
+    googleHtmlLink: string | null;
+  },
 ): void {
   update("appuntamenti", id, {
     googleEventId: dati.googleEventId,
@@ -386,8 +394,10 @@ export function eliminaAppuntamento(id: number): void {
  * gli farebbe catturare e provare fraseggi che non sono SQL.)
  */
 export function leggiPreferenza(chiave: string): string | null {
-  return get<{ valore: string }>("SELECT valore FROM preferenze WHERE chiave = ?", [chiave])
-    ?.valore ?? null;
+  return (
+    get<{ valore: string }>("SELECT valore FROM preferenze WHERE chiave = ?", [chiave])?.valore ??
+    null
+  );
 }
 
 /** Upsert: una preferenza scritta due volte vale solo l'ultima. */

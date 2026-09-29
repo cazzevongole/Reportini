@@ -67,8 +67,7 @@ import App from "../src/App";
 import { AccountProvider } from "../src/lib/cloud/session";
 
 /** Il percorso vero di un file su Windows, con lo spazio di "Program Files". */
-const PERCORSO_FILE =
-  "/C:/Program%20Files/Reportini/resources/app.asar/renderer/index.html";
+const PERCORSO_FILE = "/C:/Program%20Files/Reportini/resources/app.asar/renderer/index.html";
 
 let contenitore: HTMLDivElement;
 let radice: Root | null = null;

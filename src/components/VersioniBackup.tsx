@@ -20,7 +20,10 @@ function etichetta(versione: Versione): string {
   const adesso = new Date();
   const oggi = oraDi(adesso.getTime());
   const ieri = oggi - 86_400_000;
-  const oraLocale = new Date(ora).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+  const oraLocale = new Date(ora).toLocaleTimeString("it-IT", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
   if (ora === oggi) return `Oggi, ${oraLocale}`;
   if (ora === ieri) return `Ieri, ${oraLocale}`;
@@ -81,8 +84,8 @@ export default function VersioniBackup() {
         </h2>
         <p className="mt-1.5 text-sm text-ink-500">
           Ogni volta che i dati cambiano viene tenuta una copia, una per ora, e si conservano{" "}
-          {GIORNI_RITENUTI} giorni. Puoi guardarne una senza toccare nulla, oppure ripartire da
-          lì: in quel caso tutto ciò che è stato scritto dopo viene scartato.
+          {GIORNI_RITENUTI} giorni. Puoi guardarne una senza toccare nulla, oppure ripartire da lì:
+          in quel caso tutto ciò che è stato scritto dopo viene scartato.
         </p>
 
         <div className="mt-4 flex flex-wrap gap-2">
@@ -153,9 +156,7 @@ export default function VersioniBackup() {
             {versioni.map((versione) => (
               <li key={versione.id} className="flex items-center gap-3 py-2.5">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-ink-800">
-                    {etichetta(versione)}
-                  </p>
+                  <p className="truncate text-sm font-medium text-ink-800">{etichetta(versione)}</p>
                   <p className="text-xs text-ink-400">{peso(versione.byte)}</p>
                 </div>
                 <Button
@@ -229,15 +230,11 @@ export default function VersioniBackup() {
                     hour: "2-digit",
                     minute: "2-digit",
                   })}
-                  , e le versioni più recenti vengono scartate. Prima conviene esportare una
-                  copia dalla sezione "Copie di sicurezza".
+                  , e le versioni più recenti vengono scartate. Prima conviene esportare una copia
+                  dalla sezione "Copie di sicurezza".
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <Button
-                    variant="danger"
-                    disabled={occupato}
-                    onClick={() => void riprendi()}
-                  >
+                  <Button variant="danger" disabled={occupato} onClick={() => void riprendi()}>
                     Sì, riparti da qui
                   </Button>
                   <Button variant="ghost" onClick={() => setConferma(false)}>
@@ -280,7 +277,8 @@ export default function VersioniBackup() {
                       {a.titolo}
                       <span className="text-ink-400">
                         {" "}
-                        · {new Date(a.inizio).toLocaleString("it-IT", {
+                        ·{" "}
+                        {new Date(a.inizio).toLocaleString("it-IT", {
                           day: "numeric",
                           month: "short",
                           hour: "2-digit",

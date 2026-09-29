@@ -126,9 +126,7 @@ export default function AnagraficoDettaglio() {
             if (
               !confirm(
                 `Eliminare ${nomeCompleto(anagrafico)}?${
-                  extra.length > 0
-                    ? ` Verranno eliminati anche: ${extra.join(" e ")}.`
-                    : ""
+                  extra.length > 0 ? ` Verranno eliminati anche: ${extra.join(" e ")}.` : ""
                 }`,
               )
             )
@@ -244,8 +242,8 @@ export default function AnagraficoDettaglio() {
                 </span>
               </div>
               <p className="mt-1 text-xs text-ink-400">
-                {dataLunga(appuntamento.inizio)} · {durata(appuntamento.inizio, appuntamento.fine)} ·{" "}
-                {relativo(appuntamento.inizio)}
+                {dataLunga(appuntamento.inizio)} · {durata(appuntamento.inizio, appuntamento.fine)}{" "}
+                · {relativo(appuntamento.inizio)}
               </p>
               {appuntamento.luogo ? (
                 <p className="mt-1 text-xs text-ink-400">{appuntamento.luogo}</p>

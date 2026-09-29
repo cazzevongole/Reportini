@@ -21,13 +21,8 @@ export interface SyncResult {
 }
 
 function aSincronizzabile(appuntamento: Appuntamento | AppuntamentoDettagliato): Appuntamento {
-  const {
-    anagraficoNome,
-    anagraficoCognome,
-    anagraficoDocumento,
-    relazioneTitolo,
-    ...base
-  } = appuntamento as AppuntamentoDettagliato;
+  const { anagraficoNome, anagraficoCognome, anagraficoDocumento, relazioneTitolo, ...base } =
+    appuntamento as AppuntamentoDettagliato;
   const contesto = [
     anagraficoNome ? `Anagrafico: ${anagraficoNome} ${anagraficoCognome ?? ""}`.trim() : "",
     anagraficoDocumento ? `Documento: ${anagraficoDocumento}` : "",
@@ -154,10 +149,7 @@ export async function dissociaAppuntamento(
   if (!salvato) return { ok: false, messaggio: "L'appuntamento non esiste più" };
   try {
     if (salvato.googleEventId) {
-      await eliminaEvento(
-        salvato.googleEventId,
-        salvato.googleCalendarId ?? calendarId,
-      );
+      await eliminaEvento(salvato.googleEventId, salvato.googleCalendarId ?? calendarId);
     }
   } catch (error) {
     // Se l'evento non c'è più, lo scollegamento è riuscito: il collegamento

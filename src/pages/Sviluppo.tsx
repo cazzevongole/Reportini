@@ -74,16 +74,18 @@ export default function Sviluppo() {
     };
   }, [carica]);
 
-  const testoRisposta = (richiesta: Richiesta) =>
-    bozze[richiesta.id] ?? richiesta.risposta ?? "";
+  const testoRisposta = (richiesta: Richiesta) => bozze[richiesta.id] ?? richiesta.risposta ?? "";
 
   const cambia = useCallback(
     async (id: string, stato: StatoRichiesta, risposta?: string) => {
       setOccupato(true);
-      const esito = await esegui(async () => {
-        await cambiaStato(id, stato);
-        if (risposta !== undefined) await rispondi(id, risposta);
-      }, { successo: "Richiesta aggiornata" });
+      const esito = await esegui(
+        async () => {
+          await cambiaStato(id, stato);
+          if (risposta !== undefined) await rispondi(id, risposta);
+        },
+        { successo: "Richiesta aggiornata" },
+      );
       setOccupato(false);
       if (!esito) return;
       await carica();

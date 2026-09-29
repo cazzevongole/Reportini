@@ -182,7 +182,8 @@ export async function verificaIntegrazione(): Promise<EsitoDiagnostica> {
       // Non è un esito negativo: è un controllo che da anonimo è impossibile.
       ok: true,
       nonVerificato: true,
-      dettaglio: "Non verificabile senza un account: da anonimo un bucket privato e uno inesistente sembrano identici.",
+      dettaglio:
+        "Non verificabile senza un account: da anonimo un bucket privato e uno inesistente sembrano identici.",
       azione: `Accedi e ricarica questa pagina, oppure controlla con la query:
 select id, public from storage.buckets where id = '${BUCKET}';`,
     });

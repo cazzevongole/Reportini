@@ -206,7 +206,10 @@ describe("Ritorno da Google", () => {
     // perché lo scambio non si fermi con redirect_uri_mismatch.
     sessionStorage.setItem(
       RITORNO_KEY,
-      JSON.stringify({ state, redirect: urlDiRitorno(window.location.origin, import.meta.env.BASE_URL) }),
+      JSON.stringify({
+        state,
+        redirect: urlDiRitorno(window.location.origin, import.meta.env.BASE_URL),
+      }),
     );
   }
 
@@ -356,7 +359,10 @@ describe("Ritorno da Google", () => {
 describe("Rinnovo in silenzio", () => {
   it("un token scaduto con refresh token si rinnova da solo", async () => {
     scriveToken("ya29.vecchio", "1//refresh", -1000);
-    risposte.set("rinnovo", { dati: { access_token: "ya29.fresco", expires_in: 3600 }, stato: 200 });
+    risposte.set("rinnovo", {
+      dati: { access_token: "ya29.fresco", expires_in: 3600 },
+      stato: 200,
+    });
 
     await expect(accessToken()).resolves.toBe("ya29.fresco");
     expect(readToken()?.accessToken).toBe("ya29.fresco");
@@ -372,7 +378,10 @@ describe("Rinnovo in silenzio", () => {
 
   it("due richieste contemporanee fanno un solo rinnovo", async () => {
     scriveToken("ya29.vecchio", "1//refresh", -1000);
-    risposte.set("rinnovo", { dati: { access_token: "ya29.fresco", expires_in: 3600 }, stato: 200 });
+    risposte.set("rinnovo", {
+      dati: { access_token: "ya29.fresco", expires_in: 3600 },
+      stato: 200,
+    });
 
     const [uno, due] = await Promise.all([accessToken(), accessToken()]);
     expect(uno).toBe("ya29.fresco");
@@ -391,7 +400,9 @@ describe("Rinnovo in silenzio", () => {
   it("un consenso revocato da Google viene detto all'utente", async () => {
     scriveToken("ya29.vecchio", "1//refresh", -1000);
     risposte.set("rinnovo", {
-      dati: { errore: "Il collegamento con Google non è più valido: ricollegalo dalle impostazioni." },
+      dati: {
+        errore: "Il collegamento con Google non è più valido: ricollegalo dalle impostazioni.",
+      },
       stato: 401,
     });
 
@@ -425,7 +436,9 @@ describe("Scollegare e stato del backend", () => {
     await expect(statoBackend()).resolves.toBe("non-pubblicata");
 
     fetchMock.mockImplementation(async (url: unknown) =>
-      String(url).includes("/functions/v1/") ? rispostaJson({ errore: "Serve un POST." }, 405) : rispostaJson({}),
+      String(url).includes("/functions/v1/")
+        ? rispostaJson({ errore: "Serve un POST." }, 405)
+        : rispostaJson({}),
     );
     await expect(statoBackend()).resolves.toBe("pronto");
   });

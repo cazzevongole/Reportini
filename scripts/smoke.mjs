@@ -16,10 +16,13 @@ const stampa = (etichetta, testo, parametri = []) =>
 
 stampa("tabelle", "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name");
 // Requisito: l'installazione deve partire vuota, senza dati dimostrativi.
-stampa("nessun dato dimostrativo", `SELECT
+stampa(
+  "nessun dato dimostrativo",
+  `SELECT
   (SELECT COUNT(*) FROM anagrafici) AS anagrafici,
   (SELECT COUNT(*) FROM relazioni) AS relazioni,
-  (SELECT COUNT(*) FROM appuntamenti) AS appuntamenti`);
+  (SELECT COUNT(*) FROM appuntamenti) AS appuntamenti`,
+);
 if (db.exec("SELECT COUNT(*) FROM anagrafici")[0].values[0][0] !== 0) {
   console.error("ATTENZIONE: il database iniziale contiene righe");
   process.exit(1);
@@ -48,20 +51,29 @@ db.run(
   },
 );
 
-stampa("contatori con join", `SELECT
+stampa(
+  "contatori con join",
+  `SELECT
   (SELECT COUNT(*) FROM relazioni WHERE anagraficoId = 1) AS relazioni,
-  (SELECT COUNT(*) FROM appuntamenti WHERE anagraficoId = 1) AS appuntamenti`);
+  (SELECT COUNT(*) FROM appuntamenti WHERE anagraficoId = 1) AS appuntamenti`,
+);
 stampa("ricerca per nome", "SELECT COUNT(*) FROM anagrafici WHERE nome LIKE ?", ["%Mario%"]);
-stampa("ricerca libera", `SELECT COUNT(*) FROM relazioni r JOIN anagrafici a ON a.id = r.anagraficoId
+stampa(
+  "ricerca libera",
+  `SELECT COUNT(*) FROM relazioni r JOIN anagrafici a ON a.id = r.anagraficoId
   WHERE r.titolo LIKE ? OR r.tipo LIKE ? OR r.contenuto LIKE ? OR a.nome LIKE ? OR a.cognome LIKE ?`,
-  ["%Cert%", "%Res%", "%prova%", "%Mario%", "%Rossi%"]);
+  ["%Cert%", "%Res%", "%prova%", "%Mario%", "%Rossi%"],
+);
 
 // Cascata: eliminare un anagrafico elimina le relazioni e stacca gli appuntamenti.
 db.run("DELETE FROM anagrafici WHERE id = 1");
-stampa("dopo la cancellazione", `SELECT
+stampa(
+  "dopo la cancellazione",
+  `SELECT
   (SELECT COUNT(*) FROM anagrafici) AS anagrafici,
   (SELECT COUNT(*) FROM relazioni) AS relazioni,
-  (SELECT COUNT(*) FROM appuntamenti WHERE anagraficoId IS NULL) AS appuntamenti_orfani`);
+  (SELECT COUNT(*) FROM appuntamenti WHERE anagraficoId IS NULL) AS appuntamenti_orfani`,
+);
 
 // Ogni statement di repo.ts deve essere preparabile sullo schema reale.
 // I template con ${...} vengono saltati: contengono interpolazioni, non SQL puro.
@@ -77,7 +89,12 @@ for (const testo of query) {
     db.prepare(testo);
   } catch (errore) {
     fallite += 1;
-    console.error("QUERY NON VALIDA:", testo.replace(/\s+/g, " ").slice(0, 110), "→", errore.message);
+    console.error(
+      "QUERY NON VALIDA:",
+      testo.replace(/\s+/g, " ").slice(0, 110),
+      "→",
+      errore.message,
+    );
   }
 }
 console.log(
@@ -114,5 +131,10 @@ for (const [funzione, tabella] of Object.entries(TABELLE_DAL_REPO)) {
 }
 
 const byte = db.export();
-console.log("byte esportati:", byte.length, "| intestazione:", String.fromCharCode(...byte.slice(0, 15)));
+console.log(
+  "byte esportati:",
+  byte.length,
+  "| intestazione:",
+  String.fromCharCode(...byte.slice(0, 15)),
+);
 if (fallite > 0 || disallineamenti > 0) process.exit(1);

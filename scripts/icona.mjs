@@ -22,11 +22,7 @@ function sdRett(x, y, { x0, y0, x1, y1 }, r) {
   const cy = (y0 + y1) / 2;
   const qx = Math.abs(x - cx) - (x1 - x0) / 2 + r;
   const qy = Math.abs(y - cy) - (y1 - y0) / 2 + r;
-  return (
-    Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) +
-    Math.min(Math.max(qx, qy), 0) -
-    r
-  );
+  return Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - r;
 }
 
 /** Distanza con segno da un segmento spesso: i tasti tondi escono da soli. */
@@ -129,7 +125,15 @@ const FIGURE = [
   // sotto le altre senza finire sotto l'orologio.
   ...[365, 365, 250, 180].map((lunghezza, riga) => ({
     sdf: (x, y) =>
-      sdSegmento(x, y, spazio.x0, spazio.y0 + riga * 90, spazio.x0 + lunghezza, spazio.y0 + riga * 90, 30),
+      sdSegmento(
+        x,
+        y,
+        spazio.x0,
+        spazio.y0 + riga * 90,
+        spazio.x0 + lunghezza,
+        spazio.y0 + riga * 90,
+        30,
+      ),
     colore: () => GRIZIO,
     scatola: {
       x0: spazio.x0 - 32,
@@ -141,8 +145,7 @@ const FIGURE = [
   {
     // L'anello di carta sotto il disco: stacca l'orologio dal foglio senza
     // dover fare un'ombra.
-    sdf: (x, y) =>
-      sdCircolo(x, y, OROLOGIO.x + SCARTO.x, OROLOGIO.y + SCARTO.y, OROLOGIO.r + 20),
+    sdf: (x, y) => sdCircolo(x, y, OROLOGIO.x + SCARTO.x, OROLOGIO.y + SCARTO.y, OROLOGIO.r + 20),
     colore: () => CARTA,
     scatola: {
       x0: OROLOGIO.x - OROLOGIO.r - 20 + SCARTO.x,
@@ -166,8 +169,24 @@ const FIGURE = [
     // serve per capire "orologio" senza disegnare un quadrante.
     sdf: (x, y) =>
       Math.min(
-        sdSegmento(x, y, OROLOGIO.x + SCARTO.x, OROLOGIO.y + SCARTO.y, OROLOGIO.x + SCARTO.x, OROLOGIO.y - 66 + SCARTO.y, 21),
-        sdSegmento(x, y, OROLOGIO.x + SCARTO.x, OROLOGIO.y + SCARTO.y, OROLOGIO.x + 68 + SCARTO.x, OROLOGIO.y + SCARTO.y, 21),
+        sdSegmento(
+          x,
+          y,
+          OROLOGIO.x + SCARTO.x,
+          OROLOGIO.y + SCARTO.y,
+          OROLOGIO.x + SCARTO.x,
+          OROLOGIO.y - 66 + SCARTO.y,
+          21,
+        ),
+        sdSegmento(
+          x,
+          y,
+          OROLOGIO.x + SCARTO.x,
+          OROLOGIO.y + SCARTO.y,
+          OROLOGIO.x + 68 + SCARTO.x,
+          OROLOGIO.y + SCARTO.y,
+          21,
+        ),
       ),
     colore: () => CARTA,
     scatola: {
@@ -205,8 +224,7 @@ function ridisegna(lato) {
         const aFondo = sorgente[i + 3];
         const aNuovo = a + aFondo * (1 - a);
         for (let c = 0; c < 3; c++) {
-          sorgente[i + c] =
-            (colore[c] * a + sorgente[i + c] * aFondo * (1 - a)) / (aNuovo || 1);
+          sorgente[i + c] = (colore[c] * a + sorgente[i + c] * aFondo * (1 - a)) / (aNuovo || 1);
         }
         sorgente[i + 3] = aNuovo;
       }

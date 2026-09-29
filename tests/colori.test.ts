@@ -33,7 +33,17 @@ describe("Palette di Google Calendar", () => {
   it("contiene gli undici ID della palette, come stringhe", () => {
     expect(PALETTE).toHaveLength(11);
     expect(PALETTE.map((c) => c.id)).toEqual([
-      "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11",
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+      "7",
+      "8",
+      "9",
+      "10",
+      "11",
     ]);
     // Nell'API `colorId` è una stringa: un numero qui diventerebbe un 400.
     for (const colore of PALETTE) expect(typeof colore.id).toBe("string");

@@ -29,7 +29,7 @@ interface PonteFinto extends PonteAggiornamento {
   quanteVolteHannoInstallato(): number;
   /** Quante volte è stato scelto "alla chiusura dell'app". */
   quanteVolteHannoRimandatoAllaChiusura(): number;
-  fallisciControllo( messaggio: string | null): void;
+  fallisciControllo(messaggio: string | null): void;
 }
 
 function ponteFinto(statoIniziale: StatoAggiornamento = { fase: "idle" }): PonteFinto {
@@ -111,9 +111,8 @@ function testo() {
 }
 
 function pulsante(nome: string): HTMLButtonElement | undefined {
-  return [...contenitore.querySelectorAll("button")].find((b) =>
-    b.textContent?.includes(nome),
-  ) as HTMLButtonElement | undefined;
+  return [...contenitore.querySelectorAll("button")].find((b) => b.textContent?.includes(nome)) as
+    HTMLButtonElement | undefined;
 }
 
 async function aggiorna(azione: () => void) {
@@ -152,9 +151,9 @@ describe("Aggiornamento automatico", () => {
     expect(descrizioneAggiornamento({ fase: "aggiornato" }, true)).toBe(
       "Sei già all'ultima versione.",
     );
-    expect(
-      descrizioneAggiornamento({ fase: "errore", messaggio: "rete assente" }, true),
-    ).toContain("rete assente");
+    expect(descrizioneAggiornamento({ fase: "errore", messaggio: "rete assente" }, true)).toContain(
+      "rete assente",
+    );
   });
 
   it("mostra l'avanzamento e poi il pacchetto pronto", () => {

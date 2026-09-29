@@ -67,10 +67,16 @@ export async function leggiAnteprima(byte: Uint8Array): Promise<Anteprima> {
       relazioni: conteggi.relazioni ?? 0,
       appuntamenti: conteggi.appuntamenti ?? 0,
       ultimoAggiornamento: conteggi.ultimoAggiornamento ?? null,
-      anagraficheElenco: interroga(copia, `SELECT id, nome, cognome, documento
-        FROM anagrafici ORDER BY cognome, nome LIMIT 20`),
-      appuntamentiElenco: interroga(copia, `SELECT id, titolo, inizio, stato
-        FROM appuntamenti ORDER BY inizio LIMIT 20`),
+      anagraficheElenco: interroga(
+        copia,
+        `SELECT id, nome, cognome, documento
+        FROM anagrafici ORDER BY cognome, nome LIMIT 20`,
+      ),
+      appuntamentiElenco: interroga(
+        copia,
+        `SELECT id, titolo, inizio, stato
+        FROM appuntamenti ORDER BY inizio LIMIT 20`,
+      ),
     };
   } finally {
     // La copia vive solo per la lettura: chiuderla libera subito la memoria.

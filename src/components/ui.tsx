@@ -67,10 +67,7 @@ export function Field({
   );
 }
 
-export function Input({
-  className = "",
-  ...props
-}: InputHTMLAttributes<HTMLInputElement>) {
+export function Input({ className = "", ...props }: InputHTMLAttributes<HTMLInputElement>) {
   return <input className={`field-input ${className}`} {...props} />;
 }
 
@@ -120,13 +117,7 @@ export function Select({
 
 /* --------------------------------- Chrome -------------------------------- */
 
-export function Card({
-  className = "",
-  children,
-}: {
-  className?: string;
-  children: ReactNode;
-}) {
+export function Card({ className = "", children }: { className?: string; children: ReactNode }) {
   return <div className={`card ${className}`}>{children}</div>;
 }
 
@@ -211,11 +202,13 @@ export function Stat({
 }) {
   return (
     <Card className="p-4">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-400">
-        {label}
-      </p>
+      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-400">{label}</p>
       <p className="mt-2 font-display text-3xl leading-none text-ink-950">{value}</p>
-      {hint ? <Badge tone={tone} className="mt-3">{hint}</Badge> : null}
+      {hint ? (
+        <Badge tone={tone} className="mt-3">
+          {hint}
+        </Badge>
+      ) : null}
     </Card>
   );
 }
@@ -278,9 +271,7 @@ export function Sheet({
         <div className="flex items-start gap-3 border-b border-ink-100 p-5 pb-4">
           <div className="flex-1">
             <h2 className="text-xl">{title}</h2>
-            {description ? (
-              <p className="mt-1 text-sm text-ink-400">{description}</p>
-            ) : null}
+            {description ? <p className="mt-1 text-sm text-ink-400">{description}</p> : null}
           </div>
           {onClose ? (
             <button

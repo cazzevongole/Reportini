@@ -315,8 +315,8 @@ export default function Impostazioni() {
         <Card className="p-5">
           <h2 className="text-lg">Copie di sicurezza</h2>
           <p className="mt-1.5 text-sm text-ink-500">
-            Esporta tutto il contenuto in un file JSON e ripristinalo su qualunque dispositivo.
-            È utile come copia di sicurezza quando non hai un account collegato.
+            Esporta tutto il contenuto in un file JSON e ripristinalo su qualunque dispositivo. È
+            utile come copia di sicurezza quando non hai un account collegato.
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             <Button variant="secondary" onClick={esportaCopia}>
@@ -352,9 +352,7 @@ export default function Impostazioni() {
           </p>
           <p className="mt-3 text-sm text-ink-400">
             {aggiornamento.descrizione ??
-              (aggiornamento.disponibile
-                ? "Nessun aggiornamento da mettere."
-                : "Versione web.")}
+              (aggiornamento.disponibile ? "Nessun aggiornamento da mettere." : "Versione web.")}
             {aggiornamento.versione ? ` Versione installata ${aggiornamento.versione}.` : ""}
           </p>
           {aggiornamento.disponibile ? (

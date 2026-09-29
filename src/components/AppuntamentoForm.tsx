@@ -30,9 +30,7 @@ export default function AppuntamentoForm({
 }) {
   const anagrafici = elencaAnagrafici();
   const [anagraficoId, setAnagraficoId] = useState<number | null>(
-    appuntamento
-      ? appuntamento.anagraficoId
-      : anagraficoIdIniziale ?? anagrafici[0]?.id ?? null,
+    appuntamento ? appuntamento.anagraficoId : (anagraficoIdIniziale ?? anagrafici[0]?.id ?? null),
   );
   const relazioni = elencaRelazioni({ anagraficoId });
   const googlePronto = isConnected();
@@ -238,7 +236,11 @@ export default function AppuntamentoForm({
           >
             {PROMEMORIE.map((minuti) => (
               <option key={minuti} value={minuti}>
-                {minuti === 0 ? "Nessun avviso" : minuti >= 1440 ? "1 giorno prima" : `${minuti} min prima`}
+                {minuti === 0
+                  ? "Nessun avviso"
+                  : minuti >= 1440
+                    ? "1 giorno prima"
+                    : `${minuti} min prima`}
               </option>
             ))}
           </Select>

@@ -75,7 +75,9 @@ vi.mock("@supabase/supabase-js", () => ({
 /** fetch stub: la diagnosi interroga /auth/v1/settings. */
 const risposteFetch = new Map<string, unknown>();
 vi.stubGlobal("fetch", async (url: string) => {
-  const chiave = [...risposteFetch.entries()].find(([prefisso]) => String(url).startsWith(prefisso));
+  const chiave = [...risposteFetch.entries()].find(([prefisso]) =>
+    String(url).startsWith(prefisso),
+  );
   return {
     ok: true,
     json: async () => chiave?.[1] ?? { external: { google: true } },
@@ -416,9 +418,7 @@ describe("Salvataggio online", () => {
   });
 
   it("salva automaticamente dopo ogni modifica locale", async () => {
-    const { avviaAutoSync, iscrivitiAllaSalvataggio } = await import(
-      "../src/lib/cloud/sync"
-    );
+    const { avviaAutoSync, iscrivitiAllaSalvataggio } = await import("../src/lib/cloud/sync");
     let notificato: string | null = null;
     const smetti = iscrivitiAllaSalvataggio((info) => {
       notificato = info.messaggio;
@@ -443,9 +443,8 @@ describe("Salvataggio online", () => {
   });
 
   it("un errore di caricamento arriva a chi ascolta, non muore in silenzio", async () => {
-    const { avviaAutoSync, iscrivitiAllaSalvataggio, statoSalvataggio } = await import(
-      "../src/lib/cloud/sync"
-    );
+    const { avviaAutoSync, iscrivitiAllaSalvataggio, statoSalvataggio } =
+      await import("../src/lib/cloud/sync");
     const finto = await import("../src/lib/sqlite/engine");
     vi.mocked(finto.snapshot).mockImplementationOnce(() => {
       throw new Error("disco pieno");
@@ -528,9 +527,9 @@ describe("Verifica del bucket", () => {
     expect(bucketMancaDaErrore({ message: "Bucket not found" })).toBe(true);
     expect(bucketMancaDaErrore({ message: "NoSuchBucket" })).toBe(true);
     // Divieto RLS: il bucket esiste ed è correttamente protetto.
-    expect(
-      bucketMancaDaErrore({ message: "new row violates row-level security policy" }),
-    ).toBe(false);
+    expect(bucketMancaDaErrore({ message: "new row violates row-level security policy" })).toBe(
+      false,
+    );
     // Lista vuota senza errore: non distingue nulla, quindi non è un assente.
     expect(bucketMancaDaErrore(null)).toBe(false);
   });

@@ -83,9 +83,7 @@ export function elencoCorrente(): Versione[] {
   return elenco;
 }
 
-export function iscrivitiElenco(
-  ascolta: (versioni: Versione[]) => void,
-): () => void {
+export function iscrivitiElenco(ascolta: (versioni: Versione[]) => void): () => void {
   ascoltatori.add(ascolta);
   return () => ascoltatori.delete(ascolta);
 }
