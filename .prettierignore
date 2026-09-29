@@ -1,0 +1,23 @@
+# Cosa qui dentro non viene formattato, e perché.
+#
+# Ogni riga è una scelta, non una dimenticanza.
+
+# La documentazione in italiano usa l'apostrofo e i due punti come
+# punteggiatura: riformattarla cambierebbe 158 righe di prosa senza
+# toccare un solo errore, e ogni modifica vera al README diventerebbe
+# illeggibile dentro un diff pieno di virgolette e tabelle riallineate.
+*.md
+
+# La funzione su Supabase viene confrontata, carattere per carattere, con
+# quella pubblicata (scripts/verifica-edge-function.mjs). Riformattarla
+# senza ripubblicarla farebbe fallire quel controllo, e ripubblicarla per
+# cinque righe di spazi non vale la pena. Va formattata insieme alla
+# prossima modifica vera del codice.
+supabase/
+
+# Generati e dipendenze.
+dist
+electron/renderer
+electron/release
+node_modules
+bun.lock

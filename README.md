@@ -622,11 +622,19 @@ bun install
 bun run dev        # server di sviluppo su http://localhost:5173
 bun run build      # build statica in dist/ (+ 404.html per GitHub Pages)
 bun run typecheck  # tsc -b --noEmit
-bun run test       # test vitest (208 test) + smoke test dello schema
+bun run lint       # ESLint: regole sugli hook di React e codice sospetto
+bun run lint:fix   # corregge quello che si può correggere da solo
+bun run format     # riformatta con Prettier
+bun run format:check  # segnala cosa non è conforme, senza toccare nulla
+bun run test       # test vitest + smoke test dello schema
 bun run test:ui    # solo i test vitest
 bun run version:check  # la versione è coerente? (lo usa anche il rilascio)
 bun run version:patch  # alza la versione di un patch, come fa il workflow
 ```
+
+`lint` e `format:check` girano in CI, e girano in **modalità segnalazione**: non
+correggono e non scrivono. Un controllo che riscrive il codice al posto tuo
+lascia il lavoro a metà e un check verde su un file che nessuno ha scritto.
 
 I test vitest coprono tredici file:
 
