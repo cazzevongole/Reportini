@@ -8,6 +8,7 @@ import Accesso from "./pages/Accesso";
 import { initDatabase } from "./lib/sqlite/engine";
 import { isDesktop } from "./lib/sqlite/storage";
 import { baseRoutte } from "./lib/cloud/destinazione";
+import { useAccount } from "./lib/cloud/session";
 
 // Le pagine dietro l'accesso si scaricano quando servono.
 //
@@ -30,12 +31,29 @@ const Sviluppo = lazy(() => import("./pages/Sviluppo"));
 /**
  * Il database viene aperto qui, prima di montare le pagine: così ogni vista
  * può interrogarlo senza dover verificare da parte sua che sia pronto.
+ *
+ * **Solo se c'è un account.** Il motore è SQLite compilato in WebAssembly e
+ * pesa 325 kB compressi: era più della metà di tutto quello che chi apriva
+ * l'app scaricava, e serviva a chi non aveva ancora fatto nulla. Senza
+ * account non c'è niente da aprire — la pagina di accesso non interroga il
+ * database — quindi l'apertura aspetta, e avviene nel momento in cui
+ * l'utente rientra da Google.
+ *
+ * Finché l'account non è noto la pagina di accesso resta comunque visibile:
+ * aspettare il caricamento della sessione prima di mostrare cosa c'è
+ * dentro l'app farebbe lampeggiare lo schermo a chi è già entrato.
  */
 function DatabaseGate({ children }: { children: ReactNode }) {
-  const [stato, setStato] = useState<"caricamento" | "pronto" | "errore">("caricamento");
+  const { email, loading } = useAccount();
+  const [stato, setStato] = useState<"inattivo" | "caricamento" | "pronto" | "errore">("inattivo");
   const [errore, setErrore] = useState("");
 
   useEffect(() => {
+    // Finché la sessione non è nota non si sa se aprire: aprire e poi
+    // richiudere costerebbe il download del motore a chi sta solo guardando
+    // la pagina di accesso.
+    if (loading || !email || stato !== "inattivo") return;
+    setStato("caricamento");
     initDatabase()
       .then(() => setStato("pronto"))
       .catch((causa: unknown) => {
@@ -43,7 +61,11 @@ function DatabaseGate({ children }: { children: ReactNode }) {
         setErrore(causa instanceof Error ? causa.message : String(causa));
         setStato("errore");
       });
-  }, []);
+  }, [loading, email, stato]);
+
+  // Senza account non c'è database da aspettare: si lascia passare tutto, e
+  // la pagina di accesso si vede subito.
+  if (stato === "inattivo") return <>{children}</>;
 
   if (stato === "caricamento") {
     return (
