@@ -20,10 +20,11 @@
     "electron:build": "ELECTRON=1 vite build && node scripts/copia-renderer.mjs",
     "electron:dev": "cd electron && npm run dev",
     "electron:pack": "bun run electron:build && cd electron && npm run dist",
-    "version:check": "node scripts/versione-check.mjs",
-    "version:patch": "node scripts/version.mjs patch",
-    "version:minor": "node scripts/version.mjs minor",
-    "version:major": "node scripts/version.mjs major",
+    "edge:function:check": "node scripts/verifica-edge-function.mjs",
+    "version:check": "node scripts/versione.mjs",
+    "version:patch": "node scripts/versione.mjs patch",
+    "version:minor": "node scripts/versione.mjs minor",
+    "version:major": "node scripts/versione.mjs major",
     "icona": "node scripts/icona.mjs"
   },
   "dependencies": {

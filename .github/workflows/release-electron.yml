@@ -121,11 +121,11 @@ jobs:
           if [ -z "$TAG" ]; then
             # Push su master: qui la versione la decidiamo noi, e subito,
             # nello stesso passaggio che poi costruisce i pacchetti.
-            node scripts/version.mjs "$LIVELLO"
+            node scripts/versione.mjs "$LIVELLO"
             VERSIONE=$(node -p "require('./package.json').version")
             TAG="v$VERSIONE"
 
-            node scripts/versione-check.mjs
+            node scripts/versione.mjs
 
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -142,7 +142,7 @@ jobs:
           # Coerenza fra i due package.json e il tag: un pacchetto col numero
           # diverso da quello che si scarica è un rilascio sbagliato, e non
           # c'è modo di accorgersene dopo.
-          GITHUB_REF_TYPE=tag GITHUB_REF_NAME="$TAG" node scripts/versione-check.mjs
+          GITHUB_REF_TYPE=tag GITHUB_REF_NAME="$TAG" node scripts/versione.mjs
 
           # Se la release c'è già, non si ricostruisce tutto: il tag e gli
           # artefatti esistono e rifare il lavoro sarebbe solo sprecato.
@@ -193,7 +193,7 @@ jobs:
           node-version: 20
 
       - name: La versione corrisponde al tag
-        run: node scripts/versione-check.mjs
+        run: node scripts/versione.mjs
         env:
           GITHUB_REF_TYPE: tag
           GITHUB_REF_NAME: ${{ needs.versione.outputs.versione }}
