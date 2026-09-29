@@ -47,3 +47,18 @@ jobs:
             exit 1
           fi
           echo "Nessun segreto nel bundle"
+
+      # La Edge Function pubblicata è una seconda copia del codice che sta
+      # in supabase/, e nessuna delle due avvisa l'altra quando divergono.
+      # È successo: dopo il passaggio a reportini.cazzevongole.com il
+      # repository aveva l'origine nuova e la funzione no, quindi il login
+      # con Google si fermava con un errore che non nominava la causa.
+      #
+      # Senza SUPABASE_ACCESS_TOKEN lo script esce dicendo che non può
+      # confrontare, senza fallire: su un fork il secret non c'è, e un
+      # controllo che non gira è uno che nessuno imparerebbe a leggere.
+      - name: La Edge Function pubblicata è quella del repository
+        run: node scripts/verifica-edge-function.mjs
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}

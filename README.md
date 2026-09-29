@@ -188,8 +188,8 @@ La versione non sta in una discussione: sale da sola.
 
 | Dove | Cosa fa |
 | --- | --- |
-| `scripts/version.mjs` | alza la versione in `package.json` e in `electron/package.json` e scrive il `CHANGELOG.md` |
-| `scripts/versione-check.mjs` | controlla che le due versioni coincidano e che il tag sia quello giusto |
+| `scripts/verifica-edge-function.mjs` | confronta il codice della Edge Function nel repository con quello pubblicato su Supabase, e dice quale dei due è da cambiare |
+| `scripts/versione.mjs` | **un unico script per la versione**: senza argomenti controlla che le copie coincidano e che il tag sia quello giusto; con `patch`, `minor` o `major` alza la versione in `package.json` e in `electron/package.json` e scrive il `CHANGELOG.md` |
 | `.github/workflows/release-electron.yml` | **un unico workflow**: a ogni merge su `master` alza la versione, crea il tag, costruisce i pacchetti (mac, Windows, Linux) e pubblica la release come **latest** |
 
 Versionare e rilasciare stanno **nello stesso workflow**, ed è voluto. Erano due, e la corsa fra
@@ -393,6 +393,25 @@ Perché non può essere fatto diversamente: se l'accesso lo facesse Supabase, pr
 calendario sarebbero due richieste OAuth diverse e l'utente vedrebbe **due** schermate di
 consenso. In più il token che Supabase restituisce non ha un refresh token, quindi dopo un'ora
 l'app non potrebbe rinnovare niente.
+
+#### Gli step che vivono fuori dal repository
+
+Nessuno di questi si trova nel codice, quindi nessuno viene controllato da una build, e
+tutti e tre hanno lo stesso effetto quando mancano: **l'accesso con Google non parte**, con
+un errore che non dice quale dei tre sia. Se l'app viene rimossa e ricostruita, sono i
+passi che si saltano.
+
+| Dove | Cosa | Cosa succede se manca |
+| --- | --- | --- |
+| [Google Cloud Console](https://console.cloud.google.com/apis/credentials) → *OAuth 2.0 Client ID* → **URI di reindirizzamento autorizzati** | il dominio dell'app | `redirect_uri_mismatch` |
+| Google Cloud Console → **Schermata di consenso OAuth** | nome e dominio dell'app | schermata "non verificata" |
+| Supabase → *Authentication → URL Configuration* → **Redirect URLs** | il dominio dell'app | percorso di rientro non valido |
+
+Il primo è quello che blocca l'accesso ed è il più silenzioso dei tre: Google risponde
+`redirect_uri_mismatch` **prima** di chiedere le credenziali, quindi l'utente vede subito
+un errore che nomina l'app, non l'elenco degli URI. Per verificarlo senza indovinare,
+basta aprire la pagina di accesso e premere **Accedi con Google**: se compare la
+schermata di Google, l'URI c'è; se compare `redirect_uri_mismatch`, manca.
 
 **Per metterlo in piedi** (una volta sola):
 
