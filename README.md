@@ -645,7 +645,7 @@ corrisponde a nessuna situazione reale:
 
 | gruppo | chi lo scarica | adesso |
 | --- | --- | --- |
-| pagina | chi apre l'app, anche senza account | 136 kB gzip |
+| pagina | chi apre l'app, anche senza account | 141 kB gzip |
 | installazione | le icone, solo se l'utente installa l'app | 26 kB gzip |
 | dopo l'accesso | il database nel browser e le pagine differite | 359 kB gzip |
 
@@ -666,7 +666,7 @@ effetto collaterale di un upgrade.
 
 > Il numero più facile da sbagliare è proprio questo. Una build senza le
 > variabili Supabase **rientra nei tetti e il controllo passa**: per accorgersene
-> guarda che `dist/assets/index-*.js` sia sui 440 kB circa, non sui 210.
+> guarda che `dist/assets/index-*.js` sia sui 460 kB circa, non sui 220.
 
 I test vitest coprono ventuno file; questi sono quelli che meritano una riga:
 

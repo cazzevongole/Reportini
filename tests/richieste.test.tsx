@@ -321,7 +321,7 @@ describe("Sezione Chiedilo allo sviluppatore", () => {
 describe("Puntamento dalla pagina impostazioni", () => {
   async function montaSvolta() {
     await monta(
-      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter>
         <SvoltaSviluppo />
       </MemoryRouter>,
     );
@@ -344,10 +344,7 @@ describe("Puntamento dalla pagina impostazioni", () => {
 describe("Sezione nascosta dello sviluppatore", () => {
   async function montaSviluppo() {
     await monta(
-      <MemoryRouter
-        initialEntries={["/panel/sviluppo"]}
-        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
-      >
+      <MemoryRouter initialEntries={["/panel/sviluppo"]}>
         <Routes>
           <Route path="/panel/sviluppo" element={<Sviluppo />} />
           <Route path="/panel" element={<p>Il pannello</p>} />

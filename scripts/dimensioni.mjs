@@ -32,7 +32,11 @@ import { brotliCompressSync, gzipSync } from "node:zlib";
  * qualche kB di margine sotto: un tetto che si tocca ogni volta che si
  * aggiorna una dipendenza è un tetto che non insegna niente.
  */
-export const BUDGET_PAGINA_GZIP = 145 * 1024;
+// Alzato da 145 kB a 150 kB con React Router 7, che porta circa 5,5 kB
+// gzip di codice proprio: le due flag di v6 che l'app attivava già
+// (v7_startTransition, v7_relativeSplatPath) in v7 sono il comportamento
+// predefinito, quindi il codice è lo stesso, ma ne resta un pezzo in più.
+export const BUDGET_PAGINA_GZIP = 150 * 1024;
 export const BUDGET_INSTALLAZIONE_GZIP = 40 * 1024;
 export const BUDGET_DOPO_GZIP = 420 * 1024;
 

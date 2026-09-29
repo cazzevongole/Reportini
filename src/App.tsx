@@ -138,10 +138,7 @@ export default function App() {
               una pagina di profilo e poi su un 404 al ricaricare. Nell'app
               desktop, che si apre da file://, la base è "./" e per il router
               vale la radice. */}
-          <Router
-            basename={baseRoutte()}
-            future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
-          >
+          <Router basename={baseRoutte()}>
             <Routes>
               {/* Unica rotta aperta: senza account non si vede nient'altro. */}
               <Route path="/accedi" element={<Accesso />} />
