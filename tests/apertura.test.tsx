@@ -4,23 +4,43 @@
  *
  * Si monta il componente da solo con una durata breve: montare l'app
  * intera imporrebbe i cinque secondi veri a ogni test.
+ *
+ * **Perché gli orologi sono finti.** La schermata si accende da un
+ * `requestAnimationFrame`, che in jsdom arriva al frame successivo (circa
+ * 16 ms), e si chiude con un `setTimeout`. Il test aspettava 10 ms reali per
+ * il primo e 50 per il secondo: sotto carico — la CI che scarica
+ * dipendenze e lancia tre workflow insieme — la rAF non era ancora scattata
+ * e il test falliva senza che nessun codice fosse cambiato. È successo, e il
+ * rilancio passava: la prova che il difetto era nel test e non
+ * nell'applicazione.
+ *
+ * Con il tempo simulato ogni attesa è esatta e il test dura millisecondi
+ * invece di secondi. Gli orologi finti sono limitati a timer e rAF: `Date`
+ * resta quella vera, perché la frase del saluto dipende dall'ora.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import SchermataApertura, { durataAperturaDa } from "../src/components/SchermataApertura";
 import { FRASI } from "../src/lib/benvenuto";
 
+/** Quanto un frame dura in jsdom: sotto, la rAF non è ancora scattata. */
+const FRAME_MS = 16;
+
 let contenitore: HTMLDivElement;
 let radice: Root | null = null;
 
-function attendere(ms: number) {
+/** Avanza il tempo simulato e lascia che React committi dentro act(). */
+function avanzare(ms: number) {
   return act(async () => {
-    await new Promise((risolvi) => setTimeout(risolvi, ms));
+    await vi.advanceTimersByTimeAsync(ms);
   });
 }
 
 beforeEach(() => {
+  vi.useFakeTimers({
+    toFake: ["setTimeout", "clearTimeout", "requestAnimationFrame", "cancelAnimationFrame"],
+  });
   contenitore = document.createElement("div");
   document.body.appendChild(contenitore);
 });
@@ -29,6 +49,7 @@ afterEach(async () => {
   await act(async () => radice?.unmount());
   radice = null;
   contenitore.remove();
+  vi.useRealTimers();
 });
 
 /** Monta, aspetta e restituisce il testo che la schermata mostra. */
@@ -59,15 +80,24 @@ describe("Schermata di apertura", () => {
     // animare, il dissolvenza non ci sarebbe.
     const scena = contenitore.querySelector("[aria-hidden]") as HTMLElement;
     expect(scena.className).toContain("opacity-0");
-    await attendere(10);
+
+    // Un frame: è quello che serve alla rAF per accendere la scena.
+    await avanzare(FRAME_MS + 4);
     expect(scena.className).toContain("opacity-100");
 
-    // Passata la durata comincia il dissolvenza...
-    await attendere(50);
+    // Passata la durata comincia il dissolvenza. I due passi sono scelti
+    // attorno ai 40 ms con un margine da entrambe le parti: arrivare
+    // esattamente a 40 lascerebbe il timer sul filo, e un test che passa
+    // o fallisce a seconda di come è andata l'ultimo millisecondo non
+    // sta provando niente.
+    await avanzare(15);
+    expect(scena.className).toContain("opacity-100");
+    await avanzare(10);
     expect(scena.className).toContain("opacity-0");
 
-    // ...e finito, l'app è sotto.
-    await attendere(800);
+    // ...e finito, l'app è sotto. La chiusura dura 700 ms dopo l'inizio
+    // del dissolvenza.
+    await avanzare(800);
     expect(contenitore.textContent).toContain("il contenuto dell'app");
   });
 
@@ -91,7 +121,7 @@ describe("Schermata di apertura", () => {
     const viste = new Set<string>();
     for (let apertura = 0; apertura < 4; apertura += 1) {
       viste.add(await apri(10));
-      await attendere(800);
+      await avanzare(800);
     }
     // Quattro aperture: la probabilità di quattro frasi identiche con un
     // archivio di 50 è trascurabile, quindi qui si prende un bug.
