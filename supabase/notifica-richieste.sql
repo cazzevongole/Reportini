@@ -113,15 +113,18 @@ begin
       'creata', new.created_at,
       'destinatari', to_jsonb(destinatari)
     ),
-    params := jsonb_build_object(
-      'headers', jsonb_build_object(
-        'content-type', 'application/json',
-        'x-reportini-notifica', chiave_notifica
-      ),
-      -- Una richiesta che non risponde entro cinque secondi non deve
-      -- trattenere la transazione dell'utente.
-      'timeout_milliseconds', 5000
+    -- `headers` è un argomento a sé, non una chiave dentro `params`: `params`
+    -- è per i parametri che vanno appesi alla URL, e una chiave finita lì
+    -- finisce nell'indirizzo della richiesta, dove finiscono i log.
+    --
+    -- Il `content-type` non serve scriverlo: `net.http_post` lo mette già di
+    -- default, e scriverlo è solo un modo di metterlo due volte.
+    headers := jsonb_build_object(
+      'x-reportini-notifica', chiave_notifica
     )
+    -- `timeout_milliseconds` c'è ma `pg_net` lo ignora: la richiesta è in
+    -- coda e non blocca la transazione dell'utente comunque, quindi non
+    -- serve a nulla scriverlo per far sembrare il trigger più sicuro.
   );
 
   return new;
