@@ -217,6 +217,13 @@ all'infinito.
 Il rilascio si può forzare a mano: *Actions → Versione e rilascio desktop → Run workflow*,
 scegliendo `minor` o `major` invece di `patch`, oppure indicando un `tag` da rilasciare.
 
+E non parte per niente quando il commit tocca solo ciò che non finisce nel pacchetto — le funzioni
+Supabase, i test, il README, gli script di CI, la formattazione. Il filtro è una lista di path in
+`paths-ignore`, e ogni riga che manca è un pacchetto identico al precedente pubblicato come nuovo:
+è successo con un aggiornamento di dipendenze e con un ritocco alla documentazione. Ciò che non ci
+va mai in lista è `src/`, `public/`, `index.html` e la configurazione di build: un commit che li
+tocca cambia l'app che l'utente scarica, e per quello il rilascio serve.
+
 La build desktop usa `BASE_PATH` vuoto e `ELECTRON=1`, che forza la base **relativa**:
 l'app si apre da `file://`, e un percorso assoluto come `/assets/app.js` li punterebbe alla
 radice del filesystem, dove non c'è nulla — il pacchetto si aprirebbe bianco. `baseRoutte()`
@@ -417,7 +424,10 @@ supabase/notifica-richieste.sql
 
 Il file contiene anche i due segreti da scrivere a mano nel **Vault** (`notifica_richieste_url`
 e `notifica_richieste_chiave`), perché il trigger deve poter chiamare la funzione e la chiave non
-può stare in una tabella che chiunque legge. Istruzioni e testo esatto sono in testa al file.
+può stare in una tabella che chiunque legge. Istruzioni e testo esatto sono in testa al file, dove
+l'indirizzo è un segnaposto `{{REF}}` da sostituire con il reference del progetto: nel repository
+non c'è nessun ref scritto, perché un ref copiato a mano e sbagliato dà un `401` che non dice
+niente, e un test fallisce se dentro compare.
 
 Il `--no-verify-jwt` è inevitabile — a chiamare è il database, che non ha un JWT da mostrare — e
 il suo costo è una porta aperta a chiunque trovi l'URL. Chi lo fa può solo mandare una mail a
@@ -819,6 +829,13 @@ I test vitest coprono ventuno file; questi sono quelli che meritano una riga:
   destinatari vengono filtrati e deduplicati, una lista vuota dà un messaggio `null` invece di
   un'eccezione, e i segreti mancanti vengono elencati **per nome**: un `503` che dice solo
   «manca qualcosa» fa perdere il tempo a cercare il segreto nel posto sbagliato.
+- `tests/notifica-sql.test.ts` custodisce lo script SQL della notifica, che il repository non
+  esegue mai e che nessuno rilegge prima di incollarlo nella console di Supabase: nessun ref
+  scritto a mano al posto del segnaposto, le intestazioni nell'argomento giusto di `net.http_post`
+  e non dentro `params` — che è l'errore che ha fatto finire la chiave nell'URL e ha lasciato la
+  funzione a uno `401` senza spiegazione —, un solo trigger, e lo stesso nome d'intestazione fra
+  il trigger e la funzione, che sono le due cose che devono accordarsi senza avere un posto dove
+  accordarsi.
 - `tests/edge-function.test.ts` prova il confronto fra il codice nel repository e quello
   pubblicato su Supabase, che vale per **entrambe** le funzioni e **file per file**: una funzione
   aggiunta all'elenco con un file in più (`corpo.ts` accanto a `index.ts`) resterebbe fuori dal

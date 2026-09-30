@@ -36,10 +36,11 @@ name: Versione e rilascio desktop
 # 2. Ciò che non entra nel pacchetto desktop. La web e il desktop sono lo
 #    stesso codice — il pacchetto è la build di src/ copiata in
 #    electron/renderer — quindi qui si possono ignorare solo i file che
-#    davvero non ci arrivano: le funzioni Supabase, la documentazione, i
-#    workflow di CI e di deploy della web, e i test. src/, public/, index.html
-#    e la configurazione di build non ci sono e non possono esserci: un
-#    commit che li tocca cambia l'app che l'utente scarica, e per quello il
+#    davvero non ci arrivano: le funzioni Supabase, la documentazione, gli
+#    script di CI e di versione, i file di configurazione della formattazione,
+#    i workflow di CI e di deploy della web, e i test. src/, public/,
+#    index.html e la configurazione di build non ci sono e non possono esserci:
+#    un commit che li tocca cambia l'app che l'utente scarica, e per quello il
 #    rilascio serve.
 
 on:
@@ -56,6 +57,8 @@ on:
       - "tests/**"
       - "README.md"
       - ".gitignore"
+      - "scripts/**"
+      - ".prettierignore"
       - ".github/workflows/ci.yml"
       - ".github/workflows/deploy-pages.yml"
       # Anche questo workflow è "non finisce nel pacchetto", e per la stessa

@@ -22,8 +22,14 @@
 -- segreti il trigger esiste ma non fa niente, e lo dice con un avviso nella
 -- console, non con un errore all'utente.
 --
+-- `{{REF}}` va sostituito con il reference del progetto, che è la parte fra
+-- `https://` e `.supabase.co` nell'indirizzo del dashboard. Il segnaposto è un
+-- segnaposto e non un ref vero: nessun ref sta scritto in questo file, perché
+-- un ref copiato a mano e sbagliato dà un `401` che non spiega nulla, e
+-- `tests/notifica-sql.test.ts` fallisce se qui dentro ne compare uno.
+--
 --   select vault.create_secret(
---     'https://<ref>.supabase.co/functions/v1/notifica-richiesta',
+--     'https://{{REF}}.supabase.co/functions/v1/notifica-richiesta',
 --     'notifica_richieste_url',
 --     'Indirizzo della Edge Function che manda le mail'
 --   );
@@ -31,7 +37,7 @@
 --   select vault.create_secret(
 --     '<stringa lunga e casuale>',
 --     'notifica_richieste_chiave',
---     'Stessa stringa del secret NOTIFICA_CHIAVE della funzione'
+--     'Chiave che la Edge Function verifica con notifica_chiave_valida()'
 --   );
 --
 -- La stringa casuale si genera come si vuole, purché non sia una parola:
