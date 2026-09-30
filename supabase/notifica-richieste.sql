@@ -37,10 +37,18 @@
 -- La stringa casuale si genera come si vuole, purché non sia una parola:
 --   openssl rand -hex 32
 --
--- Attenzione a una cosa che sembra un dettaglio. La chiave nel Vault e il
--- secret NOTIFICA_CHIAVE della funzione devono essere **la stessa stringa**:
--- il trigger la manda nell'intestazione `x-reportini-notifica` e la funzione
--- la confronta. Sono le due metà di una coppia, non due chiavi diverse.
+-- Attenzione a una cosa che sembra un dettaglio e non lo è. La chiave sta
+-- **soltanto qui dentro**, nel Vault: il trigger la prende e la manda
+-- nell'intestazione `x-reportini-notifica`, e la Edge Function non ha una copia
+-- propria con cui confrontarla — chiede a questo database, con la funzione
+-- `notifica_chiave_valida` in fondo al file, se quella che ha in mano è
+-- ancora quella di adesso.
+--
+-- Prima era diverso: la stessa chiave era nel Vault *e* in un secret della
+-- funzione, e le due copie potevano divergere. Quando succedeva, l'unico
+-- sintomo era un `401` che non diceva niente — né quale delle due fosse
+-- quella sbagliata, né se l'intestazione fosse arrivata. Con una copia sola
+-- non c'è più niente da tenere allineato.
 
 /* ------------------------------- estensioni ------------------------------- */
 
@@ -127,6 +135,42 @@ create or replace trigger richieste_avviso_mail
   after insert on public.richieste
   for each row execute function public.manda_avviso_richiesta();
 
+/* ------------------------- la verifica della chiave ------------------------ */
+
+-- L'altra metà del rimozzo della copia. La Edge Function riceve la chiave
+-- nell'intestazione e la riporta qui: questa funzione risponde solo se è
+-- quella che il Vault conosce *adesso*.
+--
+-- Perché non basta un confronto dentro la funzione: le due copie del
+-- segreto erano proprio il problema, perché potevano divergere senza che
+-- nessuno lo dicesse.
+--
+-- Chi può chiedere. Solo il `service_role`, cioè la Edge Function con la sua
+-- chiave di servizio. Chiunque altro — un client anonimo che abbia indovinato
+-- l'indirizzo della funzione PostgREST — riceve `false` senza che la funzione
+-- confronti niente. Non è che la risposta sia un segreto: è che due `false` e
+-- due `true` non dicono a un indovino quale delle due chiave sia quella buona.
+create or replace function public.notifica_chiave_valida(p text)
+returns boolean
+language sql
+security definer
+set search_path = public
+as $$
+  select case
+    when coalesce(
+      nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role',
+      ''
+    ) <> 'service_role' then false
+    else coalesce(
+      p = (
+        select decrypted_secret from vault.decrypted_secrets
+        where name = 'notifica_richieste_chiave'
+      ),
+      false
+    )
+  end;
+$$;
+
 /* ------------------------------ se qualcosa va storto ---------------------- */
 
 -- pg_net non aspetta la risposta: accoda la richiesta e va avanti. Quando la
@@ -135,9 +179,16 @@ create or replace trigger richieste_avviso_mail
 --   select id, status_code, left(content, 300) as risposta
 --   from net._http_response order by id desc limit 5;
 --
--- Le righe hanno `status_code` fra 200 e 299 se è andata. Un 401 vuol dire che
--- la chiave nel Vault e il secret della funzione non coincidono; un 503 che
--- manca un segreto; un 502 con `domain is not verified` che il mittente non è
--- un dominio verificato su Resend.
+-- Cosa dicono i codici, ora che la chiave ha una copia sola:
+--
+--   200  inviata. Nel corpo c'è `inviata: true` e l'id del messaggio Resend.
+--   401  il Vault non riconosce la chiave arrivata. Con una copia sola non
+--        può voler dire che sono diverse: vuol dire che l'intestazione non è
+--        arrivata (rigenera il trigger con questo file) o che nel Vault la
+--        chiave è un'altra. Per il lungo: `select decrypted_secret from
+--        vault.decrypted_secrets where name = 'notifica_richieste_chiave'`.
+--   503  manca un segreto alla funzione, oppure questo file non è stato
+--        rieseguito e `notifica_chiave_valida` non esiste: il corpo lo dice.
+--   502  Resend ha rifiutato, quasi sempre `domain is not verified`.
 --
 -- Le richieste accodate ma non ancora eseguite stanno in `net.http_curl_queue`.

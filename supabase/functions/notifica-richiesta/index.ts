@@ -18,11 +18,20 @@
 // database e non ha un JWT da mostrare, quindi la funzione va pubblicata con
 // `--no-verify-jwt`. Il prezzo sarebbe una porta aperta a chiunque: chi trova
 // l'URL potrebbe mandare a chi sviluppa mail a suo nome, e ripeterlo fino a
-// riempire la casella di utenti che non hanno scritto niente. Il rimedio è la
-// chiave condivisa: il trigger la prende dal Vault, questa funzione la
-// confronta con il proprio segreto, e senza quella coppia la richiesta non
-// esce. La chiave non sta nel repository (il SQL la legge dal Vault a runtime)
-// e non sta nel bundle.
+// riempire la casella di utenti che non hanno scritto niente. Il rimedio è una
+// chiave: il trigger la prende dal Vault e la manda nell'intestazione
+// `x-reportini-notifica`.
+//
+// La chiave sta in un posto solo, il Vault. Questa funzione non ne ha una
+// copia: riporta al database quella che ha ricevuto e gli chiede, con
+// `notifica_chiave_valida`, se è ancora quella valida. Prima la copia esisteva
+// anche come secret della funzione, ed è stato proprio quello il difetto: le
+// due copie potevano divergere e l'unico sintomo era un `401` che non diceva
+// se l'intestazione non era arrivata o se erano diverse. Una copia sola
+// elimina la metà di quel dubbio e rende l'altra metà verificabile.
+//
+// La chiave non sta nel repository, non sta nel bundle e non sta in nessun
+// secret: il repository contiene il nome sotto cui cercarla, non il valore.
 //
 // Destinatari. Li manda il trigger, non questa funzione: sono gli indirizzi
 // della tabella `sviluppatori`, gli stessi che decidono chi può vedere la
@@ -32,66 +41,57 @@
 // Deploy (una volta sola):
 //   supabase functions deploy notifica-richiesta --no-verify-jwt
 //   supabase secrets set RESEND_API_KEY=<chiave Resend>
-//   supabase secrets set NOTIFICA_CHIAVE=<stringa lunga e casuale>
 //   supabase secrets set RESEND_MITTENTE=Reportini <segnalazioni@dominio.verificato>
 //   supabase secrets set SITO_URL=https://reportini.cazzevongole.com
 //
-// Poi, una volta sola anche lui, il trigger:
+// Poi, una volta sola anche lui, il trigger, che è dove sta la chiave:
 //   supabase/notifica-richieste.sql
+//
+// Nessun secret NOTIFICA_CHIAVE: se ne trova uno da un setup precedente si può
+// cancellare, non è più letto da niente.
 //
 // Sul mittente: Resend accetta la posta solo da un dominio verificato (o dal
 // proprio indirizzo di prova, che può scrivere solo a chi ha l'account). Se la
 // funzione risponde 502 con `domain is not verified`, il problema è lì e non
 // qui: si verifica il dominio su Resend e si ricarica `RESEND_MITTENTE`.
 
-import { costruisciMessaggio, type RichiestaNotifica } from "./corpo.ts";
+import { costruisciMessaggio, segretiMancanti, type RichiestaNotifica, type Segreti } from "./corpo.ts";
 
 const ORIGINE_RESEND = "https://api.resend.com/emails";
 
-interface Env {
-  /** Chiave dell'API di Resend. */
-  RESEND_API_KEY?: string;
-  /** La metà della coppia col Vault: senza, non si accetta nessuna chiamata. */
-  NOTIFICA_CHIAVE?: string;
-  /** Mittente, nella forma `Nome <indirizzo>`. */
-  RESEND_MITTENTE?: string;
-  /** Dove si risponde: la sezione sviluppo. */
-  SITO_URL?: string;
-}
+type Env = Segreti;
 
 /** L'intestazione che il trigger manda, e nessun'altra. */
 const INTESTAZIONE_CHIAVE = "x-reportini-notifica";
 
-/**
- * Confronto a tempo costante.
- *
- * Il segreto è una stringa, non una chiave crittografica: il confronto
- * "semplice" sarebbe già abbastanza, ma questo costa quattro righe e toglie
- * una classe di domande ("è davvero uguale?") dalla discussione. La lunghezza
- * si controlla prima, perché su stringhe di lunghezza diversa l'uscita
- * "tempo costante" non avrebbe senso.
- */
-function confrontoCostante(atteso: string, ricevuto: string): boolean {
-  if (atteso.length !== ricevuto.length) return false;
-  let differenze = 0;
-  for (let i = 0; i < atteso.length; i++) {
-    differenze |= atteso.charCodeAt(i) ^ ricevuto.charCodeAt(i);
-  }
-  return differenze === 0;
-}
+/** La funzione SQL che sa se una chiave è ancora quella buona. */
+const RPC_CHIAVE = "notifica_chiave_valida";
+
+/** Cosa è venuto a dire il database sulla chiave ricevuta. */
+type Verdetto = "accettata" | "rifiutata" | "non_verificabile";
 
 /**
- * La chiamata arriva dal database?
+ * Il database decide, non questa funzione.
  *
- * Se `NOTIFICA_CHIAVE` non è impostata non si accetta *nessuna* richiesta,
- * nemmeno quelle senza intestazione: una funzione appena pubblicata senza
- * segreti che rispondesse "va bene" a chiunque sarebbe una porta spalancata,
- * e il sintomo (mail a chi non ha scritto niente) comparirebbe solo dopo.
+ * `false` e un errore sono due risposte diverse: `false` vuol dire che la
+ * chiave non è quella (401, la chiamata non esce), un errore vuol dire che non
+ * si è potuto chiedere (503, la funzione è viva ma non può decidere). Il
+ * secondo caso è quello in cui un `401` sarebbe bugiardo: si punirebbe il
+ * chiamante per un problema nostro.
  */
-function chiamataAutorizzata(richiesta: Request, env: Env): boolean {
-  const atteso = env.NOTIFICA_CHIAVE ?? "";
-  if (!atteso) return false;
-  return confrontoCostante(atteso, richiesta.headers.get(INTESTAZIONE_CHIAVE) ?? "");
+async function verificaChiave(ricevuta: string, env: Env): Promise<Verdetto> {
+  const chiave = env.SUPABASE_SERVICE_ROLE_KEY as string;
+  const risposta = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/${RPC_CHIAVE}`, {
+    method: "POST",
+    headers: {
+      apikey: chiave,
+      Authorization: `Bearer ${chiave}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ p: ricevuta }),
+  });
+  if (!risposta.ok) return "non_verificabile";
+  return (await risposta.json()) === true ? "accettata" : "rifiutata";
 }
 
 function json(corpo: unknown, stato: number): Response {
@@ -108,11 +108,7 @@ Deno.serve(async (richiesta: Request): Promise<Response> => {
     return json({ errore: "Serve un POST." }, 405);
   }
 
-  const mancanti = [
-    env.RESEND_API_KEY ? "" : "RESEND_API_KEY",
-    env.NOTIFICA_CHIAVE ? "" : "NOTIFICA_CHIAVE",
-    env.RESEND_MITTENTE ? "" : "RESEND_MITTENTE",
-  ].filter(Boolean);
+  const mancanti = segretiMancanti(env);
   if (mancanti.length > 0) {
     // 503 e non 500: non è un bug, è una funzione pubblicata senza segreti.
     return json(
@@ -125,10 +121,41 @@ Deno.serve(async (richiesta: Request): Promise<Response> => {
     );
   }
 
-  // 401 senza corpo: a chi non è il database non serve sapere quale sia il
-  // segreto, né quante richieste mancano per indovinarlo a forza.
-  if (!chiamataAutorizzata(richiesta, env)) {
-    console.error("notifica-richiesta: chiamata senza chiave valida");
+  const ricevuta = richiesta.headers.get(INTESTAZIONE_CHIAVE) ?? "";
+  let verdetto: Verdetto;
+  try {
+    verdetto = await verificaChiave(ricevuta, env);
+  } catch (causa) {
+    console.error("notifica-richiesta: il database non risponde", causa);
+    verdetto = "non_verificabile";
+  }
+
+  if (verdetto === "non_verificabile") {
+    // Quasi sempre è il file SQL non eseguito: `notifica_chiave_valida` non
+    // esiste e PostgREST risponde 404. Il corpo lo dice, perché un 503 qui
+    // sembrerebbe un segreto mancante e porterebrebbe a cercarlo nel posto
+    // sbagliato.
+    console.error("notifica-richiesta: il database non sa verificare la chiave");
+    return json(
+      {
+        errore:
+          `Il database non espone ${RPC_CHIAVE}(). ` +
+          "Esegui supabase/notifica-richieste.sql nella console SQL.",
+      },
+      503,
+    );
+  }
+
+  if (verdetto === "rifiutata") {
+    // Il 401 non dice nulla a chi lo riceve, di proposito: a chi non è il
+    // database non serve sapere quale sia la chiave, né quante richieste
+    // mancano per indovinarla a forza. Nel log invece ci finisce la lunghezza
+    // di quello che è arrivato, che è la differenza fra «l'intestazione non è
+    // arrivata» (zero caratteri) e «è arrivata ma il Vault ne contiene un
+    //'altra»: due problemi che fino a poco tempo fa erano indistinguibili.
+    console.error(
+      `notifica-richiesta: chiave rifiutata dal database, ${ricevuta.length} caratteri ricevuti`,
+    );
     return json({ errore: "Chiamata non autorizzata." }, 401);
   }
 

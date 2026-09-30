@@ -46,6 +46,38 @@ export interface Opzioni {
   sito?: string;
 }
 
+/**
+ * Ciò che la funzione si trova nell'ambiente.
+ *
+ * `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` non li mette nessuno: li
+ * inietta Supabase in ogni Edge Function. Ci sono perché senza quelli non c'è
+ * modo di chiedere al database se la chiave sia quella giusta, e una funzione
+ * che non può chiedere deve dire che non può, invece di accettare.
+ */
+export interface Segreti {
+  RESEND_API_KEY?: string;
+  RESEND_MITTENTE?: string;
+  SITO_URL?: string;
+  SUPABASE_URL?: string;
+  SUPABASE_SERVICE_ROLE_KEY?: string;
+}
+
+/**
+ * I segreti che mancano, per nome.
+ *
+ * Nomi e non un conteggio: il 503 li elenca, e «manca qualcosa» senza dire
+ * cosa è un errore che si ripresenta a ogni tentativo.
+ */
+export function segretiMancanti(segreti: Segreti): string[] {
+  const necessari = [
+    "RESEND_API_KEY",
+    "RESEND_MITTENTE",
+    "SUPABASE_URL",
+    "SUPABASE_SERVICE_ROLE_KEY",
+  ] as const;
+  return necessari.filter((nome) => !segreti[nome]);
+}
+
 /** Etichetta leggibile per il tipo, senza dipendere dalla lingua del codice. */
 const ETICHETTE: Record<string, string> = {
   fix: "Qualcosa non va",

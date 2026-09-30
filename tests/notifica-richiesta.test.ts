@@ -14,6 +14,7 @@ import {
   costruisciMessaggio,
   indirizziValidi,
   oggetto,
+  segretiMancanti,
   sfuggiHtml,
 } from "../supabase/functions/notifica-richiesta/corpo.ts";
 
@@ -188,5 +189,45 @@ describe("Il messaggio", () => {
     // La barra finale non deve raddoppiare lo slash: doppio slash su alcuni
     // server è un'altra pagina, e su altri un errore.
     expect(messaggio?.html).not.toContain("com//panel");
+  });
+});
+
+describe("I segreti che servono", () => {
+  const COMPLETI = {
+    RESEND_API_KEY: "re_1",
+    RESEND_MITTENTE: "Reportini <segnalazioni@cazzevongole.com>",
+    SUPABASE_URL: "https://esempio.supabase.co",
+    SUPABASE_SERVICE_ROLE_KEY: "sb_secret_1",
+  };
+
+  it("non manca niente quando la funzione è stata pubblicata come si deve", () => {
+    expect(segretiMancanti(COMPLETI)).toEqual([]);
+  });
+
+  it("elenca per nome ciò che manca", () => {
+    // Un 503 che dice solo «manca qualcosa» fa perdere il tempo a cercare il
+    // segreto nel posto sbagliato: i due che mancano sono quasi sempre la
+    // chiave di Resend e il mittente non verificato.
+    const { RESEND_API_KEY: _, RESEND_MITTENTE: __, ...incompleti } = COMPLETI;
+    expect(segretiMancanti(incompleti)).toEqual(["RESEND_API_KEY", "RESEND_MITTENTE"]);
+  });
+
+  it("chiede anche quelli per cui parlare al database", () => {
+    // Sono quelli che inietta Supabase, non uno che si carica a mano: senza
+    // di loro la funzione non può chiedere se la chiave sia buona, e una
+    // funzione che non può chiedere deve dirlo invece di accettare.
+    expect(
+      segretiMancanti({
+        RESEND_API_KEY: "re_1",
+        RESEND_MITTENTE: "Reportini <a@example.it>",
+      }),
+    ).toEqual(["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]);
+  });
+
+  it("non si accontenta di una stringa vuota", () => {
+    // Un secret impostato a stringa vuota è un secret che non c'è: la
+    // funzione deve accorgersene prima di chiamare Resend e riceverne un
+    // errore che parla d'API.
+    expect(segretiMancanti({ ...COMPLETI, RESEND_API_KEY: "" })).toEqual(["RESEND_API_KEY"]);
   });
 });

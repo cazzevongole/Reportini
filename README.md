@@ -390,7 +390,7 @@ se il browser è già chiuso.
 | Domanda | Risposta |
 | --- | --- |
 | Chi riceve | gli indirizzi di `public.sviluppatori`, gli stessi della sezione nascosta |
-| Chi può farsi mandare la mail a nome proprio | nessuno: serve una chiave che sta solo nel Vault e nei secret |
+| Chi può farsi mandare la mail a nome proprio | nessuno: serve una chiave, e sta **solo** nel Vault |
 | Cosa contiene | titolo e corpo della richiesta, l'email di chi l'ha scritta, l'ora, e un link alla sezione sviluppo |
 | Dove si risponde all'utente | nella sezione nascosta, non per mail: la risposta alla mail non lascia traccia nell'app |
 | Se non c'è nessuno in `sviluppatori` | avviso nella console del database, e la richiesta resta comunque salvata |
@@ -404,7 +404,6 @@ se il browser è già chiuso.
 supabase link --project-ref <ref>
 supabase functions deploy notifica-richiesta --no-verify-jwt
 supabase secrets set RESEND_API_KEY=<chiave resend>
-supabase secrets set NOTIFICA_CHIAVE=<stringa lunga e casuale>
 supabase secrets set RESEND_MITTENTE=Reportini <segnalazioni@dominio.verificato>
 supabase secrets set SITO_URL=https://reportini.cazzevongole.com
 ```
@@ -422,9 +421,16 @@ può stare in una tabella che chiunque legge. Istruzioni e testo esatto sono in 
 
 Il `--no-verify-jwt` è inevitabile — a chiamare è il database, che non ha un JWT da mostrare — e
 il suo costo è una porta aperta a chiunque trovi l'URL. Chi lo fa può solo mandare una mail a
-nome tuo, e la chiave condivisa lo ferma: senza l'intestazione `x-reportini-notifica` giusta la
-funzione risponde `401` e non manda niente. `NOTIFICA_CHIAVE` e la chiave nel Vault sono **la
-stessa stringa**: sono le due metà di una coppia.
+nome tuo, e la chiave lo ferma: senza l'intestazione `x-reportini-notifica` giusta la funzione
+risponde `401` e non manda niente.
+
+**Dove sta la chiave, e perché è una cosa sola.** Il trigger la prende dal Vault e la manda
+nell'intestazione; la funzione non ne tiene una copia, la riporta al database con la funzione SQL
+`notifica_chiave_valida` e gli chiede se è ancora quella valida. Prima la copia esisteva anche
+come secret della funzione, ed è stato proprio quello il difetto: le due copie potevano divergere
+e l'unico sintomo era un `401` che non diceva se l'intestazione non era arrivata o se erano
+diverse — due problemi che si risolvono in modo opposto. **Nel Vault c'è una chiave sola**: se la
+cambi lì, basta cambiare lì, e non c'è nessun `supabase secrets set` da tenere allineato.
 
 **Se la mail non arriva**, il primo posto dove guardare non è la casella ma la coda del database,
 perché `pg_net` non aspetta la risposta e l'inserimento della richiesta riesce comunque:
@@ -434,9 +440,13 @@ select id, status_code, left(content, 300) as risposta
 from net._http_response order by id desc limit 5;
 ```
 
-`200` vuol dire inviata. `401` che le due metà della coppia non coincidono, `503` che manca un
-segreto, `502` con `domain is not verified` che il mittente non è un dominio verificato su
-Resend. Quello che è partito ma non è ancora uscito sta in `net.http_curl_queue`.
+`200` vuol dire inviata. `401` che il Vault non riconosce la chiave arrivata, e con una copia sola
+non può voler dire che sono diverse: vuol dire che l'intestazione non è arrivata (rigenera il
+trigger rieseguendo il file) o che nel Vault la chiave è un'altra. `503` che manca un segreto, o
+che il file SQL non è stato rieseguito e la funzione di verifica non esiste — il corpo del
+messaggio dice quale delle due. `502` con `domain is not verified` che il mittente non è un
+dominio verificato su Resend. Quello che è partito ma non è ancora uscito sta in
+`net.http_curl_queue`.
 
 Sul testo della mail: `titolo` e `corpo` li scrive chiunque abbia un account e finiscono dentro
 un documento HTML, quindi vengono **escapati** prima di diventare markup
@@ -806,8 +816,9 @@ I test vitest coprono ventuno file; questi sono quelli che meritano una riga:
   errore non si vede subito: il titolo e il corpo dell'utente vengono **escapati** prima di
   diventare HTML (con l'ampersand per primo, altrimenti l'utente vedrebbe `&amp;lt;` sparso
   nella mail), l'oggetto viene accorciato **compreso il prefisso** e non solo il titolo, i
-  destinatari vengono filtrati e deduplicati, e una lista vuota dà un messaggio `null` invece
-  di un'eccezione.
+  destinatari vengono filtrati e deduplicati, una lista vuota dà un messaggio `null` invece di
+  un'eccezione, e i segreti mancanti vengono elencati **per nome**: un `503` che dice solo
+  «manca qualcosa» fa perdere il tempo a cercare il segreto nel posto sbagliato.
 - `tests/edge-function.test.ts` prova il confronto fra il codice nel repository e quello
   pubblicato su Supabase, che vale per **entrambe** le funzioni e **file per file**: una funzione
   aggiunta all'elenco con un file in più (`corpo.ts` accanto a `index.ts`) resterebbe fuori dal
