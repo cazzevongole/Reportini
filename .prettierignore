@@ -8,10 +8,10 @@
 # illeggibile dentro un diff pieno di virgolette e tabelle riallineate.
 *.md
 
-# La funzione su Supabase viene confrontata, carattere per carattere, con
-# quella pubblicata (scripts/verifica-edge-function.mjs). Riformattarla
-# senza ripubblicarla farebbe fallire quel controllo, e ripubblicarla per
-# cinque righe di spazi non vale la pena. Va formattata insieme alla
+# Le funzioni su Supabase vengono confrontate, carattere per carattere, con
+# quelle pubblicate (scripts/verifica-edge-function.mjs). Riformattarle
+# senza ripublicarle farebbe fallire quel controllo, e ripubblicarle per
+# cinque righe di spazi non vale la pena. Vanno formattate insieme alla
 # prossima modifica vera del codice.
 supabase/
 

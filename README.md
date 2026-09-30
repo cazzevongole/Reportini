@@ -188,7 +188,7 @@ La versione non sta in una discussione: sale da sola.
 
 | Dove | Cosa fa |
 | --- | --- |
-| `scripts/verifica-edge-function.mjs` | confronta il codice della Edge Function nel repository con quello pubblicato su Supabase, e dice quale dei due è da cambiare |
+| `scripts/verifica-edge-function.mjs` | confronta il codice delle Edge Function nel repository (file per file) con quello pubblicato su Supabase, e dice quale dei due è da cambiare |
 | `scripts/versione.mjs` | **un unico script per la versione**: senza argomenti controlla che le copie coincidano e che il tag sia quello giusto; con `patch`, `minor` o `major` alza la versione in `package.json` e in `electron/package.json` e scrive il `CHANGELOG.md` |
 | `.github/workflows/release-electron.yml` | **un unico workflow**: a ogni merge su `master` alza la versione, crea il tag, costruisce i pacchetti (mac, Windows, Linux) e pubblica la release come **latest** |
 
@@ -328,6 +328,10 @@ Nelle impostazioni c'è una sezione **Chiedilo allo sviluppatore**: si scrive co
 (fix) o cosa dovrebbe poter fare il programma (funzionalità), e sotto si vanno le proprie
 richieste con lo stato — *da leggere*, *in corso*, *risolta* — e la risposta quando arriva.
 
+Ogni richiesta nuova **fa anche arrivare una mail** a chi sviluppa: è un avviso, non un archivio,
+e la sezione nascosta resta il posto in cui si legge e si risponde. Come è montata è descritto
+più giù, in *Quando un utente scrive, arriva una mail*.
+
 Alla URL `/panel/sviluppo` c'è la **sezione nascosta dello sviluppatore**: non è nella barra
 e non la vede nessun altro. Chi non è lo sviluppatore viene rimandato al pannello.
 
@@ -367,6 +371,79 @@ Poi la riga unica da scrivere a mano, dentro lo stesso script, è in fondo al fi
 Se lo script non è stato eseguito l'app **non si rompe e lo dice**: al posto del modulo compare
 un avviso che nomina il file da eseguire, e la sezione nascosta spiega lo stesso invece di
 mandarti fuori con un errore generico.
+
+### Quando un utente scrive, arriva una mail
+
+Una richiesta nuova non resta in una tabella in attesa che qualcuno ci guarda: **arriva una mail**
+a ogni indirizzo della tabella `sviluppatori`. La catena è tutta sul database, e l'app non c'è:
+
+```
+utente scrive  →  riga in public.richieste  →  trigger  →  Edge Function  →  Resend  →  mail
+```
+
+**Perché non la manda l'app.** Se la chiamasse il browser, il messaggio partirebbe solo se la
+scheda restasse aperta un secondo dopo l'invio, e sono due secondi che nessuno garantisce: chi
+preme "Invia" e chiude il portatile lascerebbe una richiesta senza avviso e senza traccia. Qui
+invece a far partire la mail è la riga appena scritta nella tabella, quindi l'avviso arriva anche
+se il browser è già chiuso.
+
+| Domanda | Risposta |
+| --- | --- |
+| Chi riceve | gli indirizzi di `public.sviluppatori`, gli stessi della sezione nascosta |
+| Chi può farsi mandare la mail a nome proprio | nessuno: serve una chiave che sta solo nel Vault e nei secret |
+| Cosa contiene | titolo e corpo della richiesta, l'email di chi l'ha scritta, l'ora, e un link alla sezione sviluppo |
+| Dove si risponde all'utente | nella sezione nascosta, non per mail: la risposta alla mail non lascia traccia nell'app |
+| Se non c'è nessuno in `sviluppatori` | avviso nella console del database, e la richiesta resta comunque salvata |
+
+**Per metterlo in piedi** (una volta sola), nell'ordine:
+
+1. Su [resend.com](https://resend.com) verificare il dominio e prendere una chiave API.
+2. Pubblicare la funzione e caricare i segreti:
+
+```bash
+supabase link --project-ref <ref>
+supabase functions deploy notifica-richiesta --no-verify-jwt
+supabase secrets set RESEND_API_KEY=<chiave resend>
+supabase secrets set NOTIFICA_CHIAVE=<stringa lunga e casuale>
+supabase secrets set RESEND_MITTENTE=Reportini <segnalazioni@dominio.verificato>
+supabase secrets set SITO_URL=https://reportini.cazzevongole.com
+```
+
+3. Nella console SQL (*Dashboard → SQL Editor → New query*) eseguire:
+
+```bash
+# incolla e esegui il file
+supabase/notifica-richieste.sql
+```
+
+Il file contiene anche i due segreti da scrivere a mano nel **Vault** (`notifica_richieste_url`
+e `notifica_richieste_chiave`), perché il trigger deve poter chiamare la funzione e la chiave non
+può stare in una tabella che chiunque legge. Istruzioni e testo esatto sono in testa al file.
+
+Il `--no-verify-jwt` è inevitabile — a chiamare è il database, che non ha un JWT da mostrare — e
+il suo costo è una porta aperta a chiunque trovi l'URL. Chi lo fa può solo mandare una mail a
+nome tuo, e la chiave condivisa lo ferma: senza l'intestazione `x-reportini-notifica` giusta la
+funzione risponde `401` e non manda niente. `NOTIFICA_CHIAVE` e la chiave nel Vault sono **la
+stessa stringa**: sono le due metà di una coppia.
+
+**Se la mail non arriva**, il primo posto dove guardare non è la casella ma la coda del database,
+perché `pg_net` non aspetta la risposta e l'inserimento della richiesta riesce comunque:
+
+```sql
+select id, status_code, left(content, 300) as risposta
+from net._http_response order by id desc limit 5;
+```
+
+`200` vuol dire inviata. `401` che le due metà della coppia non coincidono, `503` che manca un
+segreto, `502` con `domain is not verified` che il mittente non è un dominio verificato su
+Resend. Quello che è partito ma non è ancora uscito sta in `net.http_curl_queue`.
+
+Sul testo della mail: `titolo` e `corpo` li scrive chiunque abbia un account e finiscono dentro
+un documento HTML, quindi vengono **escapati** prima di diventare markup
+(`supabase/functions/notifica-richiesta/corpo.ts`): senza, un utente potrebbe scrivere un
+`<a href="…">` e il titolo arriverebbe cliccabile, col mittente spoofato. Il `Reply-To` è
+l'indirizzo dell'utente, ma rispondere alla mail non registra niente nell'app: la risposta
+all'utente si scrive nella sezione sviluppo, che è l'unica che lui vede.
 
 ### Google: accesso e calendario insieme
 
@@ -725,6 +802,16 @@ I test vitest coprono ventuno file; questi sono quelli che meritano una riga:
   confronta: un canale che il preload invoca e il main non gestisce — o un gestore che nessuno
   chiama — non dà nessun errore a runtime, l'aggiornamento semplicemente non succede. Qui si
   accorge prima.
+- `tests/notifica-richiesta.test.ts` prova la costruzione della mail, che è la parte dove un
+  errore non si vede subito: il titolo e il corpo dell'utente vengono **escapati** prima di
+  diventare HTML (con l'ampersand per primo, altrimenti l'utente vedrebbe `&amp;lt;` sparso
+  nella mail), l'oggetto viene accorciato **compreso il prefisso** e non solo il titolo, i
+  destinatari vengono filtrati e deduplicati, e una lista vuota dà un messaggio `null` invece
+  di un'eccezione.
+- `tests/edge-function.test.ts` prova il confronto fra il codice nel repository e quello
+  pubblicato su Supabase, che vale per **entrambe** le funzioni e **file per file**: una funzione
+  aggiunta all'elenco con un file in più (`corpo.ts` accanto a `index.ts`) resterebbe fuori dal
+  controllo, ed è già successo che il controllo ne guardasse una sola.
 - `tests/richieste.test.tsx` prova "Chiedilo allo sviluppatore" con un Supabase finto che
   applica la stessa regola del database (un utente vede solo le proprie richieste, lo
   sviluppatore tutte): l'email viene dalla sessione, il titolo vuoto non parte, lo stato
