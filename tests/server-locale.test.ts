@@ -270,7 +270,11 @@ describe("Dove viene portato il rientro", () => {
 describe("Il percorso del file", () => {
   it("la radice è l'indice, e resta dentro", () => {
     const percorso = new URL("http://127.0.0.1/", "http://127.0.0.1");
-    expect(percorsoDi("/ragione", percorso)).toBe(path.join("/ragione", "index.html"));
+    // `path.resolve` e non `path.join`: il confronto con la radice è
+    // assoluto per necessità (è la difesa dal path traversal), e su Windows
+    // una radice come "/ragione" è un percorso senza unità — `path.join` la
+    // lascerebbe tale, e il confronto fallirebbe anche quando è tutto giusto.
+    expect(percorsoDi("/ragione", percorso)).toBe(path.resolve("/ragione", "index.html"));
   });
 
   it("un percorso codificato che sale viene rifiutato, non risolto", () => {
@@ -283,7 +287,7 @@ describe("Il percorso del file", () => {
   it("un percorso normale dentro la cartella si risolve", () => {
     const percorso = new URL("http://127.0.0.1/assets/app.js", "http://127.0.0.1");
     expect(percorsoDi(path.join("/ragione", "renderer"), percorso)).toBe(
-      path.join("/ragione", "renderer", "assets", "app.js"),
+      path.resolve("/ragione", "renderer", "assets", "app.js"),
     );
   });
 

@@ -52,6 +52,11 @@ on:
       - "package.json"
       - "electron/package.json"
       - "CHANGELOG.md"
+      # L'ordine di livello: dice al prossimo rilascio quanto deve salire e
+      # viene cancellato quando è stato eseguito. Se non fosse qui, il
+      # commit che lo prepara farebbe partire un rilascio subito — con il
+      # livello che si voleva applicare *a quel* rilascio.
+      - ".rilascio"
       # Non finisce nel pacchetto: backend, documenti, CI, deploy della web.
       - "supabase/**"
       - "tests/**"
@@ -125,6 +130,16 @@ jobs:
           # Un tag spinto a mano rilascia quello che è, senza alzare niente:
           # il numero lo ha già deciso qualcuno.
           if [ "$REF_TIPO" = "tag" ]; then TAG="$REF_NOME"; fi
+
+          # Il file `.rilascio` nella radice, quando c'è, vale più di
+          # LIVELLO: è l'ordine esplicito per il prossimo rilascio ("questa
+          # volta minor") e vale anche quando il rilascio parte da solo, da un
+          # push su master. Lo script lo cancella dopo averlo usato, quindi un
+          # rilascio successivo torna al default.
+          if [ -f .rilascio ]; then
+            LIVELLO=$(tr -d '[:space:]' < .rilascio)
+            echo "Ordine di livello in .rilascio: $LIVELLO"
+          fi
 
           if [ -z "$TAG" ]; then
             # Push su master: qui la versione la decidiamo noi, e subito,

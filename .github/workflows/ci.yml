@@ -30,6 +30,17 @@ jobs:
           # un commit di package.json/bun.lock insieme a questa riga.
           bun-version: 1.4.2
 
+      # Anche Node fissato, per lo stesso motivo di bun. I test girano dentro
+      # jsdom, che carica un modulo ESM con `require()`: Node lo permette solo
+      # dalla 22.12. Senza questa riga la CI dipenderebbe dal Node che capita
+      # nell'immagine del runner, e un aggiornamento di quell'immagine
+      # romperebbe i test per un motivo che non ha niente a che fare con questo
+      # repository — che è il difetto che la versione di bun bloccata già
+      # evita per un'altra ragione.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
       - name: Installa le dipendenze
         run: bun install --frozen-lockfile
 

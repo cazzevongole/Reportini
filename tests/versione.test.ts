@@ -10,7 +10,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { problemi } from "../scripts/versione.mjs";
@@ -62,6 +62,60 @@ const alzaIn = (cartella: string, livello: string) =>
 
 const leggiVersione = (cartella: string, file: string) =>
   JSON.parse(readFileSync(join(cartella, file), "utf8")).version as string;
+
+describe("L'ordine in .rilascio", () => {
+  it("il livello viene da lì, e vale più della riga di comando", () => {
+    // Il caso per cui il file esiste: il workflow rilascia sempre con patch,
+    // e un modello dati che cambia deve uscire con un numero che lo dica.
+    const cartella = scenario("0.8.8");
+    try {
+      writeFileSync(join(cartella, ".rilascio"), "minor\n");
+      execFileSync("node", ["scripts/versione.mjs", "patch"], { cwd: cartella, stdio: "pipe" });
+      expect(leggiVersione(cartella, SORGENTE)).toBe("0.9.0");
+    } finally {
+      rmSync(cartella, { recursive: true, force: true });
+    }
+  });
+
+  it("dopo l'uso sparisce, o il rilascio dopo leverebbe minor due volte", () => {
+    const cartella = scenario("0.8.8");
+    try {
+      writeFileSync(join(cartella, ".rilascio"), "minor");
+      alzaIn(cartella, "patch");
+      expect(existsSync(join(cartella, ".rilascio"))).toBe(false);
+    } finally {
+      rmSync(cartella, { recursive: true, force: true });
+    }
+  });
+
+  it("se c'è ma non è un livello, si ferma invece di tirare a indovinare", () => {
+    // La metà peggiore sarebbe un fallback sul patch: si pubblicherebbe un
+    // numero che nessuno ha chiesto, e non ci sarebbe più modo di sapere che
+    // l'ordine era stato scritto male.
+    const cartella = scenario("0.8.8");
+    try {
+      writeFileSync(join(cartella, ".rilascio"), "enorme");
+      expect(() =>
+        execFileSync("node", ["scripts/versione.mjs", "patch"], { cwd: cartella, stdio: "pipe" }),
+      ).toThrow();
+      expect(leggiVersione(cartella, SORGENTE)).toBe("0.8.8");
+    } finally {
+      rmSync(cartella, { recursive: true, force: true });
+    }
+  });
+
+  it("un file vuoto non è un ordine", () => {
+    const cartella = scenario("0.8.8");
+    try {
+      writeFileSync(join(cartella, ".rilascio"), "\n");
+      expect(
+        execFileSync("node", ["scripts/versione.mjs"], { cwd: cartella, encoding: "utf8" }),
+      ).toContain("versione coerente: 0.8.8");
+    } finally {
+      rmSync(cartella, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("Versione del pacchetto", () => {
   it("è la stessa nel pacchetto principale e in quello di Electron", () => {

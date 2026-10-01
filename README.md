@@ -203,7 +203,8 @@ La versione non sta in una discussione: sale da sola.
 | Dove | Cosa fa |
 | --- | --- |
 | `scripts/verifica-edge-function.mjs` | confronta il codice delle Edge Function nel repository (file per file) con quello pubblicato su Supabase, e dice quale dei due è da cambiare |
-| `scripts/versione.mjs` | **un unico script per la versione**: senza argomenti controlla che le copie coincidano e che il tag sia quello giusto; con `patch`, `minor` o `major` alza la versione in `package.json` e in `electron/package.json` e scrive il `CHANGELOG.md` |
+| `scripts/versione.mjs` | **un unico script per la versione**: senza argomenti controlla che le copie coincidano e che il tag sia quello giusto; con `patch`, `minor` o `major` alza la versione in `package.json` e in `electron/package.json` e scrive il `CHANGELOG.md`. Un `.rilascio` nella radice vince sul suo argomento e viene cancellato dopo l'uso |
+| `scripts/verifica-node.mjs` | controlla che Node sia abbastanza recente per i test, e spiega cosa fare se non lo è |
 | `.github/workflows/release-electron.yml` | **un unico workflow**: a ogni merge su `master` alza la versione, crea il tag, costruisce i pacchetti (mac, Windows, Linux) e pubblica la release come **latest** |
 
 Versionare e rilasciare stanno **nello stesso workflow**, ed è voluto. Erano due, e la corsa fra
@@ -230,6 +231,28 @@ all'infinito.
 
 Il rilascio si può forzare a mano: *Actions → Versione e rilascio desktop → Run workflow*,
 scegliendo `minor` o `major` invece di `patch`, oppure indicando un `tag` da rilasciare.
+
+### Quando il rilascio non è una patch
+
+Il default del workflow è `patch`, che è giusto per quasi tutto: una correzione di refuso e
+una frase nuova sulla schermata di benvenuto sono la stessa cosa. Ma non per un **modello dati**,
+che cambia la forma dei dati e azzera quello che l'utenza aveva scritto: quello uscirebbe come
+0.2.11, lo stesso numero di un refuso, e nessuno capirebbe dal numero perché è saltato un
+campo.
+
+Per questi casi c'è **`.rilascio`**, un file nella radice che contiene `patch`, `minor` o `major`:
+
+```bash
+echo minor > .rilascio   # e poi si fa il push
+```
+
+Vale più della riga di comando e più del default del workflow, anche quando il rilascio parte
+da solo da un push su `master`. Viene **cancellato dopo l'uso**, perché un ordine eseguito è un
+ordine finito: lasciato, farebbe salire di minor anche il rilascio successivo. Se il file c'è ma
+contiene una parola che non è un livello, il rilascio **si ferma** invece di tirare a indovinare:
+pubblicare un numero che nessuno ha chiesto è peggio che non pubblicare niente. `.rilascio` è in
+`paths-ignore`, perché il commit che prepara l'ordine non deve far partire un rilascio: quello
+deve partire dal push *successivo*, quello con dentro il codice da rilasciare.
 
 E non parte per niente quando il commit tocca solo ciò che non finisce nel pacchetto — le funzioni
 Supabase, i test, il README, gli script di CI, la formattazione. Il filtro è una lista di path in
@@ -780,7 +803,31 @@ effetto collaterale di un upgrade.
 > variabili Supabase **rientra nei tetti e il controllo passa**: per accorgersene
 > guarda che `dist/assets/index-*.js` sia sui 460 kB circa, non sui 220.
 
-I test vitest coprono ventuno file; questi sono quelli che meritano una riga:
+### Node serve abbastanza recente
+
+I test hanno bisogno di **Node 22.12 o successivo**, e non è una scelta stylistica: l'ambiente
+di test è jsdom, jsdom arriva fino a `@exodus/bytes` con `require()`, e quel modulo è ESM puro.
+Node lo carica da `require()` solo dalla 22.12 — prima è `ERR_REQUIRE_ESM`, dentro un worker che
+muore mentre avvia e con una pila di frame che non porta da nessuna parte.
+
+È successo proprio in questo repository: la CI è su Node 24 e passa, ma sulla macchina di
+lavoro c'era Node 22.9 e la suite si fermava al primo file, con un errore che sembrava di jsdom e
+non era. `--experimental-require-module` sposta l'errore di un pezzo (emerge
+`webidl.util.markAsUncloneable is not a function`) senza toccare la causa vera.
+
+Non serve installare niente per dargli un'occhiata:
+
+```bash
+npx -y node@24 node_modules/vitest/vitest.mjs run
+```
+
+`scripts/verifica-node.mjs`, che gira prima di `vitest` in `test` e `test:ui`, controlla la
+versione e dice cosa fare; `package.json` lo dichiara in `engines.node`, così anche un
+installatore lo segnala. `vitest.config.ts` ripete il controllo per chi lancia `vitest`
+direttamente, ma arriva dopo che Vite ha costruito la configurazione: è la rete di sicurezza,
+non il primo avviso. Il motivo di tutto questo è in `scripts/verifica-node.mjs`, in testa al file.
+
+I test vitest coprono ventiquattro file; questi sono quelli che meritano una riga:
 
 - `tests/app.test.tsx` monta l'app reale in jsdom con un IndexedDB finto: è la rete che
   intercetta i crash a runtime (per esempio un dereferenziamento di `window.reportini` fatto al

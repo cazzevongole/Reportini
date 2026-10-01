@@ -2,6 +2,9 @@
   "name": "reportini",
   "private": true,
   "version": "0.2.10",
+  "engines": {
+    "node": ">=22.12"
+  },
   "type": "module",
   "description": "Gestione delle relazioni anagrafiche e degli appuntamenti su Google Calendar",
   "repository": {
@@ -13,8 +16,8 @@
     "dev": "vite",
     "build": "vite build && cp dist/index.html dist/404.html",
     "typecheck": "tsc -b --noEmit",
-    "test": "vitest run && bun scripts/smoke.mjs",
-    "test:ui": "vitest run",
+    "test": "node scripts/verifica-node.mjs && vitest run && bun scripts/smoke.mjs",
+    "test:ui": "node scripts/verifica-node.mjs && vitest run",
     "preview": "vite preview",
     "electron:install": "cd electron && npm install",
     "electron:build": "ELECTRON=1 vite build && node scripts/copia-renderer.mjs",
