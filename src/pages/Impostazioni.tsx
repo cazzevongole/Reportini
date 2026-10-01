@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import {
   CalendarIcon,
   CloudIcon,
   DownloadIcon,
+  ExternalLinkIcon,
   RotateIcon,
   SparkIcon,
   UploadIcon,
@@ -18,6 +19,7 @@ import { useLiveQuery } from "../hooks/useLiveQuery";
 import { useSalvataggioCloud } from "../hooks/useSalvataggioCloud";
 import { useAccount } from "../lib/cloud/session";
 import { useAggiornamento } from "../lib/aggiornamento";
+import { istruzioni, linkDownload, sistema } from "../lib/desktop";
 import { sincronizza } from "../lib/cloud/sync";
 import { cloudEnabled } from "../lib/cloud/supabase";
 import {
@@ -64,6 +66,10 @@ export default function Impostazioni() {
   } = useAccount();
   const salvataggio = useSalvataggioCloud();
   const aggiornamento = useAggiornamento();
+  // Il sistema su cui si sta leggendo: serve solo per spiegare come si
+  // installa il pacchetto giusto, e si calcola una volta sola — chiamarlo a ogni
+  // render significa rileggere il user agent per niente.
+  const sistemaQui = useMemo(sistema, []);
   // Il bucket tiene i file in <user-id>/… e le RLS lo confrontano con l'id
   // dell'utente autenticato: con l'email la scrittura viene respinta.
   const userId = session?.user?.id ?? null;
@@ -355,7 +361,7 @@ export default function Impostazioni() {
           <p className="mt-1.5 text-sm text-ink-500">
             {aggiornamento.disponibile
               ? "L'app controlla da sola, ogni mezz'ora, se c'è una versione nuova e la scarica in sottofondo. Quando è pronta ti chiede se installarla adesso chiudendo l'app o se farla entrare alla chiusura."
-              : "Qui Reportini gira nel browser: non c'è niente da installare, ogni volta che torni basta ricaricare la pagina per avere l'ultima versione."}
+              : "Qui Reportini gira nel browser: non c'è niente da installare, ogni volta che torni basta ricaricare la pagina per avere l'ultima versione. Se lo preferisci come programma, puoi scaricarlo per il computer."}
           </p>
           <p className="mt-3 text-sm text-ink-400">
             {aggiornamento.descrizione ??
@@ -390,7 +396,31 @@ export default function Impostazioni() {
                 </>
               ) : null}
             </div>
-          ) : null}
+          ) : (
+            /* Solo nel browser: su desktop l'aggiornamento automatico c'è e
+               questo link sarebbe un secondo modo di fare la stessa cosa.
+               Qui invece non c'è niente da installare, e la domanda che
+               capita è "posso averla come app?". Il link porta alla pagina
+               della release, dove GitHub mette il pulsante del pacchetto
+               giusto per il sistema da cui si sta leggendo: un link
+               all'allegato andrebbe rotto alla release successiva, perché
+               il nome contiene il numero di versione. */
+            <div className="mt-4">
+              <a
+                href={linkDownload()}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="inline-flex items-center gap-2 rounded-lg bg-ink-950 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-ink-800"
+              >
+                <DownloadIcon className="h-4 w-4" />
+                Scarica l'app per il computer
+                <ExternalLinkIcon className="h-3.5 w-3.5 text-ink-300" />
+              </a>
+              {istruzioni(sistemaQui) ? (
+                <p className="mt-2 text-xs text-ink-400">{istruzioni(sistemaQui)}</p>
+              ) : null}
+            </div>
+          )}
         </Card>
       </section>
 
