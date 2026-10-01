@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.0 — 2026-10-01
+
+- Versione incrementata automaticamente (minor).
+
 ## 0.2.10 — 2026-10-01
 
 - Versione incrementata automaticamente (patch).
