@@ -29,9 +29,9 @@ import {
   readProfile,
   type GoogleProfile,
 } from "../lib/google/auth";
-import { scaricaTuttiGliAppuntamenti } from "../lib/google/calendar";
+import { scaricaTutteLeAttivita } from "../lib/google/calendar";
 import { sincronizzaInAttesa } from "../lib/google/sync";
-import { creaBackup, elencaAppuntamenti, ripristinaBackup, type Backup } from "../lib/repo";
+import { creaBackup, elencaAttivita, ripristinaBackup, type Backup } from "../lib/repo";
 import { flush } from "../lib/sqlite/engine";
 
 /** Orario dell'ultimo salvataggio, in formato breve italiano. */
@@ -54,8 +54,8 @@ export default function Impostazioni() {
   // L'ultimo rifiuto del backend, mostrato qui: dopo un rientro da Google
   // l'utente torna in questa pagina, ed è qui che deve leggere cosa è successo.
   const [erroreCollegamento, setErroreCollegamento] = useState(() => readErroreCollegamento());
-  const appuntamenti = useLiveQuery(() => elencaAppuntamenti());
-  const sincronizzati = appuntamenti.filter((a) => a.googleEventId).length;
+  const attivita = useLiveQuery(() => elencaAttivita());
+  const sincronizzati = attivita.filter((a) => a.googleEventId).length;
   const {
     email: accountEmail,
     session,
@@ -89,7 +89,7 @@ export default function Impostazioni() {
       },
       {
         successo: (c) =>
-          `Copia esportata: ${c.aziende.length} aziende, ${c.relazioni.length} relazioni, ${c.appuntamenti.length} appuntamenti.`,
+          `Copia esportata: ${c.aziende.length} aziende, ${c.report.length} report, ${c.attivita.length} attività.`,
         errore: "Esportazione non riuscita",
       },
     );
@@ -105,7 +105,7 @@ export default function Impostazioni() {
     await esegui(
       async () => {
         const copia = JSON.parse(await file.text()) as Backup;
-        if (!Array.isArray(copia.aziende) || !Array.isArray(copia.appuntamenti)) {
+        if (!Array.isArray(copia.aziende) || !Array.isArray(copia.attivita)) {
           // Una copia esportata prima del passaggio alle aziende ha il campo
           // "anagrafici": importarla cosi fallirebbe a metà, con il
           // database già svuotato. Meglio dirlo prima di toccare niente.
@@ -137,7 +137,7 @@ export default function Impostazioni() {
     setOccupato(true);
     await esegui(() => sincronizzaInAttesa(), {
       successo: (r) => r.messaggio,
-      errore: "Sincronizzazione degli appuntamenti non riuscita",
+      errore: "Sincronizzazione delle attività non riuscita",
     });
     setOccupato(false);
   }
@@ -243,10 +243,10 @@ export default function Impostazioni() {
           </h2>
           <p className="mt-1.5 text-sm text-ink-500">
             {collegato
-              ? `Collegato come ${profilo?.email ?? accountEmail ?? "questo account"}. ${sincronizzati} appuntamenti su ${appuntamenti.length} sono già pubblicati.`
+              ? `Collegato come ${profilo?.email ?? accountEmail ?? "questo account"}. ${sincronizzati} attività su ${attivita.length} sono già pubblicati.`
               : googleConfigured
                 ? "Il calendario fa parte dell'accesso con Google: si concede insieme. Se manca, è perché il consenso è stato revocato o annullato."
-                : "Serve il collegamento con Supabase e il client Google: senza, l'accesso funziona ma gli appuntamenti restano solo nell'app."}
+                : "Serve il collegamento con Supabase e il client Google: senza, l'accesso funziona ma le attività restano solo nell'app."}
           </p>
           {collegato ? (
             <p className="mt-1.5 text-sm text-ink-400">
@@ -296,10 +296,10 @@ export default function Impostazioni() {
             <Button
               variant="secondary"
               onClick={() => {
-                scaricaTuttiGliAppuntamenti(appuntamenti);
-                notifica("ok", `${appuntamenti.length} appuntamenti esportati in formato .ics.`);
+                scaricaTutteLeAttivita(attivita);
+                notifica("ok", `${attivita.length} attività esportate in formato .ics.`);
               }}
-              disabled={appuntamenti.length === 0}
+              disabled={attivita.length === 0}
             >
               <DownloadIcon className="h-4 w-4" />
               Esporta .ics

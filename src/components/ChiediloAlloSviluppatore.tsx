@@ -163,7 +163,7 @@ export default function ChiediloAlloSviluppatore() {
               value={titolo}
               maxLength={LIMITE_TITOLO}
               onChange={(evento) => setTitolo(evento.target.value)}
-              placeholder="Es. la relazione non si salva se chiudo a metà"
+              placeholder="Es. la report non si salva se chiudo a metà"
             />
           </Field>
 

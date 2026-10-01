@@ -70,7 +70,7 @@ export async function persist(): Promise<void> {
  * tutto ciò che è stato impostato con PRAGMA torna al default, e
  * `foreign_keys` è disattivato di default. Senza rimetterlo qui, dal
  * primo salvataggio in poi le ON DELETE CASCADE e SET NULL non farebbero
- * più niente: cancellando un'azienda le relazioni resterebbero a
+ * più niente: cancellando un'azienda i report resterebbero a
  * puntare a un'azienda che non esiste più, e sulle altre pagine
  * continuerebbero a comparire come righe senza nome.
  */
@@ -100,10 +100,10 @@ const NON_REPLICATO = "reportini.db.nonReplicato";
  * Ci sono scritture locali che il cloud non ha ancora visto?
  *
  * Il contatore di `getVersion()` dice se il database è cambiato **in questa
- * sessione**, ma riparte da zero a ogni avvio: un'appuntamento eliminato e poi
+ * sessione**, ma riparte da zero a ogni avvio: un'attivita eliminato e poi
  * chiusa l'app prima che la copia online si aggiornasse, al riavvio sembrerebbe
  * un database intatto — e il cloud, più vecchio, avrebbe la precedenza e
- * restituirebbe l'appuntamento eliminato. Il flag è su `localStorage` perché
+ * restituirebbe l'attività eliminato. Il flag è su `localStorage` perché
  * deve sopravvivere al riavvio, che è esattamente il caso in cui serve.
  */
 export function nonReplicato(): boolean {
@@ -171,7 +171,7 @@ export function insert(table: string, values: Record<string, SqlValue>): number 
   // subito, prima di avvisare gli ascoltatori. Dopo `notifyChange()` un
   // ascoltatore che scrivesse a sua volta farebbe cambiare la risposta, e
   // `inserisci` restituirebbe l'id di una riga appena creata da qualcun
-  // altro: un appuntamento appena salvato risulterebbe inesistente.
+  // altro: un'attività appena salvato risulterebbe inesistente.
   const result = get<{ id: number }>(`SELECT last_insert_rowid() AS id`);
   segnaNonReplicato();
   schedulePersist();

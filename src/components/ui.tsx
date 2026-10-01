@@ -121,7 +121,7 @@ export function Card({ className = "", children }: { className?: string; childre
   return <div className={`card ${className}`}>{children}</div>;
 }
 
-type BadgeTone = "neutral" | "brand" | "clay" | "muted";
+export type BadgeTone = "neutral" | "brand" | "clay" | "muted";
 
 const TONES: Record<BadgeTone, string> = {
   neutral: "bg-ink-100 text-ink-700",

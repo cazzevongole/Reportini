@@ -1,4 +1,4 @@
-import type { StatoAppuntamento } from "../types";
+import type { StatoAttivita } from "../types";
 import { eliminaPreferenza, leggiPreferenza, scriviPreferenza } from "../repo";
 
 /**
@@ -51,14 +51,14 @@ export function idValido(id: unknown): id is string {
  * grigio del muted. Agenda ed elenco dicono la stessa cosa con lo stesso
  * colore.
  */
-export const COLORI_PREDEFINITI: Record<StatoAppuntamento, string> = {
+export const COLORI_PREDEFINITI: Record<StatoAttivita, string> = {
   "in-attesa": "6",
   confermato: "2",
   annullato: "8",
 };
 
 /** Come si chiama uno stato nelle impostazioni. */
-export const ETICHETTA_STATO: Record<StatoAppuntamento, string> = {
+export const ETICHETTA_STATO: Record<StatoAttivita, string> = {
   "in-attesa": "In attesa di conferma",
   confermato: "Confermato",
   annullato: "Annullato",
@@ -70,7 +70,7 @@ export const ETICHETTA_STATO: Record<StatoAppuntamento, string> = {
  */
 const CHIAVE = "colori-stato";
 
-export type ColoriPerStato = Record<StatoAppuntamento, string>;
+export type ColoriPerStato = Record<StatoAttivita, string>;
 
 /**
  * I colori scelti dall'utente, con i predefiniti per quello che non ha ancora
@@ -81,7 +81,7 @@ export type ColoriPerStato = Record<StatoAppuntamento, string>;
  * Il valore è validato **in lettura**: arriva da un file SQLite che può essere
  * una copia ripristinata da un backup o scritta da una versione diversa, e un
  * ID inesistente finito nell'evento farebbe rispondere 400 a Google — cioè
- * l'appuntamento non sarebbe pubblicato, per un colore. Meglio il predefinito.
+ * l'attività non sarebbe pubblicato, per un colore. Meglio il predefinito.
  */
 export function leggiColori(): ColoriPerStato {
   const scelti: ColoriPerStato = { ...COLORI_PREDEFINITI };
@@ -90,8 +90,8 @@ export function leggiColori(): ColoriPerStato {
   try {
     const letto: unknown = JSON.parse(grezzo);
     if (!letto || typeof letto !== "object" || Array.isArray(letto)) return scelti;
-    const valori = letto as Partial<Record<StatoAppuntamento, unknown>>;
-    for (const stato of Object.keys(COLORI_PREDEFINITI) as StatoAppuntamento[]) {
+    const valori = letto as Partial<Record<StatoAttivita, unknown>>;
+    for (const stato of Object.keys(COLORI_PREDEFINITI) as StatoAttivita[]) {
       if (idValido(valori[stato])) scelti[stato] = valori[stato];
     }
   } catch {
@@ -102,7 +102,7 @@ export function leggiColori(): ColoriPerStato {
 }
 
 /** Salva un colore. Un ID inesistente non viene scritto: si rimane sui dati buoni. */
-export function scriviColore(stato: StatoAppuntamento, id: string): void {
+export function scriviColore(stato: StatoAttivita, id: string): void {
   if (!idValido(id)) return;
   const scelti = leggiColori();
   scelti[stato] = id;

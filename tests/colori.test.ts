@@ -24,10 +24,10 @@ import {
   scriviColore,
 } from "../src/lib/google/colori";
 import { eliminaPreferenza, leggiPreferenza, scriviPreferenza } from "../src/lib/repo";
-import type { StatoAppuntamento } from "../src/lib/types";
+import type { StatoAttivita } from "../src/lib/types";
 
 const CHIAVE = "colori-stato";
-const STATI: StatoAppuntamento[] = ["in-attesa", "confermato", "annullato"];
+const STATI: StatoAttivita[] = ["in-attesa", "confermato", "annullato"];
 
 describe("Palette di Google Calendar", () => {
   it("contiene gli undici ID della palette, come stringhe", () => {
@@ -108,7 +108,7 @@ describe("Colori nel database", () => {
   it("non scrive un ID che non sta nella palette", () => {
     scriviColore("in-attesa", "99");
     // Nessuna riga: un ID inventato verrebbe rifiutato da Google e farebbe
-    // fallire la pubblicazione dell'appuntamento.
+    // fallire la pubblicazione dell'attivita.
     expect(leggiPreferenza(CHIAVE)).toBeNull();
     expect(leggiColori()["in-attesa"]).toBe(COLORI_PREDEFINITI["in-attesa"]);
   });

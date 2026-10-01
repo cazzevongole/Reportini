@@ -216,8 +216,8 @@ export default function VersioniBackup() {
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <Stat label="Aziende" value={scelta.anteprima.aziende} />
               <Stat label="Referenti" value={scelta.anteprima.referenti} />
-              <Stat label="Relazioni" value={scelta.anteprima.relazioni} />
-              <Stat label="Appuntamenti" value={scelta.anteprima.appuntamenti} />
+              <Stat label="Report" value={scelta.anteprima.report} />
+              <Stat label="Attività" value={scelta.anteprima.attivita} />
             </div>
 
             {conferma ? (
@@ -269,13 +269,13 @@ export default function VersioniBackup() {
             <div>
               <p className="flex items-center gap-2 text-sm font-medium text-ink-800">
                 <CalendarIcon className="h-4 w-4 text-ink-400" />
-                Prossimi appuntamenti
+                Prossime attività
               </p>
-              {scelta.anteprima.appuntamentiElenco.length === 0 ? (
+              {scelta.anteprima.attivitaElenco.length === 0 ? (
                 <p className="mt-1 text-sm text-ink-400">Nessuno.</p>
               ) : (
                 <ul className="mt-1 space-y-1 text-sm text-ink-600">
-                  {scelta.anteprima.appuntamentiElenco.map((a) => (
+                  {scelta.anteprima.attivitaElenco.map((a) => (
                     <li key={a.id} className="truncate">
                       {a.titolo}
                       <span className="text-ink-400">

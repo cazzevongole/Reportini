@@ -2,7 +2,7 @@
  * Il flag "ci sono scritture non ancora salite nel cloud" con il motore vero.
  *
  * Qui non interessa il cloud, ma che il flag **sopravviva al riavvio**: è la
- * differenza fra un appuntamento eliminato che resta eliminato e uno che
+ * differenza fra un attivita eliminato che resta eliminato e uno che
  * torna in lista al riavvio dell'app. Un contatore in memoria non basterebbe,
  * perché riparte da zero a ogni avvio.
  */
@@ -49,7 +49,7 @@ describe("Scritture non ancora replicate", () => {
     expect(nonReplicato()).toBe(true);
   });
 
-  it("una cancellazione lo accende: è il caso che riportava gli appuntamenti eliminati", async () => {
+  it("una cancellazione lo accende: è il caso che riportava gli attivita eliminati", async () => {
     const id = creaAzienda(AZIENDA);
     segnaReplicato();
     expect(nonReplicato()).toBe(false);

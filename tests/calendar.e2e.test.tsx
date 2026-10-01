@@ -9,31 +9,33 @@ vi.mock("sql.js/dist/sql-wasm.wasm?url", () => ({
   default: `${process.cwd()}/node_modules/sql.js/dist/sql-wasm.wasm`,
 }));
 import {
-  aggiornaAppuntamento,
-  appuntamentiConEventoDaEliminareAzienda,
-  creaAppuntamento,
+  aggiornaAttivita,
+  attivitaConEventoDaEliminareAzienda,
+  creaAttivita,
   creaAzienda,
   creaReferente,
   eliminaPreferenza,
-  elencaAppuntamenti,
+  elencaAttivita,
   elencaAziende,
-  marcaAppuntamentoSincronizzato,
-  ottieniAppuntamento,
+  marcaAttivitaSincronizzata,
+  ottieniAttivita,
   scriviPreferenza,
+  segnaChiamataCompletata,
 } from "../src/lib/repo";
 import { resetSincronizzazione, sincronizza } from "../src/lib/cloud/sync";
 import {
-  dissociaAppuntamento,
-  eliminaAppuntamentiEEventi,
-  eliminaAppuntamentoEEvento,
-  pubblicaAppuntamento,
-  sincronizzaAppuntamento,
+  dissociaAttivita,
+  eliminaAttivitaEEventi,
+  eliminaAttivitaEEvento,
+  pubblicaAttivita,
+  sincronizzaAttivita,
 } from "../src/lib/google/sync";
 import { eliminaEvento } from "../src/lib/google/calendar";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { AvvisoProvider } from "../src/components/Avvisi";
-import AppuntamentoForm from "../src/components/AppuntamentoForm";
+import AttivitaForm from "../src/components/AttivitaForm";
+import type { TipoAttivita } from "../src/lib/types";
 
 /* --------------------------- cloud finto (in memoria) --------------------- */
 
@@ -105,6 +107,8 @@ interface EventoFinto {
   transparency?: string;
   start?: { dateTime?: string; timeZone?: string };
   end?: { dateTime?: string; timeZone?: string };
+  /** I promemoria: una lista vuota è come "nessun avviso". */
+  reminders?: { overrides?: Array<{ method: string; minutes: number }> };
   extendedProperties?: { private?: Record<string, string> };
 }
 
@@ -199,11 +203,11 @@ async function nuovoDatabase() {
   // Un dispositivo nuovo parte vuoto: nessuna copia locale.
   db.run("DELETE FROM referenti");
   db.run("DELETE FROM aziende");
-  db.run("DELETE FROM relazioni");
-  db.run("DELETE FROM appuntamenti");
+  db.run("DELETE FROM report");
+  db.run("DELETE FROM attivita");
 }
 
-function creaSchedaConAppuntamento() {
+function creaSchedaConAttivita() {
   const aziendaId = creaAzienda({
     ragioneSociale: "Ferramenta Rossi S.r.l.",
     partitaIva: "03012345678",
@@ -225,15 +229,16 @@ function creaSchedaConAppuntamento() {
     telefono: "3401234567",
     email: "mario.rossi@ferramentarossi.it",
   });
-  const appuntamentoId = creaAppuntamento({
+  const attivitaId = creaAttivita({
     aziendaId,
-    relazioneId: null,
     titolo: "Ritiro documento",
     descrizione: "",
+    tipo: "appuntamento" as const,
     inizio: "2026-10-01T10:00:00.000Z",
     fine: "2026-10-01T10:45:00.000Z",
     luogo: "Sportello 3",
     stato: "confermato",
+    completata: false,
     promemoriaMin: 30,
     googleEventId: null,
     googleCalendarId: null,
@@ -241,7 +246,7 @@ function creaSchedaConAppuntamento() {
     googleSyncAt: null,
     googleErrore: null,
   });
-  return { aziendaId, appuntamentoId };
+  return { aziendaId, attivitaId };
 }
 
 /** Token Google già valido: equivale a un account Calendar collegato. */
@@ -272,22 +277,24 @@ beforeEach(() => {
 describe("Reportini end-to-end: dati, Calendar, logout e rientro", () => {
   it("crea l'azienda, pubblica l'evento su Calendar e conserva il collegamento", async () => {
     await nuovoDatabase();
-    const { appuntamentoId } = creaSchedaConAppuntamento();
+    const { attivitaId } = creaSchedaConAttivita();
 
-    const esito = await sincronizzaAppuntamento(appuntamentoId, "primary");
+    const esito = await sincronizzaAttivita(attivitaId, "primary");
 
     expect(esito.ok).toBe(true);
-    expect(esito.messaggio).toMatch(/sincronizzato/i);
+    expect(esito.messaggio).toMatch(/sincronizzata/i);
     // Un solo evento creato, e con il fuso dichiarato.
     expect(eventi.size).toBe(1);
     const creato = [...eventi.values()][0];
-    expect(creato.summary).toBe("Ritiro documento");
+    // Il tipo entra nel titolo dell'evento: `APPUNTAMENTO - …`. È la parola
+    // che distingue una chiamata da un appuntamento in una vista per mese.
+    expect(creato.summary).toBe("APPUNTAMENTO - Ritiro documento");
     expect(creato.start?.dateTime).toBe("2026-10-01T10:00:00.000Z");
     expect(creato.start?.timeZone).toBeTruthy();
     expect(creato.end?.timeZone).toBeTruthy();
     // Il contesto dell'azienda viaggia nella descrizione: nell'evento, non
     // nel database, e il referente non ci finisce — è un recapito, non il
-    // soggetto dell'appuntamento.
+    // soggetto dell'attivita.
     const eventoCreato = [...eventi.values()][0];
     expect(eventoCreato.description).toContain("Ferramenta Rossi S.r.l.");
     expect(eventoCreato.description).toContain("03012345678");
@@ -295,16 +302,16 @@ describe("Reportini end-to-end: dati, Calendar, logout e rientro", () => {
     expect(chiamate.some((c) => c.metodo === "POST" && c.url.endsWith("/events"))).toBe(true);
 
     // Il collegamento è persistito in locale.
-    const salvato = ottieniAppuntamento(appuntamentoId);
+    const salvato = ottieniAttivita(attivitaId);
     expect(salvato?.googleEventId).toBe(creato.id);
     expect(salvato?.googleCalendarId).toBe("primary");
   });
 
   it("dopo logout e rientro i dati tornano dal cloud e l'evento viene aggiornato, non duplicato", async () => {
     await nuovoDatabase();
-    const { aziendaId, appuntamentoId } = creaSchedaConAppuntamento();
-    await sincronizzaAppuntamento(appuntamentoId, "primary");
-    const idEvento = ottieniAppuntamento(appuntamentoId)?.googleEventId;
+    const { aziendaId, attivitaId } = creaSchedaConAttivita();
+    await sincronizzaAttivita(attivitaId, "primary");
+    const idEvento = ottieniAttivita(attivitaId)?.googleEventId;
     expect(idEvento).toBeTruthy();
 
     // Salva nel cloud, come fa l'auto-sync dopo ogni scrittura.
@@ -321,7 +328,7 @@ describe("Reportini end-to-end: dati, Calendar, logout e rientro", () => {
     resetSincronizzazione();
     await nuovoDatabase();
     expect(elencaAziende().length).toBe(0);
-    expect(elencaAppuntamenti({}).length).toBe(0);
+    expect(elencaAttivita({}).length).toBe(0);
 
     // --- login ---
     // L'utente ricollega anche Google Calendar: il popup si riapre come dopo
@@ -342,91 +349,91 @@ describe("Reportini end-to-end: dati, Calendar, logout e rientro", () => {
     expect(aziende[0].numReferenti).toBe(1);
 
     // Soprattutto: il collegamento all'evento è sopravvissuto.
-    const rientrato = ottieniAppuntamento(appuntamentoId);
+    const rientrato = ottieniAttivita(attivitaId);
     expect(rientrato?.googleEventId).toBe(idEvento);
 
     // Risincronizzare aggiorna l'evento esistente invece di crearne un altro.
     await aggiornaTitolo(rientrato!.id, "Ritiro documento (rivisto)");
-    const secondo = await sincronizzaAppuntamento(appuntamentoId, "primary");
+    const secondo = await sincronizzaAttivita(attivitaId, "primary");
 
     expect(secondo.ok).toBe(true);
     expect(eventi.size).toBe(1);
-    expect([...eventi.values()][0].summary).toBe("Ritiro documento (rivisto)");
+    expect([...eventi.values()][0].summary).toBe("APPUNTAMENTO - Ritiro documento (rivisto)");
   });
 
   it("scollegare elimina l'evento remoto e pulisce i marcatori", async () => {
     await nuovoDatabase();
-    const { appuntamentoId } = creaSchedaConAppuntamento();
-    await sincronizzaAppuntamento(appuntamentoId, "primary");
+    const { attivitaId } = creaSchedaConAttivita();
+    await sincronizzaAttivita(attivitaId, "primary");
     expect(eventi.size).toBe(1);
 
-    const esito = await dissociaAppuntamento(appuntamentoId);
+    const esito = await dissociaAttivita(attivitaId);
 
     expect(esito.ok).toBe(true);
     expect(eventi.size).toBe(0);
-    const ripulito = ottieniAppuntamento(appuntamentoId);
+    const ripulito = ottieniAttivita(attivitaId);
     expect(ripulito?.googleEventId).toBeNull();
     expect(ripulito?.googleCalendarId).toBeNull();
   });
 
-  it("un errore di Google non lascia marcatori falsi sull'appuntamento", async () => {
+  it("un errore di Google non lascia marcatori falsi sull'attività", async () => {
     await nuovoDatabase();
-    const { appuntamentoId } = creaSchedaConAppuntamento();
+    const { attivitaId } = creaSchedaConAttivita();
     fetchFinto.mockImplementationOnce(async () => risposta({ error: "quotaExceeded" }, 403));
 
-    const esito = await sincronizzaAppuntamento(appuntamentoId, "primary");
+    const esito = await sincronizzaAttivita(attivitaId, "primary");
 
     expect(esito.ok).toBe(false);
     expect(esito.messaggio).toMatch(/403/);
     // Nessun collegamento registrato: il tentativo non è riuscito.
-    expect(ottieniAppuntamento(appuntamentoId)?.googleEventId).toBeNull();
-    // Ma il motivo resta scritto sull'appuntamento. Prima non restava, e un
+    expect(ottieniAttivita(attivitaId)?.googleEventId).toBeNull();
+    // Ma il motivo resta scritto sull'attivita. Prima non restava, e un
     // salvataggio riuscito con la pubblicazione fallita era indistinguibile da
-    // uno riuscito del tutto: l'utente vedeva l'appuntamento in lista e una
+    // uno riuscito del tutto: l'utente vedeva l'attivita in lista e una
     // notifica verde, e in agenda non c'era niente.
-    expect(ottieniAppuntamento(appuntamentoId)?.googleErrore).toMatch(/403/);
+    expect(ottieniAttivita(attivitaId)?.googleErrore).toMatch(/403/);
   });
 
   it("un tentativo riuscito cancella il motivo del fallimento precedente", async () => {
     await nuovoDatabase();
-    const { appuntamentoId } = creaSchedaConAppuntamento();
+    const { attivitaId } = creaSchedaConAttivita();
     fetchFinto.mockImplementationOnce(async () => risposta({ error: "boom" }, 500));
-    await sincronizzaAppuntamento(appuntamentoId, "primary");
-    expect(ottieniAppuntamento(appuntamentoId)?.googleErrore).toBeTruthy();
+    await sincronizzaAttivita(attivitaId, "primary");
+    expect(ottieniAttivita(attivitaId)?.googleErrore).toBeTruthy();
 
-    const esito = await sincronizzaAppuntamento(appuntamentoId, "primary");
+    const esito = await sincronizzaAttivita(attivitaId, "primary");
 
     expect(esito.ok).toBe(true);
-    // L'errore non deve sopravvivere al successo: un appuntamento finito in
-    // agenda che continua ad accusare un 500 è un appuntamento che non
+    // L'errore non deve sopravvivere al successo: un attivita finito in
+    // agenda che continua ad accusare un 500 è un attivita che non
     // si lascia in pace.
-    expect(ottieniAppuntamento(appuntamentoId)?.googleErrore).toBeNull();
+    expect(ottieniAttivita(attivitaId)?.googleErrore).toBeNull();
   });
 
-  it("l'appuntamento mostra il motivo e il pulsato per riprovare", async () => {
+  it("l'attività mostra il motivo e il pulsante per riprovare", async () => {
     await nuovoDatabase();
-    const { appuntamentoId } = creaSchedaConAppuntamento();
+    const { attivitaId } = creaSchedaConAttivita();
     fetchFinto.mockImplementationOnce(async () =>
       risposta({ error: "insufficientPermissions" }, 403),
     );
-    await sincronizzaAppuntamento(appuntamentoId, "primary");
-    // Qui la pagina non serve: il motivo e il pulsato stanno sull'appuntamento,
+    await sincronizzaAttivita(attivitaId, "primary");
+    // Qui la pagina non serve: il motivo e il pulsato stanno sull'attivita,
     // e senza una traccia sul record un salvataggio riuscito con la
     // pubblicazione fallita era indistinguibile da uno riuscito del tutto.
-    const salvato = ottieniAppuntamento(appuntamentoId);
+    const salvato = ottieniAttivita(attivitaId);
     expect(salvato?.googleErrore).toContain("403");
     expect(salvato?.googleErrore).toContain("insufficientPermissions");
   });
 
-  it("marcaAppuntamentoSincronizzato conserva il collegamento già presente", async () => {
+  it("marcaAttivitaSincronizzata conserva il collegamento già presente", async () => {
     await nuovoDatabase();
-    const { appuntamentoId } = creaSchedaConAppuntamento();
-    marcaAppuntamentoSincronizzato(appuntamentoId, {
+    const { attivitaId } = creaSchedaConAttivita();
+    marcaAttivitaSincronizzata(attivitaId, {
       googleEventId: "evt-manuale",
       googleCalendarId: "secondario",
       googleHtmlLink: "https://calendar.google.com/event?eid=manuale",
     });
-    const salvato = ottieniAppuntamento(appuntamentoId);
+    const salvato = ottieniAttivita(attivitaId);
     expect(salvato?.googleEventId).toBe("evt-manuale");
     expect(salvato?.googleCalendarId).toBe("secondario");
   });
@@ -439,15 +446,15 @@ describe("Il contesto dell'azienda non si duplica", () => {
 
   it("scollegare non scrive il contesto nella descrizione salvata", async () => {
     await nuovoDatabase();
-    const { appuntamentoId } = creaSchedaConAppuntamento();
-    await sincronizzaAppuntamento(appuntamentoId, "primary");
+    const { attivitaId } = creaSchedaConAttivita();
+    await sincronizzaAttivita(attivitaId, "primary");
 
-    await dissociaAppuntamento(appuntamentoId);
+    await dissociaAttivita(attivitaId);
 
     // Il contesto sta solo nell'evento: nel database la descrizione è
     // ancora quella scritta dall'utente, altrimenti il modulo di modifica
     // la mostrerebbe e ogni sincronizzazione aggiungerebbe un blocco.
-    const salvato = ottieniAppuntamento(appuntamentoId);
+    const salvato = ottieniAttivita(attivitaId);
     expect(salvato).toBeTruthy();
     expect(salvato?.descrizione).toBe("");
     expect(salvato?.titolo).toBe("Ritiro documento");
@@ -455,31 +462,31 @@ describe("Il contesto dell'azienda non si duplica", () => {
 
   it("scollegare e ripubblicare non accumula blocchi", async () => {
     await nuovoDatabase();
-    const { appuntamentoId } = creaSchedaConAppuntamento();
+    const { attivitaId } = creaSchedaConAttivita();
     for (let giro = 0; giro < 3; giro += 1) {
-      await sincronizzaAppuntamento(appuntamentoId, "primary");
-      await dissociaAppuntamento(appuntamentoId);
+      await sincronizzaAttivita(attivitaId, "primary");
+      await dissociaAttivita(attivitaId);
     }
-    await sincronizzaAppuntamento(appuntamentoId, "primary");
+    await sincronizzaAttivita(attivitaId, "primary");
 
     const descrizione = [...eventi.values()][0].description ?? "";
     const occorrenze = descrizione.split("Azienda: Ferramenta Rossi S.r.l.").length - 1;
     expect(occorrenze).toBe(1);
-    expect(ottieniAppuntamento(appuntamentoId)?.descrizione).toBe("");
+    expect(ottieniAttivita(attivitaId)?.descrizione).toBe("");
   });
 
   it("una descrizione che contiene già il contesto non lo riceve una seconda volta", async () => {
     await nuovoDatabase();
-    const { appuntamentoId } = creaSchedaConAppuntamento();
+    const { attivitaId } = creaSchedaConAttivita();
     // Come le righe scritte dalle versioni precedenti, che avevano salvato
     // qui la descrizione arricchita: il modulo la mostrava e ogni
     // sincronizzazione ne aggiungeva un'altra copia.
-    const attuale = ottieniAppuntamento(appuntamentoId)!;
-    aggiornaAppuntamento(appuntamentoId, { ...attuale, descrizione: CONTESTO });
+    const attuale = ottieniAttivita(attivitaId)!;
+    aggiornaAttivita(attivitaId, { ...attuale, descrizione: CONTESTO });
 
-    await sincronizzaAppuntamento(appuntamentoId, "primary");
-    await aggiornaTitolo(appuntamentoId, "Ritiro documento (rivisto)");
-    await sincronizzaAppuntamento(appuntamentoId, "primary");
+    await sincronizzaAttivita(attivitaId, "primary");
+    await aggiornaTitolo(attivitaId, "Ritiro documento (rivisto)");
+    await sincronizzaAttivita(attivitaId, "primary");
 
     const descrizione = [...eventi.values()][0].description ?? "";
     expect(descrizione.split("Azienda: Ferramenta Rossi S.r.l.").length - 1).toBe(1);
@@ -489,53 +496,53 @@ describe("Il contesto dell'azienda non si duplica", () => {
 
 /** Modifica il titolo passando dalla stessa API del repository. */
 async function aggiornaTitolo(id: number, titolo: string) {
-  const { aggiornaAppuntamento } = await import("../src/lib/repo");
-  const attuale = ottieniAppuntamento(id)!;
-  aggiornaAppuntamento(id, { ...attuale, titolo });
+  const { aggiornaAttivita } = await import("../src/lib/repo");
+  const attuale = ottieniAttivita(id)!;
+  aggiornaAttivita(id, { ...attuale, titolo });
 }
 
 /* ------------------- pubblicazione automatica dal modulo -------------------- */
 
 describe("Pubblicazione automatica: cosa fa il modulo quando si salva", () => {
-  it("un appuntamento nuovo viene pubblicato e resta collegato all'evento", async () => {
+  it("un'attivita nuova viene pubblicata e resta collegata all'evento", async () => {
     await nuovoDatabase();
-    const { appuntamentoId } = creaSchedaConAppuntamento();
+    const { attivitaId } = creaSchedaConAttivita();
 
-    const esito = await pubblicaAppuntamento(appuntamentoId, "primary");
+    const esito = await pubblicaAttivita(attivitaId, "primary");
 
     expect(esito.ok).toBe(true);
-    expect(esito.messaggio).toMatch(/pubblicato/i);
+    expect(esito.messaggio).toMatch(/pubblicata/i);
     expect(eventi.size).toBe(1);
-    const salvato = ottieniAppuntamento(appuntamentoId);
+    const salvato = ottieniAttivita(attivitaId);
     expect(salvato?.googleEventId).toBe("evt-1");
   });
 
-  it("modificarlo aggiorna l'evento esistente invece di crearne un secondo", async () => {
+  it("modificarla aggiorna l'evento esistente invece di crearne un secondo", async () => {
     await nuovoDatabase();
-    const { appuntamentoId } = creaSchedaConAppuntamento();
-    await pubblicaAppuntamento(appuntamentoId, "primary");
+    const { attivitaId } = creaSchedaConAttivita();
+    await pubblicaAttivita(attivitaId, "primary");
 
-    await aggiornaTitolo(appuntamentoId, "Ritiro documento (rivisto)");
-    const esito = await pubblicaAppuntamento(appuntamentoId, "primary");
+    await aggiornaTitolo(attivitaId, "Ritiro documento (rivisto)");
+    const esito = await pubblicaAttivita(attivitaId, "primary");
 
     expect(esito.ok).toBe(true);
-    expect(esito.messaggio).toMatch(/aggiornato/i);
+    expect(esito.messaggio).toMatch(/aggiornata/i);
     expect(eventi.size).toBe(1);
-    expect([...eventi.values()][0].summary).toBe("Ritiro documento (rivisto)");
+    expect([...eventi.values()][0].summary).toBe("APPUNTAMENTO - Ritiro documento (rivisto)");
   });
 
-  it("annullarlo lo rende visibile e chiaro su Google, non lo fa sparire", async () => {
+  it("annullarla la rende visibile e chiara su Google, non la fa sparire", async () => {
     await nuovoDatabase();
-    const { appuntamentoId } = creaSchedaConAppuntamento();
-    await pubblicaAppuntamento(appuntamentoId, "primary");
+    const { attivitaId } = creaSchedaConAttivita();
+    await pubblicaAttivita(attivitaId, "primary");
     expect(eventi.size).toBe(1);
 
-    const attuale = ottieniAppuntamento(appuntamentoId)!;
-    aggiornaAppuntamento(appuntamentoId, { ...attuale, stato: "annullato" });
-    const esito = await pubblicaAppuntamento(appuntamentoId, "primary");
+    const attuale = ottieniAttivita(attivitaId)!;
+    aggiornaAttivita(attivitaId, { ...attuale, stato: "annullato" });
+    const esito = await pubblicaAttivita(attivitaId, "primary");
 
     expect(esito.ok).toBe(true);
-    expect(esito.messaggio).toMatch(/annullato/i);
+    expect(esito.messaggio).toMatch(/segnata come annullata/i);
     // L'evento resta e si VEDE: `status: "cancelled"` sarebbe la via dell'API
     // per eliminarlo dall'interfaccia, e chi guarda l'agenda perderebbe la
     // ragione della fascia vuota. La cancellazione si dichiara nel titolo.
@@ -545,20 +552,20 @@ describe("Pubblicazione automatica: cosa fa il modulo quando si salva", () => {
     expect([...eventi.values()][0].colorId).toBe("11"); // Tomato, il rosso
     // Il collegamento resta: senza, la prossima modifica non saprebbe dove
     // scrivere e creerebbe un secondo evento.
-    expect(ottieniAppuntamento(appuntamentoId)?.googleEventId).toBe("evt-1");
+    expect(ottieniAttivita(attivitaId)?.googleEventId).toBe("evt-1");
     expect(chiamate.some((c) => c.metodo === "DELETE")).toBe(false);
   });
 
   it("in attesa, confermato e annullato si leggono dall'evento", async () => {
     await nuovoDatabase();
-    const { appuntamentoId } = creaSchedaConAppuntamento();
+    const { attivitaId } = creaSchedaConAttivita();
     const evento = () => [...eventi.values()][0];
-    const appuntamento = () => ottieniAppuntamento(appuntamentoId)!;
+    const attivita = () => ottieniAttivita(attivitaId)!;
     const aStato = (nuovo: "in-attesa" | "confermato" | "annullato") =>
-      aggiornaAppuntamento(appuntamentoId, { ...appuntamento(), stato: nuovo });
+      aggiornaAttivita(attivitaId, { ...attivita(), stato: nuovo });
 
-    // L'appuntamento di prova è confermato: occupa la fascia.
-    await pubblicaAppuntamento(appuntamentoId, "primary");
+    // L'attivita di prova è confermato: occupa la fascia.
+    await pubblicaAttivita(attivitaId, "primary");
     expect(evento()?.status).toBe("confirmed");
     expect(evento()?.transparency).toBe("opaque");
 
@@ -567,7 +574,7 @@ describe("Pubblicazione automatica: cosa fa il modulo quando si salva", () => {
     // visibile la differenza: prima i due stati mandavano lo stesso evento e
     // passare da uno all'altro non cambiava niente.
     aStato("in-attesa");
-    const inAttesa = await pubblicaAppuntamento(appuntamentoId, "primary");
+    const inAttesa = await pubblicaAttivita(attivitaId, "primary");
     expect(inAttesa.messaggio).toMatch(/in attesa/i);
     expect(evento()?.status).toBe("confirmed");
     expect(evento()?.transparency).toBe("transparent");
@@ -575,15 +582,15 @@ describe("Pubblicazione automatica: cosa fa il modulo quando si salva", () => {
 
     // Confermato: torna a occupare davvero la fascia.
     aStato("confermato");
-    const confermato = await pubblicaAppuntamento(appuntamentoId, "primary");
-    expect(confermato.messaggio).toMatch(/aggiornato/i);
+    const confermato = await pubblicaAttivita(attivitaId, "primary");
+    expect(confermato.messaggio).toMatch(/aggiornata/i);
     expect(confermato.messaggio).not.toMatch(/in attesa/i);
     expect(evento()?.transparency).toBe("opaque");
     expect(eventi.size).toBe(1);
 
     // E tornare indietro funziona: non è una modifica che si fa una volta sola.
     aStato("in-attesa");
-    await pubblicaAppuntamento(appuntamentoId, "primary");
+    await pubblicaAttivita(attivitaId, "primary");
     expect(evento()?.transparency).toBe("transparent");
     expect(eventi.size).toBe(1);
 
@@ -591,7 +598,7 @@ describe("Pubblicazione automatica: cosa fa il modulo quando si salva", () => {
     // si dichiara nel titolo con il rosso — prima l'evento spariva
     // dall'interfaccia, e la ragione della fascia vuota con lui.
     aStato("annullato");
-    await pubblicaAppuntamento(appuntamentoId, "primary");
+    await pubblicaAttivita(attivitaId, "primary");
     expect(evento()?.status).toBe("confirmed");
     expect(evento()?.transparency).toBe("transparent");
     expect(evento()?.summary).toMatch(/^ANNULLATO: /);
@@ -601,45 +608,100 @@ describe("Pubblicazione automatica: cosa fa il modulo quando si salva", () => {
 
   it("lo stato si legge a occhio sull'evento, non solo dalle sue proprietà", async () => {
     await nuovoDatabase();
-    const { appuntamentoId } = creaSchedaConAppuntamento();
+    const { attivitaId } = creaSchedaConAttivita();
     const evento = () => [...eventi.values()][0];
-    const appuntamento = () => ottieniAppuntamento(appuntamentoId)!;
+    const attivita = () => ottieniAttivita(attivitaId)!;
     const descrizione = () => evento()?.description ?? "";
 
     // `transparency` e `status` non bastano: dicono solo se l'evento occupa
     // la fascia e se è annullato, ma non distinguono "in attesa" da
     // "confermato". Chi guarda l'elenco deve poter capire quale dei due sia
     // senza aprire l'evento, quindi lo stato va scritto in chiaro.
-    await pubblicaAppuntamento(appuntamentoId, "primary");
+    await pubblicaAttivita(attivitaId, "primary");
     expect(descrizione()).toMatch(/^Stato: confermato/);
 
-    aggiornaAppuntamento(appuntamentoId, { ...appuntamento(), stato: "in-attesa" });
-    await pubblicaAppuntamento(appuntamentoId, "primary");
+    aggiornaAttivita(attivitaId, { ...attivita(), stato: "in-attesa" });
+    await pubblicaAttivita(attivitaId, "primary");
     expect(descrizione()).toMatch(/^Stato: in attesa di conferma/);
 
-    aggiornaAppuntamento(appuntamentoId, { ...appuntamento(), stato: "annullato" });
-    await pubblicaAppuntamento(appuntamentoId, "primary");
+    aggiornaAttivita(attivitaId, { ...attivita(), stato: "annullato" });
+    await pubblicaAttivita(attivitaId, "primary");
     expect(descrizione()).toMatch(/^Stato: annullato/);
 
     // E resta leggibile da una macchina, per chi legge l'evento e non l'app.
     expect(evento()?.extendedProperties?.private?.reportiniStato).toBe("annullato");
   });
 
+  it("una chiamata occupa la fascia anche da fare, e non ha promemoria", async () => {
+    await nuovoDatabase();
+    const { aziendaId } = creaSchedaConAttivita();
+    // Una chiamata in prestito, creata come la crea l'utente.
+    const chiamataId = creaAttivita({
+      aziendaId,
+      titolo: "Sollecito fattura",
+      descrizione: "",
+      tipo: "chiamata",
+      inizio: "2026-10-01T15:00:00.000Z",
+      fine: "2026-10-01T15:30:00.000Z",
+      luogo: "",
+      stato: "in-attesa",
+      completata: false,
+      // Il default dell'app, che qui non deve arrivare all'evento: il
+      // promemoria è una scelta dell'appuntamento, e una chiamata suona quando
+      // suona.
+      promemoriaMin: 30,
+      googleEventId: null,
+      googleCalendarId: null,
+      googleHtmlLink: null,
+      googleSyncAt: null,
+      googleErrore: null,
+    });
+    const evento = () => [...eventi.values()][0];
+
+    await pubblicaAttivita(chiamataId, "primary");
+
+    // "Da fare" su un appuntamento è un segnaposto che non occupa; su una
+    // chiamata l'ora è già presa, e un evento trasparente la farebbe
+    // sembrare libera.
+    expect(evento().summary).toBe("CHIAMATA - Sollecito fattura");
+    expect(evento().transparency).toBe("opaque");
+    expect(evento().start?.dateTime).toBe("2026-10-01T15:00:00.000Z");
+    expect(evento().end?.dateTime).toBe("2026-10-01T15:30:00.000Z");
+    expect(evento().description).toContain("Stato: da fare");
+    expect(evento().reminders?.overrides ?? []).toHaveLength(0);
+
+    // Fatta: la parola cambia e resta sul posto giusto. Una chiamata non ha
+    // "annullato": si fa o non si fa, quindi la casella è tutto lo stato e
+    // l'ora resta presa anche da una chiamata ancora da fare.
+    segnaChiamataCompletata(chiamataId, true);
+    await pubblicaAttivita(chiamataId, "primary");
+    expect(evento().summary).toBe("CHIAMATA - Sollecito fattura");
+    expect(evento().description).toContain("Stato: fatta");
+    expect(evento().transparency).toBe("opaque");
+
+    // E tornare indietro si vede sull'evento, senza cambiare il titolo.
+    segnaChiamataCompletata(chiamataId, false);
+    await pubblicaAttivita(chiamataId, "primary");
+    expect(evento().summary).toBe("CHIAMATA - Sollecito fattura");
+    expect(evento().description).toContain("Stato: da fare");
+    expect(evento().transparency).toBe("opaque");
+  });
+
   it("il colore segue lo stato, e le tonalità sono diverse fra loro", async () => {
     await nuovoDatabase();
-    const { appuntamentoId } = creaSchedaConAppuntamento();
-    const appuntamento = () => ottieniAppuntamento(appuntamentoId)!;
+    const { attivitaId } = creaSchedaConAttivita();
+    const attivita = () => ottieniAttivita(attivitaId)!;
     const colore = () => [...eventi.values()][0].colorId;
 
-    await pubblicaAppuntamento(appuntamentoId, "primary");
+    await pubblicaAttivita(attivitaId, "primary");
     const confermato = colore();
 
-    aggiornaAppuntamento(appuntamentoId, { ...appuntamento(), stato: "in-attesa" });
-    await pubblicaAppuntamento(appuntamentoId, "primary");
+    aggiornaAttivita(attivitaId, { ...attivita(), stato: "in-attesa" });
+    await pubblicaAttivita(attivitaId, "primary");
     const inAttesa = colore();
 
-    aggiornaAppuntamento(appuntamentoId, { ...appuntamento(), stato: "annullato" });
-    await pubblicaAppuntamento(appuntamentoId, "primary");
+    aggiornaAttivita(attivitaId, { ...attivita(), stato: "annullato" });
+    await pubblicaAttivita(attivitaId, "primary");
     const annullato = colore();
 
     // Tre colori distinti: se due stati condividessero la tinta, in una vista
@@ -657,41 +719,41 @@ describe("Pubblicazione automatica: cosa fa il modulo quando si salva", () => {
 
   it("il colore che l'utente sceglie nelle impostazioni è quello che va su Google", async () => {
     await nuovoDatabase();
-    const { appuntamentoId } = creaSchedaConAppuntamento();
+    const { attivitaId } = creaSchedaConAttivita();
     const { scriviColore, ripristinaColori, COLORI_PREDEFINITI } =
       await import("../src/lib/google/colori");
 
     // L'utente sceglie il blu per "confermato" e lascia gli altri due.
     scriviColore("confermato", "9");
     try {
-      await pubblicaAppuntamento(appuntamentoId, "primary");
+      await pubblicaAttivita(attivitaId, "primary");
       expect([...eventi.values()][0].colorId).toBe("9");
 
       // E la scelta vale per lo stato che riguarda, non per tutti: un colore
       // unico per i tre stati sarebbe inutile come scelta.
-      const attuale = ottieniAppuntamento(appuntamentoId)!;
-      aggiornaAppuntamento(appuntamentoId, { ...attuale, stato: "in-attesa" });
-      await pubblicaAppuntamento(appuntamentoId, "primary");
+      const attuale = ottieniAttivita(attivitaId)!;
+      aggiornaAttivita(attivitaId, { ...attuale, stato: "in-attesa" });
+      await pubblicaAttivita(attivitaId, "primary");
       expect([...eventi.values()][0].colorId).toBe(COLORI_PREDEFINITI["in-attesa"]);
     } finally {
       ripristinaColori();
     }
 
     // Tornando ai predefiniti, l'evento torna al suo colore iniziale.
-    aggiornaAppuntamento(appuntamentoId, {
-      ...ottieniAppuntamento(appuntamentoId)!,
+    aggiornaAttivita(attivitaId, {
+      ...ottieniAttivita(attivitaId)!,
       stato: "confermato",
     });
-    await pubblicaAppuntamento(appuntamentoId, "primary");
+    await pubblicaAttivita(attivitaId, "primary");
     expect([...eventi.values()][0].colorId).toBe(COLORI_PREDEFINITI.confermato);
   });
 
   it("una preferenza corrotta non fa fallire la pubblicazione", async () => {
     await nuovoDatabase();
-    const { appuntamentoId } = creaSchedaConAppuntamento();
+    const { attivitaId } = creaSchedaConAttivita();
 
     // Il tipo sbagliato è l'errore che fa davvero danno: se finisse
-    // nell'evento, Google risponderebbe 400 e l'appuntamento non sarebbe
+    // nell'evento, Google risponderebbe 400 e l'attivita non sarebbe
     // pubblicato — per un colore che l'utente non ha nemmeno chiesto. La
     // preferenza ora sta nel database, quindi è una copia ripristinata da un
     // backup o scritta da una versione diversa a farlo arrivare.
@@ -700,7 +762,7 @@ describe("Pubblicazione automatica: cosa fa il modulo quando si salva", () => {
       JSON.stringify({ confermato: 6, annullato: "colore-che-non-esiste" }),
     );
     try {
-      const esito = await pubblicaAppuntamento(appuntamentoId, "primary");
+      const esito = await pubblicaAttivita(attivitaId, "primary");
 
       expect(esito.ok).toBe(true);
       expect([...eventi.values()][0].colorId).toMatch(/^(1|2|3|4|5|6|7|8|9|10|11)$/);
@@ -711,36 +773,36 @@ describe("Pubblicazione automatica: cosa fa il modulo quando si salva", () => {
 
   it("tornando confermato il titolo torna normale e il colore con lui", async () => {
     await nuovoDatabase();
-    const { appuntamentoId } = creaSchedaConAppuntamento();
-    await pubblicaAppuntamento(appuntamentoId, "primary");
+    const { attivitaId } = creaSchedaConAttivita();
+    await pubblicaAttivita(attivitaId, "primary");
 
-    aggiornaAppuntamento(appuntamentoId, {
-      ...ottieniAppuntamento(appuntamentoId)!,
+    aggiornaAttivita(attivitaId, {
+      ...ottieniAttivita(attivitaId)!,
       stato: "annullato",
     });
-    await pubblicaAppuntamento(appuntamentoId, "primary");
+    await pubblicaAttivita(attivitaId, "primary");
     expect([...eventi.values()][0].summary).toMatch(/^ANNULLATO: /);
 
     // Ripensamento: si conferma di nuovo. L'evento non deve restare per sempre
     // etichettato annullato — il prefisso è una dichiarazione dello stato, non
     // una cicatrice.
-    aggiornaAppuntamento(appuntamentoId, {
-      ...ottieniAppuntamento(appuntamentoId)!,
+    aggiornaAttivita(attivitaId, {
+      ...ottieniAttivita(attivitaId)!,
       stato: "confermato",
     });
-    await pubblicaAppuntamento(appuntamentoId, "primary");
-    expect([...eventi.values()][0].summary).toBe("Ritiro documento");
+    await pubblicaAttivita(attivitaId, "primary");
+    expect([...eventi.values()][0].summary).toBe("APPUNTAMENTO - Ritiro documento");
     expect([...eventi.values()][0].colorId).not.toBe("11");
   });
 
-  it("annullare un appuntamento mai pubblicato non chiama Google", async () => {
+  it("annullare un'attività mai pubblicata non chiama Google", async () => {
     await nuovoDatabase();
-    const { appuntamentoId } = creaSchedaConAppuntamento();
-    const attuale = ottieniAppuntamento(appuntamentoId)!;
-    aggiornaAppuntamento(appuntamentoId, { ...attuale, stato: "annullato" });
+    const { attivitaId } = creaSchedaConAttivita();
+    const attuale = ottieniAttivita(attivitaId)!;
+    aggiornaAttivita(attivitaId, { ...attuale, stato: "annullato" });
     chiamate.length = 0;
 
-    const esito = await pubblicaAppuntamento(appuntamentoId, "primary");
+    const esito = await pubblicaAttivita(attivitaId, "primary");
 
     expect(esito.ok).toBe(true);
     expect(esito.messaggio).toMatch(/non era su Google Calendar/i);
@@ -748,153 +810,153 @@ describe("Pubblicazione automatica: cosa fa il modulo quando si salva", () => {
   });
 });
 
-describe("Eliminare un appuntamento toglie anche l'evento", () => {
-  it("l'evento sparisce da Google e l'appuntamento dal database", async () => {
+describe("Eliminare un'attività toglie anche l'evento", () => {
+  it("l'evento sparisce da Google e l'attività dal database", async () => {
     await nuovoDatabase();
-    const { appuntamentoId } = creaSchedaConAppuntamento();
-    await pubblicaAppuntamento(appuntamentoId, "primary");
+    const { attivitaId } = creaSchedaConAttivita();
+    await pubblicaAttivita(attivitaId, "primary");
     expect(eventi.size).toBe(1);
 
-    const esito = await eliminaAppuntamentoEEvento(appuntamentoId);
+    const esito = await eliminaAttivitaEEvento(attivitaId);
 
     expect(esito.ok).toBe(true);
     expect(esito.messaggio).toMatch(/Google Calendar/);
     expect(eventi.size).toBe(0);
-    expect(ottieniAppuntamento(appuntamentoId)).toBeNull();
+    expect(ottieniAttivita(attivitaId)).toBeNull();
     expect(chiamate.some((c) => c.metodo === "DELETE")).toBe(true);
   });
 
-  it("un appuntamento mai pubblicato si elimina senza chiamare Google", async () => {
+  it("un'attività mai pubblicata si elimina senza chiamare Google", async () => {
     await nuovoDatabase();
-    const { appuntamentoId } = creaSchedaConAppuntamento();
+    const { attivitaId } = creaSchedaConAttivita();
     chiamate.length = 0;
 
-    const esito = await eliminaAppuntamentoEEvento(appuntamentoId);
+    const esito = await eliminaAttivitaEEvento(attivitaId);
 
     expect(esito.ok).toBe(true);
-    expect(esito.messaggio).toBe("Appuntamento eliminato");
+    expect(esito.messaggio).toBe("Attività eliminata");
     expect(chiamate).toHaveLength(0);
-    expect(ottieniAppuntamento(appuntamentoId)).toBeNull();
+    expect(ottieniAttivita(attivitaId)).toBeNull();
   });
 
   it("se l'evento è già sparito da Google, eliminare riesce lo stesso", async () => {
     await nuovoDatabase();
-    const { appuntamentoId } = creaSchedaConAppuntamento();
-    await pubblicaAppuntamento(appuntamentoId, "primary");
+    const { attivitaId } = creaSchedaConAttivita();
+    await pubblicaAttivita(attivitaId, "primary");
 
     // L'utente cancella l'evento direttamente da Google Calendar: l'app non
     // lo sa, e il collegamento punta a un evento che non esiste più.
-    const eventoId = ottieniAppuntamento(appuntamentoId)!.googleEventId!;
+    const eventoId = ottieniAttivita(attivitaId)!.googleEventId!;
     await eliminaEvento(eventoId, "primary");
 
-    const esito = await eliminaAppuntamentoEEvento(appuntamentoId);
+    const esito = await eliminaAttivitaEEvento(attivitaId);
 
     // Togliere l'evento dall'agenda è **già** riuscito: il 410 è Google che
     // conferma che l'evento non c'è. Fallire qui non proteggerebbe nulla e
-    // renderebbe l'appuntamento non eliminabile, perché ogni nuovo tentativo
+    // renderebbe l'attivita non eliminabile, perché ogni nuovo tentativo
     // riceverebbe lo stesso 410.
     expect(esito.ok).toBe(true);
-    expect(ottieniAppuntamento(appuntamentoId)).toBeNull();
+    expect(ottieniAttivita(attivitaId)).toBeNull();
     expect(esito.messaggio).not.toMatch(/410/);
   });
 
   it("scollegare un evento già sparito da Google riesce e pulisce il collegamento", async () => {
     await nuovoDatabase();
-    const { appuntamentoId } = creaSchedaConAppuntamento();
-    await pubblicaAppuntamento(appuntamentoId, "primary");
-    const eventoId = ottieniAppuntamento(appuntamentoId)!.googleEventId!;
+    const { attivitaId } = creaSchedaConAttivita();
+    await pubblicaAttivita(attivitaId, "primary");
+    const eventoId = ottieniAttivita(attivitaId)!.googleEventId!;
     await eliminaEvento(eventoId, "primary");
 
-    const esito = await dissociaAppuntamento(appuntamentoId);
+    const esito = await dissociaAttivita(attivitaId);
 
     expect(esito.ok).toBe(true);
     // Il collegamento a un evento che non esiste non può più essere tolto, e
     // quindi non può più essere ripulito: resterebbe lì per sempre.
-    expect(ottieniAppuntamento(appuntamentoId)?.googleEventId).toBeNull();
+    expect(ottieniAttivita(attivitaId)?.googleEventId).toBeNull();
   });
 
-  it("modificare un appuntamento il cui evento è sparito lo ricrea", async () => {
+  it("modificare un'attività il cui evento è sparito lo ricrea", async () => {
     await nuovoDatabase();
-    const { appuntamentoId } = creaSchedaConAppuntamento();
-    await pubblicaAppuntamento(appuntamentoId, "primary");
-    const eventoId = ottieniAppuntamento(appuntamentoId)!.googleEventId!;
+    const { attivitaId } = creaSchedaConAttivita();
+    await pubblicaAttivita(attivitaId, "primary");
+    const eventoId = ottieniAttivita(attivitaId)!.googleEventId!;
     await eliminaEvento(eventoId, "primary");
 
-    await aggiornaTitolo(appuntamentoId, "Ritiro documento (rivisto)");
-    const esito = await sincronizzaAppuntamento(appuntamentoId, "primary");
+    await aggiornaTitolo(attivitaId, "Ritiro documento (rivisto)");
+    const esito = await sincronizzaAttivita(attivitaId, "primary");
 
     // Senza questo, ogni modifica successiva avrebbe ricevuto lo stesso 404
-    // e l'appuntamento sarebbe restato bloccato per sempre, con un collegamento
+    // e l'attivita sarebbe restato bloccato per sempre, con un collegamento
     // a un evento morto.
     expect(esito.ok).toBe(true);
     expect(eventi.size).toBe(1);
-    expect([...eventi.values()][0].summary).toBe("Ritiro documento (rivisto)");
+    expect([...eventi.values()][0].summary).toBe("APPUNTAMENTO - Ritiro documento (rivisto)");
     // E il collegamento è tornato a puntare a qualcosa che esiste.
-    expect(ottieniAppuntamento(appuntamentoId)?.googleEventId).toBeTruthy();
+    expect(ottieniAttivita(attivitaId)?.googleEventId).toBeTruthy();
   });
 
   it("eliminare un'azienda porta via anche gli eventi su Google", async () => {
     await nuovoDatabase();
-    const { aziendaId, appuntamentoId } = creaSchedaConAppuntamento();
-    await pubblicaAppuntamento(appuntamentoId, "primary");
+    const { aziendaId, attivitaId } = creaSchedaConAttivita();
+    await pubblicaAttivita(attivitaId, "primary");
     expect(eventi.size).toBe(1);
 
     // La cascata: gli ID evento si raccolgono prima che le righe spariscano,
     // poi l'eliminazione passa da Google prima di toccare il database.
-    const conEvento = appuntamentiConEventoDaEliminareAzienda(aziendaId);
-    expect(conEvento.map((a) => a.id)).toContain(appuntamentoId);
-    const esito = await eliminaAppuntamentiEEventi(conEvento.map((a) => a.id));
+    const conEvento = attivitaConEventoDaEliminareAzienda(aziendaId);
+    expect(conEvento.map((a) => a.id)).toContain(attivitaId);
+    const esito = await eliminaAttivitaEEventi(conEvento.map((a) => a.id));
 
     expect(esito.falliti).toEqual([]);
-    expect(esito.riusciti).toContain(appuntamentoId);
+    expect(esito.riusciti).toContain(attivitaId);
     expect(eventi.size).toBe(0);
-    expect(ottieniAppuntamento(appuntamentoId)).toBeNull();
+    expect(ottieniAttivita(attivitaId)).toBeNull();
   });
 
   it("se Google non risponde nella cascata, la riga locale resta e si può riprovare", async () => {
     await nuovoDatabase();
-    const { aziendaId, appuntamentoId } = creaSchedaConAppuntamento();
-    await pubblicaAppuntamento(appuntamentoId, "primary");
+    const { aziendaId, attivitaId } = creaSchedaConAttivita();
+    await pubblicaAttivita(attivitaId, "primary");
     fetchFinto.mockImplementationOnce(async () => risposta({ error: "rateLimitExceeded" }, 429));
 
-    const conEvento = appuntamentiConEventoDaEliminareAzienda(aziendaId);
-    const esito = await eliminaAppuntamentiEEventi(conEvento.map((a) => a.id));
+    const conEvento = attivitaConEventoDaEliminareAzienda(aziendaId);
+    const esito = await eliminaAttivitaEEventi(conEvento.map((a) => a.id));
 
-    // L'appuntamento resta: cancellarlo comunque lascerebbe l'evento orfano
+    // L'attivita resta: cancellarlo comunque lascerebbe l'evento orfano
     // in agenda, non più raggiungibile da nessuno.
     expect(esito.falliti).toHaveLength(1);
-    expect(esito.falliti[0].id).toBe(appuntamentoId);
-    expect(ottieniAppuntamento(appuntamentoId)?.googleEventId).toBe("evt-1");
+    expect(esito.falliti[0].id).toBe(attivitaId);
+    expect(ottieniAttivita(attivitaId)?.googleEventId).toBe("evt-1");
   });
 
-  it("se Google non risponde l'appuntamento resta: meglio che lasciare un evento orfano", async () => {
+  it("se Google non risponde l'attività resta: meglio che lasciare un evento orfano", async () => {
     await nuovoDatabase();
-    const { appuntamentoId } = creaSchedaConAppuntamento();
-    await pubblicaAppuntamento(appuntamentoId, "primary");
+    const { attivitaId } = creaSchedaConAttivita();
+    await pubblicaAttivita(attivitaId, "primary");
     fetchFinto.mockImplementationOnce(async () => risposta({ error: "rateLimitExceeded" }, 429));
 
-    const esito = await eliminaAppuntamentoEEvento(appuntamentoId);
+    const esito = await eliminaAttivitaEEvento(attivitaId);
 
     expect(esito.ok).toBe(false);
     expect(esito.messaggio).toMatch(/429/);
     // Ancora in lista, con il collegamento all'evento: premere Elimina
     // di nuovo riprova senza dover riscriverlo.
-    expect(ottieniAppuntamento(appuntamentoId)?.googleEventId).toBe("evt-1");
+    expect(ottieniAttivita(attivitaId)?.googleEventId).toBe("evt-1");
   });
 });
 
 /* -------------- il modulo: salvare deve pubblicare, senza toccare nulla ---- */
 
-describe("Il modulo dell'appuntamento", () => {
+describe("Il modulo dell'attività", () => {
   let contenitore: HTMLDivElement;
   let radice: Root | null = null;
 
-  async function monta() {
+  async function monta(tipo?: TipoAttivita) {
     radice = createRoot(contenitore);
     await act(async () => {
       radice?.render(
         <AvvisoProvider>
-          <AppuntamentoForm onSaved={() => {}} onCancel={() => {}} />
+          <AttivitaForm tipoIniziale={tipo} onSaved={() => {}} onCancel={() => {}} />
         </AvvisoProvider>,
       );
     });
@@ -924,9 +986,35 @@ describe("Il modulo dell'appuntamento", () => {
     contenitore.remove();
   });
 
+  it("il tipo non si sceglie: lo dice il bottone da cui si è arrivati", async () => {
+    await nuovoDatabase();
+    creaSchedaConAttivita();
+    await monta("chiamata");
+
+    // Nessuna casella da cambiare: l'utente ha premuto "chiamata" e qui non
+    // deve ritrovarsi la domanda "appuntamento o chiamata?". L'unica select
+    // che resta è quella dei promemoria, che è una scelta sua e non del tipo.
+    const opzioni = [...contenitore.querySelectorAll("select option")]
+      .map((o) => o.textContent ?? "")
+      .join(" | ");
+    expect(opzioni).not.toMatch(/appuntamento/i);
+    expect(opzioni).not.toMatch(/chiamata/i);
+    // Il tipo è dichiarato, e il bottone dice cosa verrà creato.
+    expect(contenitore.textContent).toContain("Chiamata — nel calendario");
+    expect(contenitore.textContent).toContain("CHIAMATA - …");
+
+    await act(async () => {
+      perEtichetta("Crea chiamata").click();
+    });
+
+    const salvata = elencaAttivita({}).find((a) => a.tipo === "chiamata");
+    expect(salvata?.titolo).toBe("Chiamata di sollecito");
+    expect([...eventi.values()][0].summary).toBe("CHIAMATA - Chiamata di sollecito");
+  });
+
   it("salvando crea l'evento su Google Calendar e avvisa", async () => {
     await nuovoDatabase();
-    creaSchedaConAppuntamento(); // almeno un'azienda, come nella pagina reale
+    creaSchedaConAttivita(); // almeno un'azienda, come nella pagina reale
     await monta();
 
     const spunta = contenitore.querySelector<HTMLInputElement>('input[type="checkbox"]');
@@ -939,15 +1027,15 @@ describe("Il modulo dell'appuntamento", () => {
     });
 
     expect(eventi.size).toBe(1);
-    expect([...eventi.values()][0].summary).toBe("Appuntamento allo sportello");
-    // C'è anche l'appuntamento della scheda di prova: conta quello del modulo.
-    const salvato = elencaAppuntamenti({}).find((a) => a.titolo === "Appuntamento allo sportello");
+    expect([...eventi.values()][0].summary).toBe("APPUNTAMENTO - Appuntamento allo sportello");
+    // C'è anche l'attività della scheda di prova: conta quella del modulo.
+    const salvato = elencaAttivita({}).find((a) => a.titolo === "Appuntamento allo sportello");
     expect(salvato?.googleEventId).toBe("evt-1");
   });
 
   it("con la spunta disattivata salva in locale e non tocca Google", async () => {
     await nuovoDatabase();
-    creaSchedaConAppuntamento();
+    creaSchedaConAttivita();
     await monta();
 
     const spunta = contenitore.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
@@ -962,14 +1050,14 @@ describe("Il modulo dell'appuntamento", () => {
 
     expect(eventi.size).toBe(0);
     expect(chiamate.some((c) => c.metodo === "POST")).toBe(false);
-    const salvato = elencaAppuntamenti({}).find((a) => a.titolo === "Appuntamento allo sportello");
+    const salvato = elencaAttivita({}).find((a) => a.titolo === "Appuntamento allo sportello");
     expect(salvato).toBeTruthy();
     expect(salvato?.googleEventId).toBeNull();
   });
 
   it("un salvataggio con Google che risponde male lo dice, e lo dice sulla pagina", async () => {
     await nuovoDatabase();
-    creaSchedaConAppuntamento();
+    creaSchedaConAttivita();
     // Il modulo salva, poi prova a pubblicare. Se Google risponde con un
     // errore, quello che l'utente legge deve essere un avviso di **errore**:
     // prima la funzione ritornava `{ ok: false }` e veniva passata a `esegui`
@@ -984,11 +1072,9 @@ describe("Il modulo dell'appuntamento", () => {
       perEtichetta("Crea appuntamento").click();
     });
 
-    // L'appuntamento è salvato — quello non deve mai andare perso — ma
+    // L'attività è salvata — quella non deve mai andare persa — ma
     // l'avviso è di errore, non di successo.
-    expect(elencaAppuntamenti({}).some((a) => a.titolo === "Appuntamento allo sportello")).toBe(
-      true,
-    );
-    expect(document.body.textContent).toContain("Non pubblicato");
+    expect(elencaAttivita({}).some((a) => a.titolo === "Appuntamento allo sportello")).toBe(true);
+    expect(document.body.textContent).toContain("Non pubblicata");
   });
 });

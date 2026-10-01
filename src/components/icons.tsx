@@ -27,7 +27,7 @@ export const UsersIcon = (p: IconProps) => (
   </Icon>
 );
 
-/** L'edificio: il soggetto di relazioni e appuntamenti è un'azienda. */
+/** L'edificio: il soggetto di report e attivita è un'azienda. */
 export const BuildingIcon = (p: IconProps) => (
   <Icon {...p}>
     <path d="M4 21V6.5A1.5 1.5 0 0 1 5.5 5h7A1.5 1.5 0 0 1 14 6.5V21" />
@@ -141,6 +141,13 @@ export const MapPinIcon = (p: IconProps) => (
   <Icon {...p}>
     <path d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11z" />
     <circle cx="12" cy="10" r="2.6" />
+  </Icon>
+);
+
+/** Il telefono: distingue la chiamata dall'appuntamento con lo stesso gesto. */
+export const PhoneIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M6.6 3.5h-2A1.6 1.6 0 0 0 3 5.2C3 13.4 10.6 21 18.8 21a1.6 1.6 0 0 0 1.7-1.6v-2a1.2 1.2 0 0 0-1-1.2l-2.6-.4a1.2 1.2 0 0 0-1.2.5l-1 1.3a12.6 12.6 0 0 1-5.3-5.3l1.3-1a1.2 1.2 0 0 0 .5-1.2l-.4-2.6a1.2 1.2 0 0 0-1.2-1z" />
   </Icon>
 );
 

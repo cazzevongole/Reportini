@@ -6,7 +6,7 @@
     "node": ">=22.12"
   },
   "type": "module",
-  "description": "Gestione delle relazioni anagrafiche e degli appuntamenti su Google Calendar",
+  "description": "Gestione delle attività sulle aziende e dei report, con Google Calendar",
   "repository": {
     "type": "git",
     "url": "https://github.com/cazzevongole/Reportini.git"

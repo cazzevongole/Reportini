@@ -18,9 +18,8 @@ import {
   creaAzienda,
   creaReferente as nuovoReferente,
   effettoEliminazioneAzienda,
-  effettoEliminazioneRelazione,
   eliminaAzienda,
-  eliminaRelazione,
+  eliminaReport,
   elencaAziende,
   elencaReferenti,
   inizialiAzienda,
@@ -59,33 +58,29 @@ function creaReferente(aziendaId: number, nome: string): number {
   });
 }
 
-function creaRelazione(aziendaId: number, titolo: string): number {
-  return insert("relazioni", {
+/** Il report non ha tipo, stato né data: vengono dall'attività che lo genera. */
+function creaReport(aziendaId: number, attivitaId: number, titolo = "Certificato"): number {
+  return insert("report", {
     aziendaId,
+    attivitaId,
     titolo,
-    tipo: "Residenza",
-    stato: "bozza",
-    contenuto: "Testo",
-    data: ora().slice(0, 10),
+    descrizione: "Testo",
     createdAt: ora(),
     updatedAt: ora(),
   });
 }
 
-function creaAppuntamento(
-  azienda: number | null,
-  relazione: number | null,
-  titolo: string,
-): number {
-  return insert("appuntamenti", {
+function creaAttivita(azienda: number, titolo: string, tipo = "appuntamento"): number {
+  return insert("attivita", {
     aziendaId: azienda,
-    relazioneId: relazione,
     titolo,
     descrizione: "",
     inizio: ora(),
     fine: ora(),
     luogo: "",
+    tipo,
     stato: "in-attesa",
+    completata: 0,
     promemoriaMin: 60,
     googleEventId: null,
     googleCalendarId: null,
@@ -95,8 +90,6 @@ function creaAppuntamento(
     updatedAt: ora(),
   });
 }
-
-const id = (riga: { id: number }) => riga.id;
 
 beforeAll(async () => {
   await initDatabase();
@@ -121,29 +114,27 @@ describe("Chiavi esterne", () => {
 
 beforeEach(() => {
   // Un database pulito a ogni test: l'ordine non deve contare.
-  all("DELETE FROM appuntamenti");
-  all("DELETE FROM relazioni");
+  all("DELETE FROM attivita");
+  all("DELETE FROM report");
   all("DELETE FROM referenti");
   all("DELETE FROM aziende");
 });
 
 describe("Eliminazione di un'azienda", () => {
-  it("porta via referenti, relazioni e appuntamenti che si riferivano a lei", () => {
+  it("porta via referenti, report e attivita che si riferivano a lei", () => {
     const azienda = nuovaAzienda("Ferramenta Rossi");
     const altra = nuovaAzienda("Verdi S.r.l.");
     const referente = creaReferente(azienda, "Mario");
     creaReferente(altra, "Giulia");
-    const relazione = creaRelazione(azienda, "Certificato");
-    // Appuntamento legato solo alla relazione: senza l'azienda resterebbe
-    // appeso a un riferimento cancellato.
-    const orfano = creaAppuntamento(null, relazione, "Consegna");
-    // Appuntamento di un'altra azienda: non c'entra e deve restare.
-    const diAltra = creaAppuntamento(altra, null, "Sportello");
+    const attivita = creaAttivita(azienda, "Consegna");
+    creaReport(azienda, attivita);
+    // Attivita di un'altra azienda: non c'entra e deve restare.
+    const diAltra = creaAttivita(altra, "Sportello");
 
     const effetto = effettoEliminazioneAzienda(azienda);
     expect(effetto.referenti).toBe(1);
-    expect(effetto.relazioni).toBe(1);
-    expect(effetto.appuntamenti).toBe(1);
+    expect(effetto.report).toBe(1);
+    expect(effetto.attivita).toBe(1);
 
     eliminaAzienda(azienda);
 
@@ -151,37 +142,46 @@ describe("Eliminazione di un'azienda", () => {
     // cascata: senza quel controllo resterebbe un id che non punta a nulla.
     expect(all("SELECT id FROM referenti WHERE id = ?", [referente])).toHaveLength(0);
     expect(all("SELECT id FROM referenti WHERE aziendaId = ?", [altra])).toHaveLength(1);
-    expect(all("SELECT id FROM appuntamenti WHERE id = ?", [orfano])).toHaveLength(0);
-    expect(all("SELECT id FROM appuntamenti WHERE id = ?", [diAltra])).toHaveLength(1);
-    // Nessuna riga senza più nessun riferimento: è quello che resterebbe
-    // visibile sulle altre pagine.
-    expect(
-      all("SELECT id FROM appuntamenti WHERE aziendaId IS NULL AND relazioneId IS NULL"),
-    ).toHaveLength(0);
-    expect(all("SELECT id FROM relazioni WHERE aziendaId = ?", [azienda])).toHaveLength(0);
+    expect(all("SELECT id FROM attivita WHERE id = ?", [attivita])).toHaveLength(0);
+    expect(all("SELECT id FROM attivita WHERE id = ?", [diAltra])).toHaveLength(1);
+    // Nessuna attività senza azienda: è il caso che nessuno potrebbe aprire,
+    // perché il contesto è ciò che rende leggibile il report.
+    expect(all("SELECT id FROM attivita WHERE aziendaId IS NULL")).toHaveLength(0);
+    // E nessun report rimasto appeso: sparisce con la sua attività.
+    expect(all("SELECT id FROM report WHERE aziendaId = ?", [azienda])).toHaveLength(0);
   });
 });
 
-describe("Eliminazione di una relazione", () => {
-  it("porta via solo gli appuntamenti che si riferivano solo a lei", () => {
+describe("Il report e la sua attività", () => {
+  it("eliminare il report lascia l'attività, che è la sua causa", () => {
     const azienda = nuovaAzienda("Ferramenta Rossi");
-    const relazione = creaRelazione(azienda, "Certificato");
-    const soloRelazione = creaAppuntamento(null, relazione, "Consegna");
-    const ancheAzienda = creaAppuntamento(azienda, relazione, "Sportello");
+    const attivita = creaAttivita(azienda, "Sportello");
+    const report = creaReport(azienda, attivita);
 
-    expect(effettoEliminazioneRelazione(relazione).appuntamenti).toBe(1);
+    eliminaReport(report);
 
-    eliminaRelazione(relazione);
+    expect(all("SELECT id FROM report WHERE id = ?", [report])).toHaveLength(0);
+    // L'attività resta: è lei che si segna come completata e da lei si può
+    // generare un report nuovo. Il rapporto è uno a uno ma non è proprietà:
+    // è la cascata nel verso opposto.
+    expect(all("SELECT id FROM attivita WHERE id = ?", [attivita])).toHaveLength(1);
+  });
 
-    expect(all("SELECT id FROM appuntamenti WHERE id = ?", [soloRelazione])).toHaveLength(0);
-    // Questo ha ancora un'azienda: resta, e senza più la relazione.
-    const rimasto = all<{ id: number; relazioneId: number | null }>(
-      "SELECT id, relazioneId FROM appuntamenti WHERE id = ?",
-      [ancheAzienda],
-    );
-    expect(rimasto).toHaveLength(1);
-    expect(rimasto.map(id)).toEqual([ancheAzienda]);
-    expect(rimasto[0].relazioneId).toBeNull();
+  it("eliminando l'attività sparisce anche il report che l'ha generato", () => {
+    const azienda = nuovaAzienda("Ferramenta Rossi");
+    const altra = nuovaAzienda("Verdi S.r.l.");
+    const attivita = creaAttivita(azienda, "Sportello");
+    const report = creaReport(azienda, attivita);
+    const intatta = creaAttivita(altra, "Sportello");
+    const suoReport = creaReport(altra, intatta);
+
+    all("DELETE FROM attivita WHERE id = ?", [attivita]);
+
+    // Il report è la descrizione di quell'attività: senza di lei non ha più
+    // né tipo né data, e restare sarebbe una riga che nessuno può aprire.
+    expect(all("SELECT id FROM report WHERE id = ?", [report])).toHaveLength(0);
+    // Quello dell'altra attività non c'entra e resta.
+    expect(all("SELECT id FROM report WHERE id = ?", [suoReport])).toHaveLength(1);
   });
 });
 

@@ -138,7 +138,7 @@ function riga(parte: Partial<Riga> = {}): Riga {
     user_id: UTENTE.id,
     email: UTENTE.email,
     tipo: "fix",
-    titolo: "La relazione non si salva",
+    titolo: "La report non si salva",
     corpo: "Chiudo la schedata a metà e la perdo.",
     stato: "aperta",
     risposta: null,
@@ -290,7 +290,7 @@ describe("Sezione Chiedilo allo sviluppatore", () => {
   it("mostra le richieste dell'utente con la risposta dello sviluppatore", async () => {
     stato.righe = [riga({ stato: "risolta", risposta: "Corretto: ora salva anche chiudendo." })];
     await monta(<ChiediloAlloSviluppatore />);
-    expect(testo()).toContain("La relazione non si salva");
+    expect(testo()).toContain("La report non si salva");
     expect(testo()).toContain("Risolta");
     expect(testo()).toContain("Corretto: ora salva anche chiudendo.");
   });

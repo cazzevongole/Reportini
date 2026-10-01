@@ -96,7 +96,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     }
     setError(null);
     // Con il backend configurato l'accesso passa da Google **con** lo scope
-    // del calendario: profilo e appuntamenti in un consenso solo. Senza
+    // del calendario: profilo e attivita in un consenso solo. Senza
     // backend si entra lo stesso, ma solo col profilo, e le impostazioni
     // dicono cosa manca.
     if (googleConfigured) {

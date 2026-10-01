@@ -25,13 +25,13 @@ const PERCHE = [
   },
   {
     Icona: FileTextIcon,
-    titolo: "Relazioni",
-    testo: "Ogni relazione è legata alla sua azienda e ne segue lo stato.",
+    titolo: "Report",
+    testo: "Ogni report nasce da un'attività svolta con un'azienda.",
   },
   {
     Icona: CalendarIcon,
-    titolo: "Appuntamenti",
-    testo: "Si pubblicano su Google Calendar e restano collegati alla scheda.",
+    titolo: "Attività",
+    testo: "Si pubblicano su Google Calendar e restano collegate alla scheda.",
   },
 ];
 
@@ -57,7 +57,7 @@ export default function Accesso() {
       <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col justify-center px-5 py-12 sm:px-6">
         <div className="mx-auto w-full max-w-md text-center">
           <p className="font-display text-3xl leading-none text-ink-950">Reportini</p>
-          <p className="mt-2 text-sm text-ink-400">Aziende, relazioni e appuntamenti</p>
+          <p className="mt-2 text-sm text-ink-400">Aziende, report e attività</p>
 
           <div className="card mt-8 p-6 text-left">
             <h1 className="text-lg text-ink-900">Accedi per continuare</h1>

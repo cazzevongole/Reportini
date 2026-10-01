@@ -23,8 +23,8 @@ import { useAccount } from "./lib/cloud/session";
 const Panel = lazy(() => import("./pages/Panel"));
 const Aziende = lazy(() => import("./pages/Aziende"));
 const AziendaDettaglio = lazy(() => import("./pages/AziendaDettaglio"));
-const Relazioni = lazy(() => import("./pages/Relazioni"));
-const Appuntamenti = lazy(() => import("./pages/Appuntamenti"));
+const Report = lazy(() => import("./pages/Report"));
+const Attivita = lazy(() => import("./pages/Attivita"));
 const Impostazioni = lazy(() => import("./pages/Impostazioni"));
 const Sviluppo = lazy(() => import("./pages/Sviluppo"));
 
@@ -185,18 +185,18 @@ export default function App() {
                   }
                 />
                 <Route
-                  path="/panel/relazioni"
+                  path="/panel/report"
                   element={
                     <Suspense fallback={<CaricamentoPagina />}>
-                      <Relazioni />
+                      <Report />
                     </Suspense>
                   }
                 />
                 <Route
-                  path="/panel/appuntamenti"
+                  path="/panel/attivita"
                   element={
                     <Suspense fallback={<CaricamentoPagina />}>
-                      <Appuntamenti />
+                      <Attivita />
                     </Suspense>
                   }
                 />

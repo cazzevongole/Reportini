@@ -1,9 +1,9 @@
 import {
-  eliminaAppuntamento,
-  elencaAppuntamenti,
-  marcaAppuntamentoSincronizzato,
+  eliminaAttivita,
+  elencaAttivita,
+  marcaAttivitaSincronizzata,
   marcaErroreGoogle,
-  ottieniAppuntamento,
+  ottieniAttivita,
   rimuoviCollegamentoGoogle,
 } from "../repo";
 import {
@@ -13,26 +13,31 @@ import {
   eventoMancante,
   type CalendarEvent,
 } from "./calendar";
-import type { Appuntamento, AppuntamentoDettagliato } from "../types";
+import type { Attivita, AttivitaDettagliata } from "../types";
 
 export interface SyncResult {
   ok: boolean;
   messaggio: string;
 }
 
-function aSincronizzabile(appuntamento: Appuntamento | AppuntamentoDettagliato): Appuntamento {
-  const { aziendaRagioneSociale, aziendaPartitaIva, relazioneTitolo, ...base } =
-    appuntamento as AppuntamentoDettagliato;
+/**
+ * La riga da mandare a Google, senza il contesto dell'azienda.
+ *
+ * Il contesto viene aggiunto qui e non resta nel database: è roba dell'evento,
+ * e salvarlo significherebbe ritrovarselo nel modulo di modifica e accodarlo a
+ * ogni passaggio.
+ */
+function aSincronizzabile(attivita: Attivita | AttivitaDettagliata): Attivita {
+  const { aziendaRagioneSociale, aziendaPartitaIva, ...base } = attivita as AttivitaDettagliata;
   const contesto = [
     aziendaRagioneSociale ? `Azienda: ${aziendaRagioneSociale}` : "",
     aziendaPartitaIva ? `Partita Iva: ${aziendaPartitaIva}` : "",
-    relazioneTitolo ? `Relazione: ${relazioneTitolo}` : "",
   ]
     .filter(Boolean)
     .join("\n");
   return {
-    ...(base as Appuntamento),
-    descrizione: descrizioneConContesto(appuntamento.descrizione, contesto),
+    ...(base as Attivita),
+    descrizione: descrizioneConContesto(attivita.descrizione, contesto),
   };
 }
 
@@ -41,9 +46,9 @@ function aSincronizzabile(appuntamento: Appuntamento | AppuntamentoDettagliato):
  *
  * Il contesto non sta nella descrizione salvata: sta solo nell'evento. Ma
  * può esserci già dentro, perché le versioni precedenti scrivevano qui
- * l'appuntamento arricchito e il modulo di modifica lo mostrava. Senza
- * questo controllo, ogni sincronizzazione avrebbe aggiunto un blocco in più
- * e la descrizione sarebbe cresciuta a ogni modifica.
+ * l'attività arricchita e il modulo di modifica lo mostrava. Senza questo
+ * controllo, ogni sincronizzazione avrebbe aggiunto un blocco in più e la
+ * descrizione sarebbe cresciuta a ogni modifica.
  */
 function descrizioneConContesto(descrizione: string, contesto: string): string {
   if (!contesto) return descrizione;
@@ -58,48 +63,45 @@ function descrizioneConContesto(descrizione: string, contesto: string): string {
   return [testo, contesto].filter(Boolean).join("\n\n");
 }
 
-/** Invia un appuntamento a Google Calendar, creando o aggiornando l'evento. */
-export async function sincronizzaAppuntamento(
-  id: number,
-  calendarId = "primary",
-): Promise<SyncResult> {
-  const salvato = ottieniAppuntamento(id);
-  if (!salvato) return { ok: false, messaggio: "L'appuntamento non esiste più" };
-  const appuntamento = aSincronizzabile(salvato);
-  const calendario = appuntamento.googleCalendarId ?? calendarId;
+/** Invia un'attività a Google Calendar, creando o aggiornando l'evento. */
+export async function sincronizzaAttivita(id: number, calendarId = "primary"): Promise<SyncResult> {
+  const salvato = ottieniAttivita(id);
+  if (!salvato) return { ok: false, messaggio: "L'attività non esiste più" };
+  const attivita = aSincronizzabile(salvato);
+  const calendario = attivita.googleCalendarId ?? calendarId;
   try {
     let evento: CalendarEvent;
-    if (!appuntamento.googleEventId) {
-      evento = await creaEvento(appuntamento, calendario);
+    if (!attivita.googleEventId) {
+      evento = await creaEvento(attivita, calendario);
     } else {
       try {
-        evento = await aggiornaEvento(appuntamento.googleEventId, appuntamento, calendario);
+        evento = await aggiornaEvento(attivita.googleEventId, attivita, calendario);
       } catch (errore) {
         // L'utente ha cancellato l'evento direttamente su Google Calendar: il
         // collegamento punta a qualcosa che non esiste più. Senza questo, ogni
-        // modifica successiva riceverebbe lo stesso 404 e l'appuntamento
-        // resterebbe bloccato per sempre, con l'evento che non c'è. Qui
-        // l'evento viene ricreato: è quello che l'utente si aspetta salvando,
-        // e non si duplica nulla perché il precedente non è più in agenda.
+        // modifica successiva riceverebbe lo stesso 404 e l'attività resterebbe
+        // bloccata per sempre, con l'evento che non c'è. Qui l'evento viene
+        // ricreato: è quello che l'utente si aspetta salvando, e non si
+        // duplica nulla perché il precedente non è più in agenda.
         if (!eventoMancante(errore)) throw errore;
         console.warn(
-          `google-calendar: l'evento ${appuntamento.googleEventId} non esiste più, se ne crea uno nuovo`,
+          `google-calendar: l'evento ${attivita.googleEventId} non esiste più, se ne crea uno nuovo`,
         );
-        evento = await creaEvento(appuntamento, calendario);
+        evento = await creaEvento(attivita, calendario);
       }
     }
-    marcaAppuntamentoSincronizzato(appuntamento.id, {
+    marcaAttivitaSincronizzata(attivita.id, {
       googleEventId: evento.id,
       googleCalendarId: calendario,
       googleHtmlLink: evento.htmlLink ?? null,
     });
-    return { ok: true, messaggio: "Appuntamento sincronizzato con Google Calendar" };
+    return { ok: true, messaggio: "Attività sincronizzata con Google Calendar" };
   } catch (error) {
     const messaggio = spiega(error);
-    // Il motivo resta sull'appuntamento: è l'unica traccia che sopravvive
+    // Il motivo resta sull'attività: è l'unica traccia che sopravvive
     // all'avviso e al riavvio, ed è quella che dice se il problema è la rete,
     // i permessi o il token.
-    marcaErroreGoogle(appuntamento.id, messaggio);
+    marcaErroreGoogle(attivita.id, messaggio);
     console.error("google-calendar: sincronizzazione fallita —", messaggio);
     return { ok: false, messaggio };
   }
@@ -108,45 +110,39 @@ export async function sincronizzaAppuntamento(
 /**
  * Pubblicazione automatica, quella che fa il modulo a ogni salvataggio.
  *
- * Non è un semplice `sincronizzaAppuntamento`: qui si decide *cosa* fare
- * guardando lo stato. Un appuntamento già pubblicato viene aggiornato e non
- * duplicato, e uno annullato viene **segnato annullato** sull'evento invece
- * che cancellato: è quello che distingue "non si è più tenuto" da "non è
+ * Non è un semplice `sincronizzaAttivita`: qui si decide *cosa* fare
+ * guardando lo stato. Un'attività già pubblicata viene aggiornata e non
+ * duplicata, e una annullata viene **segnalata annullata** sull'evento invece
+ * che cancellata: è quello che distingue "non si è più tenuto" da "non è
  * mai esistito", e fa sì che l'app e il calendario non si contraddicano.
  */
-export async function pubblicaAppuntamento(
-  id: number,
-  calendarId = "primary",
-): Promise<SyncResult> {
-  const salvato = ottieniAppuntamento(id);
-  if (!salvato) return { ok: false, messaggio: "L'appuntamento non esiste più" };
+export async function pubblicaAttivita(id: number, calendarId = "primary"): Promise<SyncResult> {
+  const salvato = ottieniAttivita(id);
+  if (!salvato) return { ok: false, messaggio: "L'attività non esiste più" };
   if (salvato.stato === "annullato" && !salvato.googleEventId) {
-    return { ok: true, messaggio: "Appuntamento annullato: non era su Google Calendar" };
+    return { ok: true, messaggio: "Attività annullata: non era su Google Calendar" };
   }
-  const esito = await sincronizzaAppuntamento(id, calendarId);
+  const esito = await sincronizzaAttivita(id, calendarId);
   if (!esito.ok) return esito;
   if (salvato.stato === "annullato") {
-    return { ok: true, messaggio: "Appuntamento segnato come annullato su Google Calendar" };
+    return { ok: true, messaggio: "Attività segnata come annullata su Google Calendar" };
   }
   return {
     ok: true,
     messaggio: salvato.googleEventId
-      ? `Appuntamento aggiornato su Google Calendar${inAttesaDi(salvato) ? " (in attesa)" : ""}`
-      : `Appuntamento pubblicato su Google Calendar${inAttesaDi(salvato) ? " (in attesa)" : ""}`,
+      ? `Attività aggiornata su Google Calendar${inAttesaDi(salvato) ? " (in attesa)" : ""}`
+      : `Attività pubblicata su Google Calendar${inAttesaDi(salvato) ? " (in attesa)" : ""}`,
   };
 }
 
-function inAttesaDi(appuntamento: Appuntamento): boolean {
-  return appuntamento.stato === "in-attesa";
+function inAttesaDi(attivita: Attivita): boolean {
+  return attivita.stato === "in-attesa";
 }
 
 /** Rimuove l'evento remoto e pulisce i marcatori di sincronizzazione locali. */
-export async function dissociaAppuntamento(
-  id: number,
-  calendarId = "primary",
-): Promise<SyncResult> {
-  const salvato = ottieniAppuntamento(id);
-  if (!salvato) return { ok: false, messaggio: "L'appuntamento non esiste più" };
+export async function dissociaAttivita(id: number, calendarId = "primary"): Promise<SyncResult> {
+  const salvato = ottieniAttivita(id);
+  if (!salvato) return { ok: false, messaggio: "L'attività non esiste più" };
   try {
     if (salvato.googleEventId) {
       await eliminaEvento(salvato.googleEventId, salvato.googleCalendarId ?? calendarId);
@@ -158,38 +154,38 @@ export async function dissociaAppuntamento(
     // evento che non si può più toccare.
     if (!eventoMancante(error)) return { ok: false, messaggio: spiega(error) };
   }
-  // Solo i marcatori di Google: l'appuntamento non si tocca. Riscriverlo
+  // Solo i marcatori di Google: l'attività non si tocca. Riscriverlo
   // porterebbe nel database la descrizione arricchita che va solo
   // all'evento, e il modulo di modifica la mostrerebbe con dentro il
   // contesto dell'azienda — che si accoderebbe a ogni passaggio.
   rimuoviCollegamentoGoogle(salvato.id);
   return {
     ok: true,
-    messaggio: "Appuntamento scollegato da Google Calendar",
+    messaggio: "Attività scollegata da Google Calendar",
   };
 }
 
 /**
- * Cancella una lista di appuntamenti e, se c'era, anche l'evento su Google.
+ * Cancella una lista di attività e, se c'era, anche l'evento su Google.
  *
- * È la versione plurale di `eliminaAppuntamentoEEvento`, e serve alla
- * cancellazione a cascata: chi elimina un'azienda o una relazione elimina
- * con lei gli appuntamenti collegati, e quegli eventi su Google resterebbero
- * in agenda per sempre — orfani, non più raggiungibili dall'app. L'ordine è
- * quello di sempre: prima l'evento, poi la riga locale.
+ * È la versione plurale di `eliminaAttivitaEEvento`, e serve alla
+ * cancellazione a cascata: chi elimina un'azienda elimina con lei le sue
+ * attività, e quegli eventi su Google resterebbero in agenda per sempre —
+ * orfani, non più raggiungibili dall'app. L'ordine è quello di sempre: prima
+ * l'evento, poi la riga locale.
  *
  * Un evento che non c'è più (404/410) non è un fallimento: la cancellazione
  * che l'utente ha chiesto è già stata fatta. Un fallimento vero invece **non
- * cancella la riga locale**: l'appuntamento resta in lista e si può
- * riprovare, invece di lasciare un orfano.
+ * cancella la riga locale**: l'attività resta in lista e si può riprovare,
+ * invece di lasciare un orfano.
  */
-export async function eliminaAppuntamentiEEventi(
+export async function eliminaAttivitaEEventi(
   ids: number[],
 ): Promise<{ riusciti: number[]; falliti: Array<{ id: number; messaggio: string }> }> {
   const riusciti: number[] = [];
   const falliti: Array<{ id: number; messaggio: string }> = [];
   for (const id of ids) {
-    const salvato = ottieniAppuntamento(id);
+    const salvato = ottieniAttivita(id);
     // Già sparito: è un successo, la lista locale e quella di Google
     // concordano già.
     if (!salvato) {
@@ -206,68 +202,68 @@ export async function eliminaAppuntamentiEEventi(
         continue;
       }
     }
-    eliminaAppuntamento(id);
+    eliminaAttivita(id);
     riusciti.push(id);
   }
   return { riusciti, falliti };
 }
 
 /**
- * Cancella l'appuntamento e, se c'era, anche l'evento che ne era stato creato.
+ * Cancella l'attività e, se c'era, anche l'evento che ne era stato creato.
  *
- * L'ordine è quello che sembra controintuitivo e non lo è: prima l'evento,
- * poi l'appuntamento. Se la rete fallisce l'appuntamento **resta in lista**,
- * con l'avviso che spiega il motivo, e premere di nuovo Elimina riprova. Il
- * contrario — cancellare in locale e fallire la rete — lascerebbe un evento
- * orfano in agenda del quale l'app non saprebbe più niente: impossibile
- * ritrovarlo e impossibile toglierlo.
+ * L'ordine è quello che sembra controintuitivo e non lo è: prima l'evento, poi
+ * l'attività. Se la rete fallisce l'attività **resta in lista**, con l'avviso
+ * che spiega il motivo, e premere di nuovo Elimina riprova. Il contrario —
+ * cancellare in locale e fallire la rete — lascerebbe un evento orfano in
+ * agenda del quale l'app non saprebbe più niente: impossibile ritrovarlo e
+ * impossibile toglierlo.
  */
-export async function eliminaAppuntamentoEEvento(id: number): Promise<SyncResult> {
-  const salvato = ottieniAppuntamento(id);
-  if (!salvato) return { ok: true, messaggio: "L'appuntamento era già stato eliminato" };
+export async function eliminaAttivitaEEvento(id: number): Promise<SyncResult> {
+  const salvato = ottieniAttivita(id);
+  if (!salvato) return { ok: true, messaggio: "L'attività era già stata eliminata" };
   try {
     if (salvato.googleEventId) {
       await eliminaEvento(salvato.googleEventId, salvato.googleCalendarId ?? "primary");
     }
   } catch (error) {
     // Se l'utente ha cancellato l'evento direttamente da Google Calendar,
-    // l'evento non c'è più: toglierlo dall'agenda è ** già riuscito**, e
-    // trattenere l'appuntamento per questo impedirebbe di eliminarlo del tutto
-    // — ogni nuovo tentativo riceverebbe lo stesso 410. È il caso in cui il
+    // l'evento non c'è più: toglierlo dall'agenda è **già riuscito**, e
+    // trattenere l'attività per questo impedirebbe di eliminarla del tutto —
+    // ogni nuovo tentativo riceverebbe lo stesso 410. È il caso in cui il
     // calendario e l'app sono d'accordo sul fatto che l'evento non esiste, e va
     // trattato come quello che è.
     if (!eventoMancante(error)) {
       return {
         ok: false,
-        messaggio: `L'appuntamento non è stato eliminato: ${spiega(error)}`,
+        messaggio: `L'attività non è stata eliminata: ${spiega(error)}`,
       };
     }
   }
-  eliminaAppuntamento(salvato.id);
+  eliminaAttivita(salvato.id);
   return {
     ok: true,
     messaggio: salvato.googleEventId
-      ? "Appuntamento eliminato, evento rimosso anche da Google Calendar"
-      : "Appuntamento eliminato",
+      ? "Attività eliminata, evento rimosso anche da Google Calendar"
+      : "Attività eliminata",
   };
 }
 
-/** Invia tutti gli appuntamenti non ancora sincronizzati. */
+/** Invia tutte le attività non ancora sincronizzate. */
 export async function sincronizzaInAttesa(calendarId = "primary"): Promise<SyncResult> {
-  const inAttesa = elencaAppuntamenti().filter(
-    (appuntamento) => appuntamento.stato !== "annullato" && !appuntamento.googleEventId,
+  const inAttesa = elencaAttivita().filter(
+    (attivita) => attivita.stato !== "annullato" && !attivita.googleEventId,
   );
   if (inAttesa.length === 0) {
-    return { ok: true, messaggio: "Non ci sono nuovi appuntamenti da sincronizzare" };
+    return { ok: true, messaggio: "Non ci sono nuove attività da sincronizzare" };
   }
   const errori: string[] = [];
-  for (const appuntamento of inAttesa) {
-    const risultato = await sincronizzaAppuntamento(appuntamento.id, calendarId);
-    if (!risultato.ok) errori.push(`${appuntamento.titolo}: ${risultato.messaggio}`);
+  for (const attivita of inAttesa) {
+    const risultato = await sincronizzaAttivita(attivita.id, calendarId);
+    if (!risultato.ok) errori.push(`${attivita.titolo}: ${risultato.messaggio}`);
   }
   return errori.length
-    ? { ok: false, messaggio: `${errori.length} appuntamenti non riusciti: ${errori[0]}` }
-    : { ok: true, messaggio: `${inAttesa.length} appuntamenti sincronizzati` };
+    ? { ok: false, messaggio: `${errori.length} attività non riusciti: ${errori[0]}` }
+    : { ok: true, messaggio: `${inAttesa.length} attività sincronizzate` };
 }
 
 function spiega(error: unknown): string {

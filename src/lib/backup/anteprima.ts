@@ -24,11 +24,11 @@ async function caricaSql(): Promise<SqlJsStatic> {
 export interface Anteprima {
   aziende: number;
   referenti: number;
-  relazioni: number;
-  appuntamenti: number;
+  report: number;
+  attivita: number;
   ultimoAggiornamento: string | null;
   aziendeElenco: Array<{ id: number; ragioneSociale: string; partitaIva: string }>;
-  appuntamentiElenco: Array<{ id: number; titolo: string; inizio: string; stato: string }>;
+  attivitaElenco: Array<{ id: number; titolo: string; inizio: string; stato: string }>;
 }
 
 function interroga<T>(db: Database, sql: string): T[] {
@@ -56,39 +56,39 @@ export async function leggiAnteprima(byte: Uint8Array): Promise<Anteprima> {
     const conteggi = interroga<{
       aziende: number;
       referenti: number;
-      relazioni: number;
-      appuntamenti: number;
+      report: number;
+      attivita: number;
       ultimoAggiornamento: string | null;
     }>(
       copia,
       `SELECT (SELECT COUNT(*) FROM aziende) AS aziende,
               (SELECT COUNT(*) FROM referenti) AS referenti,
-              (SELECT COUNT(*) FROM relazioni) AS relazioni,
-              (SELECT COUNT(*) FROM appuntamenti) AS appuntamenti,
-              (SELECT MAX(updatedAt) FROM appuntamenti) AS ultimoAggiornamento`,
+              (SELECT COUNT(*) FROM report) AS report,
+              (SELECT COUNT(*) FROM attivita) AS attivita,
+              (SELECT MAX(updatedAt) FROM attivita) AS ultimoAggiornamento`,
     )[0] ?? {
       aziende: 0,
       referenti: 0,
-      relazioni: 0,
-      appuntamenti: 0,
+      report: 0,
+      attivita: 0,
       ultimoAggiornamento: null,
     };
 
     return {
       aziende: conteggi.aziende ?? 0,
       referenti: conteggi.referenti ?? 0,
-      relazioni: conteggi.relazioni ?? 0,
-      appuntamenti: conteggi.appuntamenti ?? 0,
+      report: conteggi.report ?? 0,
+      attivita: conteggi.attivita ?? 0,
       ultimoAggiornamento: conteggi.ultimoAggiornamento ?? null,
       aziendeElenco: interroga(
         copia,
         `SELECT id, ragioneSociale, partitaIva
         FROM aziende ORDER BY ragioneSociale COLLATE NOCASE LIMIT 20`,
       ),
-      appuntamentiElenco: interroga(
+      attivitaElenco: interroga(
         copia,
         `SELECT id, titolo, inizio, stato
-        FROM appuntamenti ORDER BY inizio LIMIT 20`,
+        FROM attivita ORDER BY inizio LIMIT 20`,
       ),
     };
   } finally {

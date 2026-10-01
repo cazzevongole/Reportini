@@ -281,7 +281,7 @@ describe("Salvataggio online", () => {
     expect(stato.firmati).toHaveLength(0);
   });
 
-  it("non lascia che la copia online cancelli un appuntamento appena creato", async () => {
+  it("non lascia che la copia online cancelli un attivita appena creato", async () => {
     const { sincronizza, resetSincronizzazione } = await import("../src/lib/cloud/sync");
     const { replaceDatabase } = await import("../src/lib/sqlite/engine");
 
@@ -290,17 +290,17 @@ describe("Salvataggio online", () => {
     vi.mocked(replaceDatabase).mockClear();
     stato.firmati = [];
 
-    // Nuova sessione, e l'utente salva un appuntamento prima che la
+    // Nuova sessione, e l'utente salva un attivita prima che la
     // sincronizzazione sia finita: è la finestra in cui il download è in
     // corso e la sostituzione del database può arrivare dopo la scrittura.
     stato.versione = 0;
     resetSincronizzazione();
-    stato.versione = 1; // l'appuntamento è stato creato
+    stato.versione = 1; // l'attivita è stato creato
 
     const esito = await sincronizza("utente-1");
 
     // Il lavoro locale vince: sostituire il database qui farebbe sparire
-    // l'appuntamento, e la pubblicazione si fermerebbe con «L'appuntamento non
+    // l'attivita, e la pubblicazione si fermerebbe con «L'attivita non
     // esiste più».
     expect(vi.mocked(replaceDatabase)).not.toHaveBeenCalled();
     expect(esito.scaricato).toBe(false);
@@ -330,18 +330,18 @@ describe("Salvataggio online", () => {
     expect(stato.firmati.map((f) => f.path)).toContain("utente-1/reportini.sqlite");
   });
 
-  it("un appuntamento eliminato non torna indietro al riavvio", async () => {
+  it("un attivita eliminato non torna indietro al riavvio", async () => {
     const { sincronizza, resetSincronizzazione } = await import("../src/lib/cloud/sync");
     const { replaceDatabase, segnaNonReplicato } = await import("../src/lib/sqlite/engine");
 
-    // La copia online ha ancora l'appuntamento: è la situazione reale, cioè
+    // La copia online ha ancora l'attivita: è la situazione reale, cioè
     // l'utente ha eliminato qualcosa e l'app si è chiusa prima che la
     // sincronizzazione partisse.
     await sincronizza("utente-1");
     vi.mocked(replaceDatabase).mockClear();
     stato.firmati = [];
 
-    // L'utente elimina un appuntamento: la scrittura è locale e non è ancora
+    // L'utente elimina un attivita: la scrittura è locale e non è ancora
     // salita.
     segnaNonReplicato();
     stato.versione += 1;
@@ -355,7 +355,7 @@ describe("Salvataggio online", () => {
     const esito = await sincronizza("utente-1");
 
     // Il cloud è più vecchio e non deve prendersi la precedenza: qui si
-    // sostituirebbe il database e l'appuntamento eliminato **tornerebbe** in
+    // sostituirebbe il database e l'attivita eliminato **tornerebbe** in
     // lista, come se non fosse mai stato cancellato.
     expect(vi.mocked(replaceDatabase)).not.toHaveBeenCalled();
     expect(esito.scaricato).toBe(false);
@@ -781,11 +781,11 @@ describe("Barra di navigazione", () => {
     const barra = contenitore.querySelector('nav[aria-label="Navigazione principale"]');
     expect(barra).not.toBeNull();
     const voci = [...(barra!.querySelectorAll("a") as NodeListOf<HTMLAnchorElement>)];
-    // Cinque voci: Home, Aziende, Relazioni, Appuntamenti, Impostazioni.
+    // Cinque voci: Home, Aziende, Report, Attivita, Impostazioni.
     expect(voci).toHaveLength(5);
-    // Le relazioni devono restare raggiungibili dalla barra: sono il
+    // Le report devono restare raggiungibili dalla barra: sono il
     // documento che si consegna, non una schermata interna.
-    expect(voci.map((voce) => voce.textContent)).toContain("Relazioni");
+    expect(voci.map((voce) => voce.textContent)).toContain("Report");
 
     const attive = voci.filter((voce) => voce.getAttribute("aria-current") === "page");
     expect(attive).toHaveLength(1);
@@ -802,11 +802,11 @@ describe("Barra di navigazione", () => {
 
   it("l'etichetta segue la pagina aperta", async () => {
     await entraCome("utente@esempio.it");
-    await monta("/panel/appuntamenti");
+    await monta("/panel/attivita");
 
     const barra = contenitore.querySelector('nav[aria-label="Navigazione principale"]')!;
     const attiva = barra.querySelector('a[aria-current="page"]')!;
-    expect(attiva.textContent).toContain("Appuntamenti");
+    expect(attiva.textContent).toContain("Attività");
     const etichetta = attiva.querySelector("span:last-child") as HTMLElement;
     expect(etichetta.querySelector(".invisible")).toBeNull();
   });

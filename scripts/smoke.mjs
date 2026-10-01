@@ -21,8 +21,8 @@ stampa(
   `SELECT
   (SELECT COUNT(*) FROM aziende) AS aziende,
   (SELECT COUNT(*) FROM referenti) AS referenti,
-  (SELECT COUNT(*) FROM relazioni) AS relazioni,
-  (SELECT COUNT(*) FROM appuntamenti) AS appuntamenti`,
+  (SELECT COUNT(*) FROM attivita) AS attivita,
+  (SELECT COUNT(*) FROM report) AS report`,
 );
 if (db.exec("SELECT COUNT(*) FROM aziende")[0].values[0][0] !== 0) {
   console.error("ATTENZIONE: il database iniziale contiene righe");
@@ -43,25 +43,27 @@ db.run(
   { ":adesso": adesso },
 );
 db.run(
-  `INSERT INTO relazioni (aziendaId, titolo, tipo, stato, contenuto, data, createdAt, updatedAt)
-   VALUES (1, 'Certificato', 'Residenza', 'bozza', 'Testo di prova', :oggi, :adesso, :adesso)`,
-  { ":oggi": adesso.slice(0, 10), ":adesso": adesso },
-);
-db.run(
-  `INSERT INTO appuntamenti (aziendaId, relazioneId, titolo, inizio, fine, stato, createdAt, updatedAt)
-   VALUES (1, 1, 'Sportello', :inizio, :fine, 'in-attesa', :adesso, :adesso)`,
+  `INSERT INTO attivita (aziendaId, titolo, tipo, inizio, fine, stato, createdAt, updatedAt)
+   VALUES (1, 'Sportello', 'appuntamento', :inizio, :fine, 'in-attesa', :adesso, :adesso)`,
   {
     ":inizio": domani.toISOString(),
     ":fine": new Date(domani.getTime() + 1_800_000).toISOString(),
     ":adesso": adesso,
   },
 );
+// Il report non ha `tipo`: quello viene dall'attività che lo genera, ed è
+// quello che finisce nel titolo dell'evento su Google Calendar.
+db.run(
+  `INSERT INTO report (aziendaId, attivitaId, titolo, descrizione, createdAt, updatedAt)
+   VALUES (1, 1, 'Certificato', 'Testo di prova', :adesso, :adesso)`,
+  { ":adesso": adesso },
+);
 
 stampa(
   "contatori con join",
   `SELECT
-  (SELECT COUNT(*) FROM relazioni WHERE aziendaId = 1) AS relazioni,
-  (SELECT COUNT(*) FROM appuntamenti WHERE aziendaId = 1) AS appuntamenti,
+  (SELECT COUNT(*) FROM report WHERE aziendaId = 1) AS report,
+  (SELECT COUNT(*) FROM attivita WHERE aziendaId = 1) AS attivita,
   (SELECT COUNT(*) FROM referenti WHERE aziendaId = 1) AS referenti`,
 );
 stampa("ricerca per ragione sociale", "SELECT COUNT(*) FROM aziende WHERE ragioneSociale LIKE ?", [
@@ -75,22 +77,44 @@ stampa(
 );
 stampa(
   "ricerca libera",
-  `SELECT COUNT(*) FROM relazioni r JOIN aziende a ON a.id = r.aziendaId
-  WHERE r.titolo LIKE ? OR r.tipo LIKE ? OR r.contenuto LIKE ? OR a.ragioneSociale LIKE ?`,
-  ["%Cert%", "%Res%", "%prova%", "%Ferramenta%"],
+  `SELECT COUNT(*) FROM report r
+  JOIN aziende a ON a.id = r.aziendaId
+  JOIN attivita t ON t.id = r.attivitaId
+  WHERE r.titolo LIKE ? OR r.descrizione LIKE ? OR a.ragioneSociale LIKE ? OR t.titolo LIKE ?`,
+  ["%Cert%", "%prova%", "%Ferramenta%", "%Sportello%"],
+);
+// I due tipi di attività sono la stessa entità: una riga, un campo.
+db.run(
+  "INSERT INTO attivita (aziendaId, titolo, tipo, inizio, fine, createdAt, updatedAt) VALUES (1, 'Telefonata', 'chiamata', :inizio, :fine, :adesso, :adesso)",
+  {
+    ":inizio": domani.toISOString(),
+    ":fine": new Date(domani.getTime() + 600_000).toISOString(),
+    ":adesso": adesso,
+  },
+);
+stampa(
+  "appuntamenti e chiamate insieme",
+  "SELECT tipo, COUNT(*) FROM attivita GROUP BY tipo ORDER BY tipo",
 );
 
-// Cascata: eliminare un'azienda elimina relazioni e referenti, e stacca
-// gli appuntamenti.
+// Cascata: eliminare un'azienda elimina attività, report e referenti. Il
+// report sparisce con l'attività che lo genera: senza di lei non è niente.
 db.run("DELETE FROM aziende WHERE id = 1");
 stampa(
   "dopo la cancellazione",
   `SELECT
   (SELECT COUNT(*) FROM aziende) AS aziende,
   (SELECT COUNT(*) FROM referenti) AS referenti,
-  (SELECT COUNT(*) FROM relazioni) AS relazioni,
-  (SELECT COUNT(*) FROM appuntamenti WHERE aziendaId IS NULL) AS appuntamenti_orfani`,
+  (SELECT COUNT(*) FROM attivita) AS attivita,
+  (SELECT COUNT(*) FROM report) AS report`,
 );
+const rimasti = db.exec(
+  `SELECT (SELECT COUNT(*) FROM aziende), (SELECT COUNT(*) FROM attivita), (SELECT COUNT(*) FROM report)`,
+)[0].values[0];
+if (rimasti.some((n) => n !== 0)) {
+  console.error("ATTENZIONE: dopo la cancellazione dell'azienda sono rimaste righe", rimasti);
+  process.exit(1);
+}
 
 // Ogni statement di repo.ts deve essere preparabile sullo schema reale.
 // I template con ${...} vengono saltati: contengono interpolazioni, non SQL puro.
@@ -125,8 +149,8 @@ console.log(
 const TABELLE_DAL_REPO = {
   valoriAzienda: "aziende",
   valoriReferente: "referenti",
-  valoriRelazione: "relazioni",
-  valoriAppuntamento: "appuntamenti",
+  valoriAttivita: "attivita",
+  valoriReport: "report",
 };
 let disallineamenti = 0;
 for (const [funzione, tabella] of Object.entries(TABELLE_DAL_REPO)) {

@@ -1,6 +1,12 @@
 import { accessToken } from "./auth";
 import { leggiColori } from "./colori";
-import type { Appuntamento, StatoAppuntamento } from "../types";
+import {
+  etichettaStato,
+  rigaStatoEvento,
+  titoloEvento,
+  type Attivita,
+  type StatoAttivita,
+} from "../types";
 
 const API = "https://www.googleapis.com/calendar/v3";
 
@@ -62,21 +68,15 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 } /**
- * Come lo stato dell'appuntamento si legge a occhio.
+ * Come lo stato dell'attività si legge a occhio.
  *
  * `transparency` dice gia che un evento in attesa non occupa la fascia, ma è
- * una proprietà che si vede solo aprendo l'evento: in elenco due appuntamenti
+ * una proprietà che si vede solo aprendo l'evento: in elenco due attivita
  * identici, uno in attesa e uno confermato, sembrano uguali. La riga qui sotto
  * la dice subito, e per l'esportazione .ics (dove `transparency` non esiste)
  * è l'unica traccia.
  */
-const STATO_SU_EVENTO: Record<StatoAppuntamento, string> = {
-  "in-attesa": "in attesa di conferma",
-  confermato: "confermato",
-  annullato: "annullato",
-};
-
-const STATO_ICS: Record<StatoAppuntamento, string> = {
+const STATO_ICS: Record<StatoAttivita, string> = {
   "in-attesa": "TENTATIVE",
   confermato: "CONFIRMED",
   annullato: "CANCELLED",
@@ -87,7 +87,7 @@ const STATO_ICS: Record<StatoAppuntamento, string> = {
  *
  * `status: "cancelled"` NON va bene: è il modo in cui l'API **elimina** un
  * evento, e nell'interfaccia l'evento sparisce — finisce nel cestino, non
- * compare barrato. Chi guarda l'agenda vede solo che l'appuntamento non c'è
+ * compare barrato. Chi guarda l'agenda vede solo che l'attività non c'è
  * più, senza sapere che era stato annullato.
  *
  * Quindi l'annullato resta un evento regolare (`status: "confirmed"`, come gli
@@ -96,7 +96,25 @@ const STATO_ICS: Record<StatoAppuntamento, string> = {
  * l'utente non ne abbia scelto un altro. La riga "Stato: annullato" in
  * descrizione resta per chi apre l'evento.
  */
-function aEvento(appuntamento: Appuntamento) {
+/**
+ * Se l'evento blocca la fascia oraria.
+ *
+ * Un annullato non occupa mai: è un appuntamento che non ci sarà, e se
+ * tenesse l'ora qualcun altro non potrebbe segnarsela.
+ *
+ * Una chiamata occupa **sempre**: se l'hai messa in agenda per le 15, le 15
+ * sono tue, e l'evento non può presentarsi come un segnaposto che si può
+ * ignorare. Per l'appuntamento resta la distinzione che c'èra — in attesa
+ * non prenota, confermato prenota — perché là un appuntamento che
+ * nessuno ha ancora confermato.
+ */
+function occupaFascia(attivita: Attivita): "opaque" | "transparent" {
+  if (attivita.stato === "annullato") return "transparent";
+  if (attivita.tipo === "chiamata") return "opaque";
+  return attivita.stato === "confermato" ? "opaque" : "transparent";
+}
+
+function aEvento(attivita: Attivita) {
   // Letta qui e non al modulo: la preferenza può cambiare mentre l'app è
   // aperta, e va letta al momento in cui si scrive l'evento.
   const colori = leggiColori();
@@ -105,23 +123,23 @@ function aEvento(appuntamento: Appuntamento) {
     // vista per mese, senza aprire l'evento. Senza prefisso, l'evento resta
     // identico a un confermato e la cancellazione non si vede.
     summary:
-      appuntamento.stato === "annullato"
-        ? `ANNULLATO: ${appuntamento.titolo || "Appuntamento"}`
-        : appuntamento.titolo || "Appuntamento",
+      attivita.stato === "annullato"
+        ? `ANNULLATO: ${titoloEvento(attivita.tipo, attivita.titolo)}`
+        : titoloEvento(attivita.tipo, attivita.titolo),
     description: [
-      `Stato: ${STATO_SU_EVENTO[appuntamento.stato]}`,
-      appuntamento.descrizione,
-      appuntamento.luogo ? `Luogo: ${appuntamento.luogo}` : "",
+      rigaStatoEvento(attivita.tipo, attivita.stato, attivita.completata),
+      attivita.descrizione,
+      attivita.luogo ? `Luogo: ${attivita.luogo}` : "",
     ]
       .filter(Boolean)
       .join("\n\n"),
-    location: appuntamento.luogo || undefined,
+    location: attivita.luogo || undefined,
     // `status: "cancelled"` eliminerebbe l'evento dall'interfaccia (vedi il
     // commento sopra): l'annullato resta quindi un evento regolare, e la
     // cancellazione si dichiara nel titolo e nel colore.
     status: "confirmed",
     // E "in attesa" è un terzo stato, non una sfumatura di "confermato": un
-    // appuntamento da confermare non occupa il tempo. Senza questo, passare
+    // attivita da confermare non occupa il tempo. Senza questo, passare
     // da in attesa a confermato non cambiava niente su Google Calendar, e non
     // perché la pubblicazione non partiva: partiva e mandava due volte lo
     // stesso evento.
@@ -129,11 +147,10 @@ function aEvento(appuntamento: Appuntamento) {
     // `transparent` è il modo normale di dirlo: l'evento resta in agenda ma
     // non blocca la fascia, e chi guarda l'agenda vede subito la differenza.
     //
-    // Prenota solo lo stato "confermato": un annullato scritto *Cancelled* che
-    // occupasse il tempo continuerebbe a bloccare la fascia di chi lo cerca,
-    // e sarebbe una contraddizione.
-    transparency: appuntamento.stato === "confermato" ? "opaque" : "transparent",
-    // Il colore è l'ultimo pezzo: con stato e trasparenza l'appuntamento è già
+    // Prenota solo lo stato "confermato", e per una chiamata anche quando
+    // non è ancora fatta: vedi `occupaFascia` sotto.
+    transparency: occupaFascia(attivita),
+    // Il colore è l'ultimo pezzo: con stato e trasparenza l'attività è già
     // distinguibile, ma in una vista per mese riepilogativa — dove un evento è
     // una macchia di colore e nient'altro — era la tonalità dell'app a
     // comunicare lo stato, e quella di Google era casuale. Per l'annullato
@@ -141,17 +158,22 @@ function aEvento(appuntamento: Appuntamento) {
     // colore: Tomato è la tinta che la palette mette a disposizione per "non si
     // terrà", e l'annullato è il caso in cui il colore ha il compito di
     // urlare, non di accompagnare.
-    colorId: appuntamento.stato === "annullato" ? "11" : colori[appuntamento.stato],
+    colorId: attivita.stato === "annullato" ? "11" : colori[attivita.stato],
     // Il fuso va dichiarato: senza, Google interpreta l'ora nel fuso del
-    // calendario di destinazione e un appuntamento delle 10:00 segnato a Roma
+    // calendario di destinazione e un'attività delle 10:00 segnato a Roma
     // finisce a un'ora diversa per chi guarda il calendario da un'altra città.
-    start: { dateTime: appuntamento.inizio, timeZone: FUSO },
-    end: { dateTime: appuntamento.fine, timeZone: FUSO },
+    start: { dateTime: attivita.inizio, timeZone: FUSO },
+    end: { dateTime: attivita.fine, timeZone: FUSO },
+    // Il promemoria è una decisione che si prende sul momento della
+    // chiamata, non un anticipo da programmare: arriva quando suona. Per
+    // questo è un campo dell'appuntamento e non della chiamata, e qui non se
+    // ne scrive nessuno — nemmeno quello di default, che altrimenti
+    // ripartirebbe a ogni modifica.
     reminders: {
       useDefault: false,
       overrides:
-        appuntamento.promemoriaMin > 0
-          ? [{ method: "popup", minutes: appuntamento.promemoriaMin }]
+        attivita.tipo !== "chiamata" && attivita.promemoriaMin > 0
+          ? [{ method: "popup", minutes: attivita.promemoriaMin }]
           : [],
     },
     extendedProperties: {
@@ -159,31 +181,36 @@ function aEvento(appuntamento: Appuntamento) {
       // coprono solo annullato e occupazione, e non dicono quale dei due stati
       // dell'app sia.
       private: {
-        reportiniAppuntamentoId: String(appuntamento.id),
-        reportiniStato: appuntamento.stato,
+        reportiniAttivitaId: String(attivita.id),
+        reportiniStato: attivita.stato,
+        // La chiamata ha una parola in più delle tre: "fatta" non è
+        // "confermato". Senza questo, chi legge le proprietà private su una
+        // chiamata vede un termine che non è quello che c'è scritto
+        // nell'app e nel titolo.
+        reportiniEtichetta: etichettaStato(attivita.tipo, attivita.stato, attivita.completata),
       },
     },
   };
 }
 
 export async function creaEvento(
-  appuntamento: Appuntamento,
+  attivita: Attivita,
   calendarId = "primary",
 ): Promise<CalendarEvent> {
   return request<CalendarEvent>(`/calendars/${encodeURIComponent(calendarId)}/events`, {
     method: "POST",
-    body: JSON.stringify(aEvento(appuntamento)),
+    body: JSON.stringify(aEvento(attivita)),
   });
 }
 
 export async function aggiornaEvento(
   eventId: string,
-  appuntamento: Appuntamento,
+  attivita: Attivita,
   calendarId = "primary",
 ): Promise<CalendarEvent> {
   return request<CalendarEvent>(
     `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
-    { method: "PUT", body: JSON.stringify(aEvento(appuntamento)) },
+    { method: "PUT", body: JSON.stringify(aEvento(attivita)) },
   );
 }
 
@@ -207,9 +234,9 @@ function escapeIcs(value: string): string {
   return value.replace(/([,;\\])/g, "\\$1").replace(/\n/g, "\\n");
 }
 
-/** Download .ics singolo, così l'appuntamento arriva in qualsiasi calendario senza OAuth. */
-export function scaricaIcs(appuntamento: Appuntamento): void {
-  const uid = `${appuntamento.id}-${Date.now()}@reportini`;
+/** Download .ics singolo, così l'attività arriva in qualsiasi calendario senza OAuth. */
+export function scaricaIcs(attivita: Attivita): void {
+  const uid = `${attivita.id}-${Date.now()}@reportini`;
   const righe = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
@@ -218,48 +245,48 @@ export function scaricaIcs(appuntamento: Appuntamento): void {
     "BEGIN:VEVENT",
     `UID:${uid}`,
     `DTSTAMP:${dataIcs(new Date().toISOString())}`,
-    `DTSTART:${dataIcs(appuntamento.inizio)}`,
-    `DTEND:${dataIcs(appuntamento.fine)}`,
-    `SUMMARY:${escapeIcs(appuntamento.titolo || "Appuntamento")}`,
-    appuntamento.descrizione ? `DESCRIPTION:${escapeIcs(appuntamento.descrizione)}` : "",
-    appuntamento.luogo ? `LOCATION:${escapeIcs(appuntamento.luogo)}` : "",
-    `STATUS:${STATO_ICS[appuntamento.stato]}`,
+    `DTSTART:${dataIcs(attivita.inizio)}`,
+    `DTEND:${dataIcs(attivita.fine)}`,
+    `SUMMARY:${escapeIcs(titoloEvento(attivita.tipo, attivita.titolo))}`,
+    attivita.descrizione ? `DESCRIPTION:${escapeIcs(attivita.descrizione)}` : "",
+    attivita.luogo ? `LOCATION:${escapeIcs(attivita.luogo)}` : "",
+    `STATUS:${STATO_ICS[attivita.stato]}`,
     "BEGIN:VALARM",
     "TRIGGER:-PT30M",
     "ACTION:DISPLAY",
-    `DESCRIPTION:${escapeIcs(appuntamento.titolo || "Appuntamento")}`,
+    `DESCRIPTION:${escapeIcs(titoloEvento(attivita.tipo, attivita.titolo))}`,
     "END:VALARM",
     "END:VEVENT",
     "END:VCALENDAR",
   ].filter(Boolean);
   scaricaTesto(
-    `${slug(appuntamento.titolo || "appuntamento")}.ics`,
+    `${slug(titoloEvento(attivita.tipo, attivita.titolo))}.ics`,
     righe.join("\r\n"),
     "text/calendar",
   );
 }
 
-export function scaricaTuttiGliAppuntamenti(appuntamenti: Appuntamento[]): void {
-  const eventi = appuntamenti.map((appuntamento) =>
+export function scaricaTutteLeAttivita(attivita: Attivita[]): void {
+  const eventi = attivita.map((attivita) =>
     [
       "BEGIN:VEVENT",
-      `UID:${appuntamento.id}@reportini`,
+      `UID:${attivita.id}@reportini`,
       `DTSTAMP:${dataIcs(new Date().toISOString())}`,
-      `DTSTART:${dataIcs(appuntamento.inizio)}`,
-      `DTEND:${dataIcs(appuntamento.fine)}`,
-      `SUMMARY:${escapeIcs(appuntamento.titolo || "Appuntamento")}`,
+      `DTSTART:${dataIcs(attivita.inizio)}`,
+      `DTEND:${dataIcs(attivita.fine)}`,
+      `SUMMARY:${escapeIcs(titoloEvento(attivita.tipo, attivita.titolo))}`,
       // Nell'ics lo stato lo dice `STATUS`, che è il campo standard: qui non
       // serve anche la riga nella descrizione.
-      appuntamento.descrizione ? `DESCRIPTION:${escapeIcs(appuntamento.descrizione)}` : "",
-      appuntamento.luogo ? `LOCATION:${escapeIcs(appuntamento.luogo)}` : "",
-      `STATUS:${STATO_ICS[appuntamento.stato]}`,
+      attivita.descrizione ? `DESCRIPTION:${escapeIcs(attivita.descrizione)}` : "",
+      attivita.luogo ? `LOCATION:${escapeIcs(attivita.luogo)}` : "",
+      `STATUS:${STATO_ICS[attivita.stato]}`,
       "END:VEVENT",
     ]
       .filter(Boolean)
       .join("\r\n"),
   );
   scaricaTesto(
-    "appuntamenti-reportini.ics",
+    "attivita-reportini.ics",
     [
       "BEGIN:VCALENDAR",
       "VERSION:2.0",
@@ -284,7 +311,14 @@ function slug(value: string): string {
   );
 }
 
-export function scaricaTesto(nome: string, contenuto: string, tipo: string): void {
+/**
+ * Fa partire il download di un file di testo.
+ *
+ * Non è più esportata: il `.txt` dei report è stato tolto, e l'unico uso che
+ * resta sono i `.ics`. Un export che nessuno importa è una porta aperta che
+ * nessuno attraversa.
+ */
+function scaricaTesto(nome: string, contenuto: string, tipo: string): void {
   const blob = new Blob([contenuto], { type: `${tipo};charset=utf-8` });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");

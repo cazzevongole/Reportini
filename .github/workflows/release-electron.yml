@@ -172,12 +172,41 @@ jobs:
           # c'è modo di accorgersene dopo.
           GITHUB_REF_TYPE=tag GITHUB_REF_NAME="$TAG" node scripts/versione.mjs
 
-          # Se la release c'è già, non si ricostruisce tutto: il tag e gli
-          # artefatti esistono e rifare il lavoro sarebbe solo sprecato.
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "La release $TAG esiste già: niente da fare."
+          # Se la release c'è già ed è **completa**, non si ricostruisce
+          # tutto: il tag e gli artefatti esistono e rifare il lavoro sarebbe
+          # solo sprecato.
+          #
+          # Completa vuol dire tre cose insieme: che è pubblicata (non è una
+          # bozza), che è Latest e che ha i menù degli aggiornamenti. Una
+          # release può esserci e non valere niente: vuota — è successo, quando
+          # un'altra esecuzione o un processo esterno hanno ricreato lo stesso
+          # tag a metà — oppure in bozza, che non è visibile a nessuno nemmeno se
+          # ha gli allegati dentro. Rispettare una release così lascerebbe
+          # pubblicato un tag da cui l'app non si aggiorna, che è il guasto
+          # più silenzioso che ci sia.
+          #
+          # `gh release view` senza tag restituisce l'ultima release, cioè
+          # quella che l'utente vede come "Latest": è il confronto che dice se
+          # questa versione è davvero quella che viene proposta come
+          # aggiornamento.
+          #
+          # (La richiesta non può chiedere un campo `isLatest`: non esiste fra
+          # quelli che `gh release view --json` espone, e chiederlo fa fallire
+          # tutta la chiamata. è il motivo per cui qui si fanno due richieste
+          # semplici invece di una sola "furba".)
+          ULTIMA=$(gh release view --json tagName --jq '.tagName' 2>/dev/null || echo "")
+          COMPLETA=$(gh release view "$TAG" --json isDraft,assets \
+            --jq '(.isDraft | not) and ([.assets[].name] | index("latest.yml") != null)' \
+            2>/dev/null || echo false)
+
+          if [ "$COMPLETA" = "true" ] && [ "$ULTIMA" = "$TAG" ]; then
+            echo "La release $TAG è già pubblicata, completa e è l'ultima: niente da fare."
             echo "daRilasciare=false" >> "$GITHUB_OUTPUT"
             exit 0
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Attenzione: la release $TAG esiste già ma non è completa,"
+            echo "oppure non è l'ultima (ora lo è ${ULTIMA:-nessuna}): si rifà."
           fi
           echo "daRilasciare=true" >> "$GITHUB_OUTPUT"
 
@@ -373,7 +402,50 @@ jobs:
           # aggiornamento che non si può scaricare.
           node scripts/verifica-menu-aggiornamento.mjs dist
 
-          gh release create "$VERSIONE" dist/* \
-            --title "Reportini $VERSIONE" \
-            --generate-notes \
-            --latest
+          # `gh release create` su una release che esiste già esce con codice
+          # 1 e ferma tutto. Non è un errore da cui imparare nulla: il lavoro
+          # è fatto, i pacchetti sono qui, e l'unica cosa che manca è la
+          # pubblicazione. Rilanciare il job da GitHub o rimettere mano a
+          # mano è quello che costava il titolo sbagliato e il `latest.yml`
+          # da correggere a mano.
+          #
+          # Quindi: se la release c'è si carica **sopra** (`--clobber`
+          # sostituisce un allegato con lo stesso nome, altrimenti fallirebbe
+          # anche quello) e si rimettono titolo e "latest", che sono le due
+          # cose che un'altra esecuzione può aver lasciato indietro.
+          if gh release view "$VERSIONE" >/dev/null 2>&1; then
+            echo "La release $VERSIONE esiste già: gli allegati vengono sostituiti."
+            gh release upload "$VERSIONE" dist/* --clobber
+            # `--draft=false` non è un dettaglio: una release in bozza esiste ma
+            # non è visibile, e `--latest` su una bozza non la pubblica. Il
+            # risultato sarebbe un tag su GitHub e nessuna release, con
+            # l'aggiornamento automatico fermo e nessun errore: il peggiore
+            # modo di fallire.
+            gh release edit "$VERSIONE" \
+              --title "Reportini $VERSIONE" \
+              --draft=false \
+              --latest
+          else
+            gh release create "$VERSIONE" dist/* \
+              --title "Reportini $VERSIONE" \
+              --generate-notes \
+              --latest
+          fi
+
+      - name: Verifica la release pubblicata
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSIONE: ${{ needs.versione.outputs.versione }}
+        run: |
+          # Fin qui il workflow è verde, ma "verde" vuol dire solo che i
+          # comandi sono usciti con codice 0. `gh release upload` prosegue
+          # anche quando un file fallisce, quindi un allegato può mancare
+          # senza che nessuno se ne accorga; e una release a metà è
+          # pubblicata lo stesso, solo che non è scaricabile.
+          #
+          # Qui si rilegge la release **da GitHub** — non la cartella locale,
+          # che è ciò che si voleva allegare — e si controlla che ci
+          # siano tutti e tre i sistemi, i tre menù dell'aggiornamento, il
+          # titolo giusto e che non sia una bozza.
+          node scripts/verifica-release.mjs "$VERSIONE" dist

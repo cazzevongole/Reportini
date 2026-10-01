@@ -106,8 +106,8 @@ let versioneSincronizzata: number | null = null;
  * copia online è più vecchia di quello che c'è qui, e sostituirla cancella il
  * lavoro dell'utente.
  *
- * Senza questo controllo il sintomo era un appuntamento creato che spariva, e
- * la pubblicazione si fermava con «L'appuntamento non esiste più»: non
+ * Senza questo controllo il sintomo era un'attività creato che spariva, e
+ * la pubblicazione si fermava con «L'attività non esiste più»: non
  * accadeva sempre, perché dipende da se la scrittura capitava dentro la
  * finestra del download.
  */
@@ -119,7 +119,7 @@ let versioneAllaPartenza = 0;
  * Due fonti, e servono entrambe. `getVersion()` confrontato con la versione
  * di partenza cattura le scritture di **questa sessione**. Il flag
  * `nonReplicato()` cattura quello che è successo **prima**: senza, un
- * appuntamento eliminato e chiusa l'app prima della sincronizzazione tornava
+ * attivita eliminato e chiusa l'app prima della sincronizzazione tornava
  * indietro al riavvio, perché il contatore riparte da zero e il cloud, che lo
  * aveva ancora, sembrava la copia più recente.
  */

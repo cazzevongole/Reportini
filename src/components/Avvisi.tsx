@@ -15,7 +15,7 @@ import { CheckIcon, CloseIcon, InfoIcon } from "./icons";
  *
  * Il motivo è uno solo: senza un riscontro, un'azione che fallisce e una che
  * riesce si somigliano. Il pulsante torna comodo, lo schermo non cambia, e
- * l'utente non sa se la copia online è salita o se l'appuntamento è finito
+ * l'utente non sa se la copia online è salita o se l'attività è finito
  * su Google Calendar. Qui ogni chiamata ha sempre una riga di esito, e un
  * errore non passa mai in silenzio.
  */

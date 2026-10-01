@@ -1,7 +1,7 @@
 # Reportini
 
-Gestione delle **relazioni associate alle aziende** e degli **appuntamenti sincronizzati con
-Google Calendar**. App *mobile first*: si usa dal telefono, dal browser e come applicazione
+Gestione delle **attività sulle aziende** (appuntamenti e chiamate, sincronizzati con Google
+Calendar) e dei **report** che nascono da un'attività svolta. App *mobile first*: si usa dal telefono, dal browser e come applicazione
 desktop con Electron, con l'accesso tramite account Google e salvataggio online automatico.
 
 ---
@@ -46,21 +46,69 @@ esattamente lo stesso danno: l'appuntamento c'è, ma per l'app non esiste.
 ### Modello dei dati
 
 - `aziende` — scheda dell'azienda (ragione sociale, partita iva, sede, recapiti, note). È il
-  soggetto di relazioni e appuntamenti.
+  soggetto di attività e report.
 - `referenti` — le persone con cui si parla dell'azienda (nome, cognome, telefono, email),
-  con `aziendaId` in cascata. **Non** sono il soggetto delle relazioni né degli appuntamenti:
+  con `aziendaId` in cascata. **Non** sono il soggetto di nessuna attività e di nessun report:
   servono per sapere a chi scrivere e per ritrovare un'azienda dal nome di chi se ne occupa.
-- `relazioni` — relazioni con `aziendaId` e stato (`bozza`, `revisione`, `firmato`, `consegnato`).
-- `appuntamenti` — appuntamenti con `aziendaId` / `relazioneId`, promemoria e dati Google
+- `attivita` — **appuntamenti e chiamate insieme**: sono due valori di un campo (`tipo`), non due
+  entità. Ogni riga ha `aziendaId` in cascata, titolo, descrizione, inizio, fine, luogo, stato
+  (`in-attesa`, `confermato`, `annullato`), la casella `completata`, i promemoria e i dati Google
   (`googleEventId`, `googleHtmlLink`, `googleSyncAt`, `googleErrore`).
+- `report` — azienda, titolo, descrizione e **`attivitaId` in cascata obbligatoria**: un report
+  esiste perché esiste l'attività da cui è stato generato. Non ha né stato né tipo né date,
+  perché sono già quelli dell'attività: scriverli di nuovo sarebbe una seconda fonte che può
+  dire una cosa diversa. Il report si **genera dal dettaglio dell'attività** segnata come
+  completata, non a mano; e sparisce con la sua attività.
 - `preferenze` — coppia chiave/valore per le scelte dell'utente (per ora i colori degli eventi per
   stato). Sta nel database perché deve seguire l'utenza nel cloud e sui ripristini; non entra nel
   backup JSON, che è il patto dei dati.
 
-Le chiavi esterne sono attive (`ON DELETE CASCADE` sui referenti e sulle relazioni, `SET NULL` sugli
-appuntamenti, grazie al `PRAGMA foreign_keys = ON` in `migrations.ts`).
+Le chiavi esterne sono attive (`ON DELETE CASCADE` sui referenti, le attività e i report, grazie al
+`PRAGMA foreign_keys = ON` in `migrations.ts`): cancellare un'azienda porta via le sue attività e
+i loro report, in un colpo solo.
+
+**Il tipo non è una scelta, è un'azione.** Nell'interfaccia non esiste nessun campo da
+compilare per dire "questo è un appuntamento o una chiamata": ci sono **due bottoni** — «Fissa
+un appuntamento» e «Registra una chiamata» — e il tipo arriva al modulo da quello che è stato
+premuto (`tipoIniziale`). Scegliere da una lista chiederebbe all'utente una cosa che ha appena
+detto facendo il gesto, e per giunta il tipo non si cambia dopo: è la parola nel titolo
+dell'evento già pubblicato su Google Calendar. In tabella resta un solo campo `tipo`, perché
+appuntamento e chiamata si comportano allo stesso identico modo e due tabelle avrebbero
+divergito alla prima modifica.
+
+I due tipi producono entrambi un evento su Google Calendar, il cui titolo è `APPUNTAMENTO - …`
+oppure `CHIAMATA - …` (`titoloEvento()` in `src/lib/types.ts`).
+
+**La chiamata è un momento, non un intervallo.** Nel modulo compaiono solo l'ora e la casella
+«chiamata fatta»: niente fine, niente luogo, niente promemoria, niente lista di stati. La `fine`
+esiste in tabella — la ricerca e i confronti leggono solo l'inizio, ma Google ha bisogno di una fine —
+e viene calcolata, `fineAttivita()` in `src/lib/types.ts`: il momento più `MINUTI_CHIAMATA`. Non è un
+dato che l'utente abbia scritto, quindi non viene scritto in due posti e non può discordare da sé.
+
+**Lo stato di una chiamata è la casella, e nient'altro**: due parole, «da fare» e «fatta». Non c'è
+un «annullata», perché un terzo stato che l'utente dovrebbe ricordare e che nessuno gli chiede: una
+chiamata che non si fa resta fra le cose da fare, che è dove deve stare. La colonna `stato` c'è
+tutta qui, ma non è un dato che l'utente abbia scelto — è la casella riscritta nella colonna che
+serve al colore su Google, e `rigaAttivita()` in `repo.ts` la ricalcola in lettura perché le due colonne
+non possano dire cose diverse. Sull'appuntamento la select con i tre stati resta: là l'attesa e la
+conferma sono informazioni vere, non una casella.
+
+**I recapiti sono cliccabili** ovunque (`src/components/Recapito.tsx`): il telefono diventa
+`tel:` ripulito da tutto quello che non è digitabile e con `+39` davanti, l'email diventa
+`mailto:`. Un numero di terra scrive `040 1234567` e si compone come `+390401234567`: lo `0` resta,
+è parte del numero.
 
 **Non ci sono dati dimostrativi**: l'installazione parte vuota.
+
+> **Le attività hanno sostituito gli appuntamenti, i report hanno sostituito le relazioni.**
+> Nella versione 3 dello schema (`PRAGMA user_version = 3`) la tabella `appuntamenti` è diventata
+> `attivita` — con dentro anche le chiamate, che prima non esistevano — e `relazioni` è diventata
+> `report`, senza stato né date proprie. **Il passaggio svuota le due tabelle**: non è una
+> conversione, è un taglio. Un report vecchio non ha un'attività da cui nascere e un appuntamento
+> vecchio non ne ha un'azienda (che è diventata obbligatoria), quindi non c'è niente che si possa
+> portare dietro senza inventarlo. Le aziende, che sono la parte che nel modello non è cambiata,
+> restano: si ripartisce dalle attività, che in un minuto si reinseriscono. `tests/migrazioni.test.ts`
+> verifica il risultato partendo da uno schema vecchio, non da zero.
 
 > **Le anagrafiche sono state aziende.** Nella versione 2 dello schema la scheda non è più di una
 > persona fisica (nome, cognome, documento, nascita) ma di un'azienda, con i referenti a parte.
@@ -347,6 +395,19 @@ Due dettagli che sembrano secondari e non lo sono:
   per lo stesso motivo: allinea il file al nome che electron-builder scrive nel menù.
 - **Lo `.zip` su macOS.** Sulla mac l'aggiornamento automatico può solo sostituire un `.zip`,
   non un `.dmg`: il `.dmg` resta per chi scarica a mano, lo `.zip` serve solo all'auto-update.
+- **Che la release, dopo, sia davvero pubblicata.** Tutti i controlli precedenti guardano la
+  cartella: che cosa si voleva allegare. `scripts/verifica-release.mjs`, che gira **dopo**, rilegge
+  la release da GitHub e controlla che ci siano i tre sistemi, i tre menù, il titolo
+  `Reportini <tag>` e che non sia una bozza. È l'unico controllo che vede il risultato invece
+  dell'intenzione, ed esiste perché "verde" nel workflow vuol dire solo che i comandi sono usciti
+  con codice 0: `gh release upload` **prosegue anche quando un file fallisce**, quindi un allegato
+  può mancare senza che nessuno se ne accorga. E una release in bozza è il caso peggiore:
+  esiste, `gh release view` la trova, l'upload funziona, ma `--latest` su una bozza non la
+  pubblica — quindi un tag su GitHub e nessuna release, con l'aggiornamento fermo e nessun errore.
+  Per questo nel workflow c'è anche `--draft=false`, e per questo il controllo di "release già
+  completa, non rifare tutto" richiede tre cose insieme (pubblicata, con i menù, ed è
+  l'ultima) invece di una. Come il menü, è uno script **con un test**
+  (`tests/verifica-release.test.ts`).
 
 Cosa aspettarsi davvero:
 
@@ -777,6 +838,12 @@ bun run version:patch  # alza la versione di un patch, come fa il workflow
 bun run dimensioni    # quanto pesa la web, e rispetta i tetti?
 ```
 
+C'è anche `scripts/azzera-dati-utenti.mjs`, che **non** sta in `package.json` perché non
+va lanciato per sbaglio: elenca per ogni utente del progetto Supabase quanti dati ha e quanto
+pesano, e solo con `--conferma` li cancella, bucket compreso. Serve al beta testing (far partire
+tutti gli utenti da zero), e chiede `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` perché una chiave
+di servizio è l'unica che può arrivare dove le RLS dell'utente non fanno passare nessuno.
+
 `lint` e `format:check` girano in CI, e girano in **modalità segnalazione**: non
 correggono e non scrivono. Un controllo che riscrive il codice al posto tuo
 lascia il lavoro a metà e un check verde su un file che nessuno ha scritto.
@@ -836,7 +903,7 @@ installatore lo segnala. `vitest.config.ts` ripete il controllo per chi lancia `
 direttamente, ma arriva dopo che Vite ha costruito la configurazione: è la rete di sicurezza,
 non il primo avviso. Il motivo di tutto questo è in `scripts/verifica-node.mjs`, in testa al file.
 
-I test vitest coprono ventiquattro file; questi sono quelli che meritano una riga:
+I test vitest coprono **294 prove in 25 file**; questi sono quelli che meritano una riga:
 
 - `tests/app.test.tsx` monta l'app reale in jsdom con un IndexedDB finto: è la rete che
   intercetta i crash a runtime (per esempio un dereferenziamento di `window.reportini` fatto al
@@ -856,16 +923,19 @@ I test vitest coprono ventiquattro file; questi sono quelli che meritano una rig
   scarto delle versioni successive, anteprima che legge una copia senza toccare il database di
   lavoro, e il percorso completo "guarda e richiudi" / "riparti da qui" dalle impostazioni.
 - `tests/repo.test.ts` gira sul motore SQLite vero e controlla le cancellazioni: che portino
-  via i riferimenti orfani (referenti, relazioni, appuntamenti) e che le chiavi esterne restino
+  via i riferimenti orfani (referenti, report, attività) e che le chiavi esterne restino
   attive anche dopo un salvataggio (sql.js chiude e riapre il database a ogni export: senza
   rimettere il PRAGMA, le cascate smetterebbero di funzionare). Controlla anche che la ricerca
   trovi un'azienda per ragione sociale, per partita iva **e per il nome del referente**, e che i
   campi vengano ripuliti prima di essere salvati.
 - `tests/migrazioni.test.ts` parte da un database costruito a mano con lo schema **vecchio** e
-  verifica che le colonne nuove arrivino e che rifare le migrazioni non rompa niente. Il caso più
-  importante è il passaggio alle aziende: le persone spariscono, gli appuntamenti senza soggetto
+  verifica che le colonne nuove arrivino e che rifare le migrazioni non rompa niente. Copre i due
+  passaggi, alle aziende e alle attività coi report: le persone spariscono, gli appuntamenti senza
+  soggetto
   restano, il secondo avvio non azzera le aziende appena create e le chiavi esterne tornano
-  attive dopo il `DROP TABLE`.
+  attive dopo il `DROP TABLE`. Copre anche la cascata fra report e attività nei due sensi: un
+  report sparisce con la sua attività, e cancellando un report l'attività resta (e da lei se ne
+  può generare un altro).
 - `tests/benvenuto.test.ts` e `tests/versione.test.ts` coprono l'archivio delle frasi di benvenuto
   e il controllo di versione che fa scoppiare il rilascio se il tag non torna.
 - `tests/cloud.test.tsx` verifica con un client Supabase finto l'accesso con Google, il
@@ -879,8 +949,8 @@ I test vitest coprono ventiquattro file; questi sono quelli che meritano una rig
   apre la sessione su Supabase, il rinnovo in silenzio — incluso il caso di due chiamate
   contemporanee che ne fanno una sola — e i due ripieghi: backend senza segreti e `audience`
   sbagliata lasciano comunque entrare l'utente, dicendo che il calendario manca.
-- `tests/calendar.e2e.test.tsx` gira sul motore vero e copre il calendario: pubblica un
-  appuntamento, esce e rientra e verifica che non venga pubblicato due volte, che lo scollegamento
+- `tests/calendar.e2e.test.tsx` gira sul motore vero e copre il calendario: pubblica
+  un'attività, esce e rientra e verifica che non venga pubblicato due volte, che lo scollegamento
   elimini l'evento remoto e che un errore di Google non lasci marcatori falsi. Verifica anche la
   **pubblicazione automatica**: che cosa fa il modulo quando si salva — evento nuovo, aggiornamento
   di quello esistente, rimozione se l'appuntamento viene annullato — e che la spunta disattivata
@@ -889,6 +959,13 @@ I test vitest coprono ventiquattro file; questi sono quelli che meritano una rig
   un evento orfano di cui l'app non sa più niente. Verifica infine che il contesto dell'azienda
   (ragione sociale, partita iva, relazione) finisca **solo** nell'evento e non nella descrizione
   salvata: è la duplicazione che si vedeva a ogni modifica.
+- `tests/dettaglio-attivita.test.tsx` monta il dettaglio dell'attività, che è il posto da cui
+  nasce il report: verifica che **prima** della spunta il bottone "Genera il report" non ci sia,
+  che dopo la spunta il report prenda il titolo dell'attività e che tipo e data arrivino
+  dall'attività senza essere riscritti, che il titolo sia correggibile e che un report già
+  generato si apra invece di generarne un secondo. Nello stesso file, i recapiti cliccabili: il
+  telefono ripulito con `+39` davanti (lo `0` dei numeri di terra resta), l'email in `mailto:`, e
+  un recapito vuoto che non lascia un link vuoto.
 - `tests/aggiornamento.test.tsx` guida l'aggiornamento automatico con un ponte finto (Electron
   non serve): verifica che i controlli automatici partano presto e si ripetano **ogni mezz'ora**
   (e che la pulizia li fermi), che un controllo fallito resti silenzioso, che quello chiesto a mano
@@ -900,6 +977,15 @@ I test vitest coprono ventiquattro file; questi sono quelli che meritano una rig
   confronta: un canale che il preload invoca e il main non gestisce — o un gestore che nessuno
   chiama — non dà nessun errore a runtime, l'aggiornamento semplicemente non succede. Qui si
   accorge prima.
+- `tests/rilascio.test.ts` e `tests/verifica-release.test.ts` custodiscono il rilascio, che è
+  l'unica parte che gira una volta per versione e fa fatica a essere verificata in tempo utile:
+  quando si rompe, il danno è già pubblico. Il primo legge il workflow come un file e verifica
+  che `gh release create` sia preceduto dal controllo, che gli allegati si carichino **sopra**
+  (`--clobber`) quando la release c'è già, che titolo, `--draft=false` e "latest" vengano
+  rimessi, e che il salto alla costruzione richieda tutte e tre le condizioni. Il secondo prova la
+  verifica della release pubblicata: bozza, prerelease, titolo, i tre sistemi, i tre menù e
+  gli allegati rifiutati — e che il giudizio diventi un **codice di uscita**, che è l'unica
+  cosa che il workflow guarda.
 - `tests/notifica-richiesta.test.ts` prova la costruzione della mail, che è la parte dove un
   errore non si vede subito: il titolo e il corpo dell'utente vengono **escapati** prima di
   diventare HTML (con l'ampersand per primo, altrimenti l'utente vedrebbe `&amp;lt;` sparso

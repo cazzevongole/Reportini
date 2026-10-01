@@ -10,9 +10,9 @@ import {
   scriviColore,
   type ColoriPerStato,
 } from "../lib/google/colori";
-import type { StatoAppuntamento } from "../lib/types";
+import type { StatoAttivita } from "../lib/types";
 
-const STATI: StatoAppuntamento[] = ["in-attesa", "confermato", "annullato"];
+const STATI: StatoAttivita[] = ["in-attesa", "confermato", "annullato"];
 
 /**
  * La scelta del colore per ogni stato.
@@ -21,7 +21,7 @@ const STATI: StatoAppuntamento[] = ["in-attesa", "confermato", "annullato"];
  * loro campione: l'utente sceglie un nome che conosce ("il blu", "il grigio")
  * e vede subito che è un colore che Google accetterà. Non si potrebbe
  * inventare: gli ID sono quelli della palette, e un ID inesistente fa
- * fallire la pubblicazione dell'appuntamento.
+ * fallire la pubblicazione dell'attivita.
  *
  * Il colore si applica alle **pubblicazioni successive**. Rigorettare gli
  * eventi già pubblicati è un'azione a parte, e l'app non la fa da sola perché
@@ -31,7 +31,7 @@ const STATI: StatoAppuntamento[] = ["in-attesa", "confermato", "annullato"];
 export default function ColoriStato({ onApplicati }: { onApplicati?: (n: number) => void }) {
   const [scelti, setScelti] = useState<ColoriPerStato>(() => leggiColori());
 
-  function scegli(stato: StatoAppuntamento, id: string) {
+  function scegli(stato: StatoAttivita, id: string) {
     scriviColore(stato, id);
     const prossimi = leggiColori();
     setScelti(prossimi);

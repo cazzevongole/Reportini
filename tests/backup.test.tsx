@@ -59,8 +59,8 @@ async function copiaConDati(ragioneSociale: string): Promise<Uint8Array> {
   db.run(`
     CREATE TABLE aziende (id INTEGER PRIMARY KEY, ragioneSociale TEXT, partitaIva TEXT, updatedAt TEXT);
     CREATE TABLE referenti (id INTEGER PRIMARY KEY, aziendaId INTEGER, updatedAt TEXT);
-    CREATE TABLE relazioni (id INTEGER PRIMARY KEY, updatedAt TEXT);
-    CREATE TABLE appuntamenti (id INTEGER PRIMARY KEY, titolo TEXT, inizio TEXT, stato TEXT, updatedAt TEXT);
+    CREATE TABLE report (id INTEGER PRIMARY KEY, updatedAt TEXT);
+    CREATE TABLE attivita (id INTEGER PRIMARY KEY, titolo TEXT, inizio TEXT, stato TEXT, updatedAt TEXT);
   `);
   const adesso = new Date().toISOString();
   db.run("INSERT INTO aziende (ragioneSociale, partitaIva, updatedAt) VALUES (?,?,?)", [
@@ -69,8 +69,8 @@ async function copiaConDati(ragioneSociale: string): Promise<Uint8Array> {
     adesso,
   ]);
   db.run("INSERT INTO referenti (aziendaId, updatedAt) VALUES (1, ?)", [adesso]);
-  db.run("INSERT INTO relazioni (updatedAt) VALUES (?)", [adesso]);
-  db.run("INSERT INTO appuntamenti (titolo, inizio, stato, updatedAt) VALUES (?,?,?,?)", [
+  db.run("INSERT INTO report (updatedAt) VALUES (?)", [adesso]);
+  db.run("INSERT INTO attivita (titolo, inizio, stato, updatedAt) VALUES (?,?,?,?)", [
     "Sportello",
     adesso,
     "in-attesa",
@@ -215,11 +215,11 @@ describe("Anteprima", () => {
 
     expect(anteprima.aziende).toBe(1);
     expect(anteprima.referenti).toBe(1);
-    expect(anteprima.relazioni).toBe(1);
-    expect(anteprima.appuntamenti).toBe(1);
+    expect(anteprima.report).toBe(1);
+    expect(anteprima.attivita).toBe(1);
     expect(anteprima.aziendeElenco[0].ragioneSociale).toBe("Ferramenta Rossi S.r.l.");
     expect(anteprima.aziendeElenco[0].partitaIva).toBe("03012345678");
-    expect(anteprima.appuntamentiElenco[0].titolo).toBe("Sportello");
+    expect(anteprima.attivitaElenco[0].titolo).toBe("Sportello");
     // Il database di lavoro non è stato sfiorato: è un'altra istanza.
     expect(stato.sostituito).toHaveLength(0);
   });

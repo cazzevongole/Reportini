@@ -35,7 +35,7 @@ export default function Aziende() {
     <div>
       <PageHeader
         title="Aziende"
-        subtitle={`${totale} ${totale === 1 ? "azienda" : "aziende"} registrate`}
+        subtitle={`${totale} ${totale === 1 ? "azienda registrata" : "aziende registrate"}`}
         action={
           <Button onClick={apriNuovo} className="hidden sm:inline-flex">
             <PlusIcon className="h-4 w-4" />
@@ -62,7 +62,7 @@ export default function Aziende() {
           description={
             ricerca
               ? "Prova con un'altra ragione sociale, p. IVA o il nome di un referente."
-              : "Crea la prima azienda per iniziare a collegare relazioni e appuntamenti."
+              : "Crea la prima azienda per iniziare a collegare report e attività."
           }
           action={
             ricerca ? null : (
@@ -94,10 +94,12 @@ export default function Aziende() {
                       .join(" · ") || "Senza recapiti"}
                   </span>
                   <span className="mt-2 flex flex-wrap gap-1.5">
-                    <Badge tone="neutral">{azienda.numReferenti} referenti</Badge>
-                    <Badge tone="neutral">{azienda.numRelazioni} relazioni</Badge>
-                    <Badge tone={azienda.numAppuntamenti > 0 ? "brand" : "muted"}>
-                      {azienda.numAppuntamenti} appuntamenti
+                    <Badge tone="neutral">
+                      {azienda.numReferenti === 1 ? "referente" : "referenti"}
+                    </Badge>
+                    <Badge tone="neutral">{azienda.numReport} report</Badge>
+                    <Badge tone={azienda.numAttivita > 0 ? "brand" : "muted"}>
+                      {azienda.numAttivita} attività
                     </Badge>
                   </span>
                 </span>
