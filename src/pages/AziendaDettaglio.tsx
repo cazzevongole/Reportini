@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import AnagraficoForm from "../components/AnagraficoForm";
 import AppuntamentoForm from "../components/AppuntamentoForm";
+import AziendaForm from "../components/AziendaForm";
 import RelazioneForm from "../components/RelazioneForm";
+import ReferenteForm from "../components/ReferenteForm";
 import {
   CalendarIcon,
   EditIcon,
@@ -10,6 +11,7 @@ import {
   MapPinIcon,
   PlusIcon,
   TrashIcon,
+  UsersIcon,
 } from "../components/icons";
 import { Badge, Button, Card, Sheet } from "../components/ui";
 import { useAvvisi } from "../components/Avvisi";
@@ -17,16 +19,19 @@ import { eliminaAppuntamentiEEventi } from "../lib/google/sync";
 import { useLiveQuery } from "../hooks/useLiveQuery";
 import { dataLunga, durata, ora, relativo } from "../lib/date";
 import {
-  appuntamentiConEventoDaEliminareAnagrafico,
-  effettoEliminazioneAnagrafica,
-  eliminaAnagrafico,
+  appuntamentiConEventoDaEliminareAzienda,
+  effettoEliminazioneAzienda,
+  eliminaAzienda,
+  eliminaReferente,
   elencaAppuntamenti,
+  elencaReferenti,
   elencaRelazioni,
-  iniziali,
-  nomeCompleto,
-  ottieniAnagrafico,
+  inizialiAzienda,
+  nomeAzienda,
+  nomeReferente,
+  ottieniAzienda,
 } from "../lib/repo";
-import type { StatoRelazione } from "../lib/types";
+import type { Referente, StatoRelazione } from "../lib/types";
 
 const TONO: Record<StatoRelazione, "neutral" | "brand" | "clay" | "muted"> = {
   bozza: "muted",
@@ -35,25 +40,27 @@ const TONO: Record<StatoRelazione, "neutral" | "brand" | "clay" | "muted"> = {
   consegnato: "neutral",
 };
 
-export default function AnagraficoDettaglio() {
+export default function AziendaDettaglio() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { esegui } = useAvvisi();
-  const anagraficoId = Number(id);
-  const [modificaAnagrafico, setModificaAnagrafico] = useState(false);
-  const [foglio, setFoglio] = useState<"relazione" | "appuntamento" | null>(null);
+  const aziendaId = Number(id);
+  const [modificaAzienda, setModificaAzienda] = useState(false);
+  const [foglio, setFoglio] = useState<"relazione" | "appuntamento" | "referente" | null>(null);
+  const [referente, setReferente] = useState<Referente | null>(null);
   const [scheda, setScheda] = useState<"relazioni" | "appuntamenti">("relazioni");
 
-  const anagrafico = useLiveQuery(() => ottieniAnagrafico(anagraficoId), [anagraficoId]);
-  const relazioni = useLiveQuery(() => elencaRelazioni({ anagraficoId }), [anagraficoId]);
-  const appuntamenti = useLiveQuery(() => elencaAppuntamenti({ anagraficoId }), [anagraficoId]);
+  const azienda = useLiveQuery(() => ottieniAzienda(aziendaId), [aziendaId]);
+  const relazioni = useLiveQuery(() => elencaRelazioni({ aziendaId }), [aziendaId]);
+  const appuntamenti = useLiveQuery(() => elencaAppuntamenti({ aziendaId }), [aziendaId]);
+  const referenti = useLiveQuery(() => elencaReferenti(aziendaId), [aziendaId]);
 
-  if (!anagrafico) {
+  if (!azienda) {
     return (
       <Card className="p-8 text-center">
-        <h1 className="text-xl">Anagrafico non trovato</h1>
-        <p className="mt-2 text-sm text-ink-400">Potrebbe essere stato eliminato.</p>
-        <Link to="/panel/anagrafici" className="mt-4 inline-block text-sm text-brand-700">
+        <h1 className="text-xl">Azienda non trovata</h1>
+        <p className="mt-2 text-sm text-ink-400">Potrebbe essere stata eliminata.</p>
+        <Link to="/panel/aziende" className="mt-4 inline-block text-sm text-brand-700">
           Torna all'elenco
         </Link>
       </Card>
@@ -61,34 +68,27 @@ export default function AnagraficoDettaglio() {
   }
 
   const dati: Array<[string, string | null]> = [
-    ["Documento", anagrafico.documento || null],
-    ["Nascita", anagrafico.dataNascita],
-    ["Nazionalità", anagrafico.nazionalita || null],
-    ["Domicilio", anagrafico.indirizzo || null],
-    [
-      "Comune",
-      [anagrafico.citta, anagrafico.cap, anagrafico.provincia].filter(Boolean).join(" · ") || null,
-    ],
-    ["Telefono", anagrafico.telefono || null],
-    ["Email", anagrafico.email || null],
+    ["Partita IVA", azienda.partitaIva || null],
+    ["Sede", azienda.indirizzo || null],
+    ["Comune", [azienda.citta, azienda.cap, azienda.provincia].filter(Boolean).join(" · ") || null],
+    ["Telefono", azienda.telefono || null],
+    ["Email", azienda.email || null],
   ];
 
   return (
     <div>
       <div className="mb-5 flex items-start gap-4">
         <span className="grid h-16 w-16 shrink-0 place-items-center rounded-3xl bg-ink-950 font-display text-xl text-white">
-          {iniziali(anagrafico)}
+          {inizialiAzienda(azienda)}
         </span>
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-2xl sm:text-3xl">
-            {nomeCompleto(anagrafico) || "Senza nome"}
-          </h1>
+          <h1 className="truncate text-2xl sm:text-3xl">{nomeAzienda(azienda)}</h1>
           <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-ink-400">
-            {anagrafico.documento ? <span>{anagrafico.documento}</span> : null}
-            {anagrafico.citta ? (
+            {azienda.partitaIva ? <span>{azienda.partitaIva}</span> : null}
+            {azienda.citta ? (
               <span className="inline-flex items-center gap-1">
                 <MapPinIcon className="h-3.5 w-3.5" />
-                {anagrafico.citta}
+                {azienda.citta}
               </span>
             ) : null}
           </p>
@@ -96,9 +96,20 @@ export default function AnagraficoDettaglio() {
       </div>
 
       <div className="mb-5 flex flex-wrap gap-2">
-        <Button variant="secondary" size="sm" onClick={() => setModificaAnagrafico(true)}>
+        <Button variant="secondary" size="sm" onClick={() => setModificaAzienda(true)}>
           <EditIcon className="h-4 w-4" />
           Modifica
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => {
+            setReferente(null);
+            setFoglio("referente");
+          }}
+        >
+          <PlusIcon className="h-4 w-4" />
+          Referente
         </Button>
         <Button size="sm" onClick={() => setFoglio("relazione")}>
           <PlusIcon className="h-4 w-4" />
@@ -112,21 +123,27 @@ export default function AnagraficoDettaglio() {
           size="sm"
           variant="danger"
           onClick={() => {
-            // La conferma elenca quello che sparisce davvero: relazioni e
-            // appuntamenti che resterebbero senza nessun riferimento.
-            const effetto = effettoEliminazioneAnagrafica(anagrafico.id);
+            // La conferma enumera quello che sparisce davvero: referenti,
+            // relazioni e appuntamenti che resterebbero senza nessun
+            // riferimento.
+            const effetto = effettoEliminazioneAzienda(azienda.id);
             const extra = [
+              effetto.referenti > 0
+                ? `${effetto.referenti} ${effetto.referenti === 1 ? "referente" : "referenti"}`
+                : "",
               effetto.relazioni > 0
                 ? `${effetto.relazioni} ${effetto.relazioni === 1 ? "relazione" : "relazioni"}`
                 : "",
               effetto.appuntamenti > 0
                 ? `${effetto.appuntamenti} ${effetto.appuntamenti === 1 ? "appuntamento" : "appuntamenti"}`
                 : "",
-            ].filter(Boolean);
+            ]
+              .filter(Boolean)
+              .join(" e ");
             if (
               !confirm(
-                `Eliminare ${nomeCompleto(anagrafico)}?${
-                  extra.length > 0 ? ` Verranno eliminati anche: ${extra.join(" e ")}.` : ""
+                `Eliminare ${nomeAzienda(azienda)}?${
+                  extra ? ` Verranno eliminati anche: ${extra}.` : ""
                 }`,
               )
             )
@@ -135,14 +152,14 @@ export default function AnagraficoDettaglio() {
               // Gli ID evento vanno raccolti PRIMA di cancellare: dopo, le
               // righe non esistono più e gli eventi su Google resterebbero
               // orfani in agenda per sempre.
-              const conEvento = appuntamentiConEventoDaEliminareAnagrafico(anagrafico.id);
+              const conEvento = appuntamentiConEventoDaEliminareAzienda(azienda.id);
               const esito = await esegui(
                 () => eliminaAppuntamentiEEventi(conEvento.map((a) => a.id)),
                 { errore: "Eliminazione di alcuni appuntamenti non riuscita" },
               );
               if (!esito) return; // errore di rete: le righe restano, si può riprovare
-              eliminaAnagrafico(anagrafico.id);
-              navigate("/panel/anagrafici");
+              eliminaAzienda(azienda.id);
+              navigate("/panel/aziende");
             })();
           }}
         >
@@ -163,11 +180,77 @@ export default function AnagraficoDettaglio() {
               </div>
             ))}
         </dl>
-        {anagrafico.note ? (
+        {azienda.note ? (
           <p className="mt-4 whitespace-pre-wrap border-t border-ink-100 pt-4 text-sm leading-relaxed text-ink-500">
-            {anagrafico.note}
+            {azienda.note}
           </p>
         ) : null}
+      </Card>
+
+      {/* I referenti vengono prima delle relazioni: sono le persone con cui
+          si parla, e senza di loro la scheda non dice a chi scrivere. */}
+      <Card className="mb-6 p-5">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 className="flex items-center gap-2 font-medium text-ink-900">
+            <UsersIcon className="h-4 w-4 text-ink-400" />
+            Referenti
+            <span className="text-sm font-normal text-ink-400">({referenti.length})</span>
+          </h2>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              setReferente(null);
+              setFoglio("referente");
+            }}
+          >
+            <PlusIcon className="h-3.5 w-3.5" />
+            Aggiungi
+          </Button>
+        </div>
+        {referenti.length === 0 ? (
+          <p className="text-sm text-ink-400">
+            Nessun referente: le relazioni e gli appuntamenti restano collegati all'azienda, ma
+            nessuno sa a chi scrivere.
+          </p>
+        ) : (
+          <ul className="divide-y divide-ink-100">
+            {referenti.map((r) => (
+              <li key={r.id} className="flex items-center gap-3 py-2.5">
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium text-ink-900">
+                    {nomeReferente(r)}
+                  </span>
+                  <span className="mt-0.5 block truncate text-xs text-ink-400">
+                    {[r.telefono, r.email].filter(Boolean).join(" · ") || "Senza recapiti"}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  aria-label={`Modifica ${nomeReferente(r)}`}
+                  onClick={() => {
+                    setReferente(r);
+                    setFoglio("referente");
+                  }}
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-ink-300 transition-colors hover:bg-ink-100 hover:text-ink-700"
+                >
+                  <EditIcon className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Elimina ${nomeReferente(r)}`}
+                  onClick={() => {
+                    if (!confirm(`Eliminare il referente ${nomeReferente(r)}?`)) return;
+                    eliminaReferente(r.id);
+                  }}
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-ink-300 transition-colors hover:bg-ink-100 hover:text-clay-600"
+                >
+                  <TrashIcon className="h-4 w-4" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </Card>
 
       <div className="mb-4 flex gap-1.5">
@@ -197,7 +280,7 @@ export default function AnagraficoDettaglio() {
           <Card className="p-6 text-center">
             <FileTextIcon className="mx-auto h-7 w-7 text-ink-300" />
             <p className="mt-3 text-sm text-ink-400">
-              Non ci sono ancora relazioni per questo anagrafico.
+              Non ci sono ancora relazioni per questa azienda.
             </p>
             <Button size="sm" className="mt-4" onClick={() => setFoglio("relazione")}>
               <PlusIcon className="h-4 w-4" />
@@ -254,15 +337,29 @@ export default function AnagraficoDettaglio() {
       )}
 
       <Sheet
-        open={modificaAnagrafico}
-        onClose={() => setModificaAnagrafico(false)}
-        title="Modifica anagrafico"
-        description={nomeCompleto(anagrafico)}
+        open={modificaAzienda}
+        onClose={() => setModificaAzienda(false)}
+        title="Modifica azienda"
+        description={nomeAzienda(azienda)}
       >
-        <AnagraficoForm
-          anagrafico={anagrafico}
-          onSaved={() => setModificaAnagrafico(false)}
-          onCancel={() => setModificaAnagrafico(false)}
+        <AziendaForm
+          azienda={azienda}
+          onSaved={() => setModificaAzienda(false)}
+          onCancel={() => setModificaAzienda(false)}
+        />
+      </Sheet>
+
+      <Sheet
+        open={foglio === "referente"}
+        onClose={() => setFoglio(null)}
+        title={referente ? "Modifica referente" : "Nuovo referente"}
+        description={`Riferito a ${nomeAzienda(azienda)}.`}
+      >
+        <ReferenteForm
+          aziendaId={azienda.id}
+          referente={referente}
+          onSaved={() => setFoglio(null)}
+          onCancel={() => setFoglio(null)}
         />
       </Sheet>
 
@@ -270,10 +367,10 @@ export default function AnagraficoDettaglio() {
         open={foglio === "relazione"}
         onClose={() => setFoglio(null)}
         title="Nuova relazione"
-        description={`Verrà collegata a ${nomeCompleto(anagrafico)}.`}
+        description={`Verrà collegata a ${nomeAzienda(azienda)}.`}
       >
         <RelazioneForm
-          anagraficoIdIniziale={anagrafico.id}
+          aziendaIdIniziale={azienda.id}
           onSaved={() => setFoglio(null)}
           onCancel={() => setFoglio(null)}
         />
@@ -286,7 +383,7 @@ export default function AnagraficoDettaglio() {
         description="Se Google Calendar è collegato, l'appuntamento viene pubblicato appena lo salvi."
       >
         <AppuntamentoForm
-          anagraficoIdIniziale={anagrafico.id}
+          aziendaIdIniziale={azienda.id}
           onSaved={() => setFoglio(null)}
           onCancel={() => setFoglio(null)}
         />

@@ -1,16 +1,16 @@
 import { NavLink, Outlet } from "react-router-dom";
 import Aggiornamento from "./Aggiornamento";
-import { CalendarIcon, FileTextIcon, HomeIcon, SettingsIcon, UsersIcon } from "./icons";
+import { BuildingIcon, CalendarIcon, FileTextIcon, HomeIcon, SettingsIcon } from "./icons";
 
 /**
- * Cinque voci: Home, le due cose che si cercano ogni giorno (persone e
+ * Cinque voci: Home, le due cose che si cercano ogni giorno (aziende e
  * relazioni), gli appuntamenti e le impostazioni. Le relazioni hanno una
  * voce tutta loro perché sono il documento che si consegna, non una
  * schermata di servizio: toglierla dalla barra le nascondeva.
  */
 const NAV = [
   { to: "/panel", label: "Home", icon: HomeIcon, end: true },
-  { to: "/panel/anagrafici", label: "Anagrafici", icon: UsersIcon, end: false },
+  { to: "/panel/aziende", label: "Aziende", icon: BuildingIcon, end: false },
   { to: "/panel/relazioni", label: "Relazioni", icon: FileTextIcon, end: false },
   { to: "/panel/appuntamenti", label: "Appuntamenti", icon: CalendarIcon, end: false },
   { to: "/panel/impostazioni", label: "Impostazioni", icon: SettingsIcon, end: false },
@@ -23,7 +23,7 @@ export default function AppShell() {
         <div className="mb-6 px-2">
           <p className="font-display text-2xl leading-none">Reportini</p>
           <p className="mt-1 text-xs uppercase tracking-[0.18em] text-ink-400">
-            Anagrafici &amp; appuntamenti
+            Aziende, relazioni &amp; appuntamenti
           </p>
         </div>
         {NAV.map(({ to, label, icon: Icona, end }) => (

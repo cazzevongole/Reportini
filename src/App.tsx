@@ -21,8 +21,8 @@ import { useAccount } from "./lib/cloud/session";
 // apre da file:// ma da un server locale (electron/main.cjs): un `import()`
 // su file:// fallirebbe, e qui non è il caso.
 const Panel = lazy(() => import("./pages/Panel"));
-const Anagrafici = lazy(() => import("./pages/Anagrafici"));
-const AnagraficoDettaglio = lazy(() => import("./pages/AnagraficoDettaglio"));
+const Aziende = lazy(() => import("./pages/Aziende"));
+const AziendaDettaglio = lazy(() => import("./pages/AziendaDettaglio"));
 const Relazioni = lazy(() => import("./pages/Relazioni"));
 const Appuntamenti = lazy(() => import("./pages/Appuntamenti"));
 const Impostazioni = lazy(() => import("./pages/Impostazioni"));
@@ -169,18 +169,18 @@ export default function App() {
                   }
                 />
                 <Route
-                  path="/panel/anagrafici"
+                  path="/panel/aziende"
                   element={
                     <Suspense fallback={<CaricamentoPagina />}>
-                      <Anagrafici />
+                      <Aziende />
                     </Suspense>
                   }
                 />
                 <Route
-                  path="/panel/anagrafici/:id"
+                  path="/panel/aziende/:id"
                   element={
                     <Suspense fallback={<CaricamentoPagina />}>
-                      <AnagraficoDettaglio />
+                      <AziendaDettaglio />
                     </Suspense>
                   }
                 />

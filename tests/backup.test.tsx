@@ -51,23 +51,24 @@ const { leggiAnteprima } = await import("../src/lib/backup/anteprima");
 const ORA = new Date("2026-03-10T12:00:00Z").getTime();
 
 /** Costruisce un SQLite vero con un paio di righe, per l'anteprima. */
-async function copiaConDati(nome: string): Promise<Uint8Array> {
+async function copiaConDati(ragioneSociale: string): Promise<Uint8Array> {
   const sql = await initSqlJs({
     locateFile: () => `${process.cwd()}/node_modules/sql.js/dist/sql-wasm.wasm`,
   });
   const db = new sql.Database();
   db.run(`
-    CREATE TABLE anagrafici (id INTEGER PRIMARY KEY, nome TEXT, cognome TEXT, documento TEXT, updatedAt TEXT);
+    CREATE TABLE aziende (id INTEGER PRIMARY KEY, ragioneSociale TEXT, partitaIva TEXT, updatedAt TEXT);
+    CREATE TABLE referenti (id INTEGER PRIMARY KEY, aziendaId INTEGER, updatedAt TEXT);
     CREATE TABLE relazioni (id INTEGER PRIMARY KEY, updatedAt TEXT);
     CREATE TABLE appuntamenti (id INTEGER PRIMARY KEY, titolo TEXT, inizio TEXT, stato TEXT, updatedAt TEXT);
   `);
   const adesso = new Date().toISOString();
-  db.run("INSERT INTO anagrafici (nome, cognome, documento, updatedAt) VALUES (?,?,?,?)", [
-    nome,
-    "Rossi",
-    "VR123456A",
+  db.run("INSERT INTO aziende (ragioneSociale, partitaIva, updatedAt) VALUES (?,?,?)", [
+    ragioneSociale,
+    "03012345678",
     adesso,
   ]);
+  db.run("INSERT INTO referenti (aziendaId, updatedAt) VALUES (1, ?)", [adesso]);
   db.run("INSERT INTO relazioni (updatedAt) VALUES (?)", [adesso]);
   db.run("INSERT INTO appuntamenti (titolo, inizio, stato, updatedAt) VALUES (?,?,?,?)", [
     "Sportello",
@@ -209,13 +210,15 @@ describe("Archivio delle versioni", () => {
 
 describe("Anteprima", () => {
   it("legge la copia senza toccare il database di lavoro", async () => {
-    const byte = await copiaConDati("Mario");
+    const byte = await copiaConDati("Ferramenta Rossi S.r.l.");
     const anteprima = await leggiAnteprima(byte);
 
-    expect(anteprima.anagrafici).toBe(1);
+    expect(anteprima.aziende).toBe(1);
+    expect(anteprima.referenti).toBe(1);
     expect(anteprima.relazioni).toBe(1);
     expect(anteprima.appuntamenti).toBe(1);
-    expect(anteprima.anagraficheElenco[0].cognome).toBe("Rossi");
+    expect(anteprima.aziendeElenco[0].ragioneSociale).toBe("Ferramenta Rossi S.r.l.");
+    expect(anteprima.aziendeElenco[0].partitaIva).toBe("03012345678");
     expect(anteprima.appuntamentiElenco[0].titolo).toBe("Sportello");
     // Il database di lavoro non è stato sfiorato: è un'altra istanza.
     expect(stato.sostituito).toHaveLength(0);
@@ -223,8 +226,8 @@ describe("Anteprima", () => {
 
   it("una copia illeggibile non fa cadere la pagina", async () => {
     const anteprima = await leggiAnteprima(new Uint8Array([9, 9, 9, 9, 9]));
-    expect(anteprima.anagrafici).toBe(0);
-    expect(anteprima.anagraficheElenco).toEqual([]);
+    expect(anteprima.aziende).toBe(0);
+    expect(anteprima.aziendeElenco).toEqual([]);
   });
 });
 

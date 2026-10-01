@@ -19,7 +19,6 @@ import {
   effettoEliminazioneRelazione,
   elencaRelazioni,
   eliminaRelazione,
-  nomeCompleto,
 } from "../lib/repo";
 import type { Relazione, StatoRelazione } from "../lib/types";
 
@@ -97,7 +96,7 @@ export default function Relazioni() {
         <EmptyState
           icon={<FileTextIcon className="h-9 w-9" />}
           title="Nessuna relazione"
-          description="Crea una relazione e collegala all'anagrafico corrispondente per ritrovarla subito."
+          description="Crea una relazione e collegala all'azienda corrispondente per ritrovarla subito."
           action={
             <Button onClick={apriNuova}>
               <PlusIcon className="h-4 w-4" />
@@ -113,8 +112,8 @@ export default function Relazioni() {
                 <div className="min-w-0">
                   <h3 className="truncate font-medium text-ink-900">{relazione.titolo}</h3>
                   <p className="mt-0.5 truncate text-xs text-ink-400">
-                    {relazione.anagraficoNome} {relazione.anagraficoCognome}
-                    {relazione.anagraficoDocumento ? ` · ${relazione.anagraficoDocumento}` : ""}
+                    {relazione.aziendaRagioneSociale}
+                    {relazione.aziendaPartitaIva ? ` · ${relazione.aziendaPartitaIva}` : ""}
                   </p>
                 </div>
                 <Badge tone={TONO[relazione.stato]} className="shrink-0">
@@ -136,12 +135,11 @@ export default function Relazioni() {
                   onClick={() =>
                     scaricaTesto(
                       `${relazione.titolo}.txt`,
-                      `${relazione.titolo}\n${"—".repeat(relazione.titolo.length)}\n\nAnagrafico: ${nomeCompleto(
-                        {
-                          nome: relazione.anagraficoNome,
-                          cognome: relazione.anagraficoCognome,
-                        },
-                      )} (${relazione.anagraficoDocumento})\nData: ${relazione.data}\n\n${relazione.contenuto}`,
+                      `${relazione.titolo}\n${"—".repeat(relazione.titolo.length)}\n\nAzienda: ${relazione.aziendaRagioneSociale}${
+                        relazione.aziendaPartitaIva
+                          ? `\nPartita Iva: ${relazione.aziendaPartitaIva}`
+                          : ""
+                      }\nData: ${relazione.data}\n\n${relazione.contenuto}`,
                       "text/plain",
                     )
                   }

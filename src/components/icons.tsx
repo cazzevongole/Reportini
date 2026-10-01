@@ -27,6 +27,15 @@ export const UsersIcon = (p: IconProps) => (
   </Icon>
 );
 
+/** L'edificio: il soggetto di relazioni e appuntamenti è un'azienda. */
+export const BuildingIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M4 21V6.5A1.5 1.5 0 0 1 5.5 5h7A1.5 1.5 0 0 1 14 6.5V21" />
+    <path d="M14 11h4.5A1.5 1.5 0 0 1 20 12.5V21M2.5 21h19" />
+    <path d="M7 9h4M7 13h4M7 17h4M17 15h.01M17 18h.01" />
+  </Icon>
+);
+
 export const FileTextIcon = (p: IconProps) => (
   <Icon {...p}>
     <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />

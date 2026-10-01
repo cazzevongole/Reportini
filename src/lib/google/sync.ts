@@ -21,11 +21,11 @@ export interface SyncResult {
 }
 
 function aSincronizzabile(appuntamento: Appuntamento | AppuntamentoDettagliato): Appuntamento {
-  const { anagraficoNome, anagraficoCognome, anagraficoDocumento, relazioneTitolo, ...base } =
+  const { aziendaRagioneSociale, aziendaPartitaIva, relazioneTitolo, ...base } =
     appuntamento as AppuntamentoDettagliato;
   const contesto = [
-    anagraficoNome ? `Anagrafico: ${anagraficoNome} ${anagraficoCognome ?? ""}`.trim() : "",
-    anagraficoDocumento ? `Documento: ${anagraficoDocumento}` : "",
+    aziendaRagioneSociale ? `Azienda: ${aziendaRagioneSociale}` : "",
+    aziendaPartitaIva ? `Partita Iva: ${aziendaPartitaIva}` : "",
     relazioneTitolo ? `Relazione: ${relazioneTitolo}` : "",
   ]
     .filter(Boolean)
@@ -37,7 +37,7 @@ function aSincronizzabile(appuntamento: Appuntamento | AppuntamentoDettagliato):
 }
 
 /**
- * Aggiunge il contesto dell'anagrafico, una volta sola.
+ * Aggiunge il contesto dell'azienda, una volta sola.
  *
  * Il contesto non sta nella descrizione salvata: sta solo nell'evento. Ma
  * può esserci già dentro, perché le versioni precedenti scrivevano qui
@@ -161,7 +161,7 @@ export async function dissociaAppuntamento(
   // Solo i marcatori di Google: l'appuntamento non si tocca. Riscriverlo
   // porterebbe nel database la descrizione arricchita che va solo
   // all'evento, e il modulo di modifica la mostrerebbe con dentro il
-  // contesto dell'anagrafico — che si accoderebbe a ogni passaggio.
+  // contesto dell'azienda — che si accoderebbe a ogni passaggio.
   rimuoviCollegamentoGoogle(salvato.id);
   return {
     ok: true,
@@ -173,7 +173,7 @@ export async function dissociaAppuntamento(
  * Cancella una lista di appuntamenti e, se c'era, anche l'evento su Google.
  *
  * È la versione plurale di `eliminaAppuntamentoEEvento`, e serve alla
- * cancellazione a cascata: chi elimina un'anagrafica o una relazione elimina
+ * cancellazione a cascata: chi elimina un'azienda o una relazione elimina
  * con lei gli appuntamenti collegati, e quegli eventi su Google resterebbero
  * in agenda per sempre — orfani, non più raggiungibili dall'app. L'ordine è
  * quello di sempre: prima l'evento, poi la riga locale.

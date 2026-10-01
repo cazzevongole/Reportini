@@ -213,8 +213,9 @@ export default function VersioniBackup() {
       >
         {scelta?.anteprima ? (
           <div className="space-y-4">
-            <div className="grid grid-cols-3 gap-2">
-              <Stat label="Anagrafiche" value={scelta.anteprima.anagrafici} />
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <Stat label="Aziende" value={scelta.anteprima.aziende} />
+              <Stat label="Referenti" value={scelta.anteprima.referenti} />
               <Stat label="Relazioni" value={scelta.anteprima.relazioni} />
               <Stat label="Appuntamenti" value={scelta.anteprima.appuntamenti} />
             </div>
@@ -247,16 +248,18 @@ export default function VersioniBackup() {
             <div>
               <p className="flex items-center gap-2 text-sm font-medium text-ink-800">
                 <CalendarIcon className="h-4 w-4 text-ink-400" />
-                Prime anagrafiche
+                Prime aziende
               </p>
-              {scelta.anteprima.anagraficheElenco.length === 0 ? (
+              {scelta.anteprima.aziendeElenco.length === 0 ? (
                 <p className="mt-1 text-sm text-ink-400">Nessuna.</p>
               ) : (
                 <ul className="mt-1 space-y-1 text-sm text-ink-600">
-                  {scelta.anteprima.anagraficheElenco.map((a) => (
+                  {scelta.anteprima.aziendeElenco.map((a) => (
                     <li key={a.id} className="truncate">
-                      {a.cognome} {a.nome}
-                      {a.documento ? <span className="text-ink-400"> · {a.documento}</span> : null}
+                      {a.ragioneSociale}
+                      {a.partitaIva ? (
+                        <span className="text-ink-400"> · {a.partitaIva}</span>
+                      ) : null}
                     </li>
                   ))}
                 </ul>

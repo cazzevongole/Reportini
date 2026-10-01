@@ -70,8 +70,8 @@ export async function persist(): Promise<void> {
  * tutto ciò che è stato impostato con PRAGMA torna al default, e
  * `foreign_keys` è disattivato di default. Senza rimetterlo qui, dal
  * primo salvataggio in poi le ON DELETE CASCADE e SET NULL non farebbero
- * più niente: cancellando un'anagrafica le relazioni resterebbero a
- * puntare a una persona che non esiste più, e sulle altre pagine
+ * più niente: cancellando un'azienda le relazioni resterebbero a
+ * puntare a un'azienda che non esiste più, e sulle altre pagine
  * continuerebbero a comparire come righe senza nome.
  */
 function esporta(): Uint8Array {

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { CalendarIcon, FileTextIcon, UsersIcon } from "../components/icons";
+import { BuildingIcon, CalendarIcon, FileTextIcon, UsersIcon } from "../components/icons";
 import { Button } from "../components/ui";
 import { useAvvisi } from "../components/Avvisi";
 import { useAccount } from "../lib/cloud/session";
@@ -14,14 +14,19 @@ import { problemaConfigurazione } from "../lib/cloud/supabase";
  */
 const PERCHE = [
   {
+    Icona: BuildingIcon,
+    titolo: "Aziende",
+    testo: "Un schedario per le aziende, con ragione sociale, partita iva, sede e recapiti.",
+  },
+  {
     Icona: UsersIcon,
-    titolo: "Anagrafiche",
-    testo: "Un schedario per le persone, con documento, contatti e domicilio.",
+    titolo: "Referenti",
+    testo: "Le persone con cui parli dell'azienda, con telefono e email, sulla sua scheda.",
   },
   {
     Icona: FileTextIcon,
     titolo: "Relazioni",
-    testo: "Ogni relazione è legata alla sua anagrafica e ne segue lo stato.",
+    testo: "Ogni relazione è legata alla sua azienda e ne segue lo stato.",
   },
   {
     Icona: CalendarIcon,
@@ -52,7 +57,7 @@ export default function Accesso() {
       <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col justify-center px-5 py-12 sm:px-6">
         <div className="mx-auto w-full max-w-md text-center">
           <p className="font-display text-3xl leading-none text-ink-950">Reportini</p>
-          <p className="mt-2 text-sm text-ink-400">Anagrafiche, relazioni e appuntamenti</p>
+          <p className="mt-2 text-sm text-ink-400">Aziende, relazioni e appuntamenti</p>
 
           <div className="card mt-8 p-6 text-left">
             <h1 className="text-lg text-ink-900">Accedi per continuare</h1>

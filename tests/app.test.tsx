@@ -106,7 +106,7 @@ describe("Reportini", () => {
   });
 
   it("non lascia vedere le pagine interne senza accesso", async () => {
-    for (const scheda of ["/", "/panel", "/panel/anagrafici", "/panel/impostazioni"]) {
+    for (const scheda of ["/", "/panel", "/panel/aziende", "/panel/impostazioni"]) {
       await monta(scheda);
       expect(window.location.pathname).toBe("/accedi");
       // Nessun dato, nemmeno una schermata di benvenuto con dentro l'app.

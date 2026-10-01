@@ -19,11 +19,12 @@ stampa("tabelle", "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY 
 stampa(
   "nessun dato dimostrativo",
   `SELECT
-  (SELECT COUNT(*) FROM anagrafici) AS anagrafici,
+  (SELECT COUNT(*) FROM aziende) AS aziende,
+  (SELECT COUNT(*) FROM referenti) AS referenti,
   (SELECT COUNT(*) FROM relazioni) AS relazioni,
   (SELECT COUNT(*) FROM appuntamenti) AS appuntamenti`,
 );
-if (db.exec("SELECT COUNT(*) FROM anagrafici")[0].values[0][0] !== 0) {
+if (db.exec("SELECT COUNT(*) FROM aziende")[0].values[0][0] !== 0) {
   console.error("ATTENZIONE: il database iniziale contiene righe");
   process.exit(1);
 }
@@ -32,17 +33,22 @@ if (db.exec("SELECT COUNT(*) FROM anagrafici")[0].values[0][0] !== 0) {
 const adesso = new Date().toISOString();
 const domani = new Date(Date.now() + 86_400_000);
 db.run(
-  `INSERT INTO anagrafici (nome, cognome, documento, dataNascita, citta, createdAt, updatedAt)
-   VALUES ('Mario', 'Rossi', 'VR123456A', '1980-01-02', 'Verona', :adesso, :adesso)`,
+  `INSERT INTO aziende (ragioneSociale, partitaIva, citta, createdAt, updatedAt)
+   VALUES ('Ferramenta Rossi S.r.l.', '03012345678', 'Verona', :adesso, :adesso)`,
   { ":adesso": adesso },
 );
 db.run(
-  `INSERT INTO relazioni (anagraficoId, titolo, tipo, stato, contenuto, data, createdAt, updatedAt)
+  `INSERT INTO referenti (aziendaId, nome, cognome, telefono, email, createdAt, updatedAt)
+   VALUES (1, 'Mario', 'Rossi', '3401234567', 'mario.rossi@example.it', :adesso, :adesso)`,
+  { ":adesso": adesso },
+);
+db.run(
+  `INSERT INTO relazioni (aziendaId, titolo, tipo, stato, contenuto, data, createdAt, updatedAt)
    VALUES (1, 'Certificato', 'Residenza', 'bozza', 'Testo di prova', :oggi, :adesso, :adesso)`,
   { ":oggi": adesso.slice(0, 10), ":adesso": adesso },
 );
 db.run(
-  `INSERT INTO appuntamenti (anagraficoId, relazioneId, titolo, inizio, fine, stato, createdAt, updatedAt)
+  `INSERT INTO appuntamenti (aziendaId, relazioneId, titolo, inizio, fine, stato, createdAt, updatedAt)
    VALUES (1, 1, 'Sportello', :inizio, :fine, 'in-attesa', :adesso, :adesso)`,
   {
     ":inizio": domani.toISOString(),
@@ -54,25 +60,36 @@ db.run(
 stampa(
   "contatori con join",
   `SELECT
-  (SELECT COUNT(*) FROM relazioni WHERE anagraficoId = 1) AS relazioni,
-  (SELECT COUNT(*) FROM appuntamenti WHERE anagraficoId = 1) AS appuntamenti`,
+  (SELECT COUNT(*) FROM relazioni WHERE aziendaId = 1) AS relazioni,
+  (SELECT COUNT(*) FROM appuntamenti WHERE aziendaId = 1) AS appuntamenti,
+  (SELECT COUNT(*) FROM referenti WHERE aziendaId = 1) AS referenti`,
 );
-stampa("ricerca per nome", "SELECT COUNT(*) FROM anagrafici WHERE nome LIKE ?", ["%Mario%"]);
+stampa("ricerca per ragione sociale", "SELECT COUNT(*) FROM aziende WHERE ragioneSociale LIKE ?", [
+  "%Ferramenta%",
+]);
+stampa(
+  "ricerca per il nome del referente",
+  `SELECT COUNT(*) FROM aziende a WHERE EXISTS (SELECT 1 FROM referenti f
+    WHERE f.aziendaId = a.id AND f.nome LIKE ?)`,
+  ["%Mario%"],
+);
 stampa(
   "ricerca libera",
-  `SELECT COUNT(*) FROM relazioni r JOIN anagrafici a ON a.id = r.anagraficoId
-  WHERE r.titolo LIKE ? OR r.tipo LIKE ? OR r.contenuto LIKE ? OR a.nome LIKE ? OR a.cognome LIKE ?`,
-  ["%Cert%", "%Res%", "%prova%", "%Mario%", "%Rossi%"],
+  `SELECT COUNT(*) FROM relazioni r JOIN aziende a ON a.id = r.aziendaId
+  WHERE r.titolo LIKE ? OR r.tipo LIKE ? OR r.contenuto LIKE ? OR a.ragioneSociale LIKE ?`,
+  ["%Cert%", "%Res%", "%prova%", "%Ferramenta%"],
 );
 
-// Cascata: eliminare un anagrafico elimina le relazioni e stacca gli appuntamenti.
-db.run("DELETE FROM anagrafici WHERE id = 1");
+// Cascata: eliminare un'azienda elimina relazioni e referenti, e stacca
+// gli appuntamenti.
+db.run("DELETE FROM aziende WHERE id = 1");
 stampa(
   "dopo la cancellazione",
   `SELECT
-  (SELECT COUNT(*) FROM anagrafici) AS anagrafici,
+  (SELECT COUNT(*) FROM aziende) AS aziende,
+  (SELECT COUNT(*) FROM referenti) AS referenti,
   (SELECT COUNT(*) FROM relazioni) AS relazioni,
-  (SELECT COUNT(*) FROM appuntamenti WHERE anagraficoId IS NULL) AS appuntamenti_orfani`,
+  (SELECT COUNT(*) FROM appuntamenti WHERE aziendaId IS NULL) AS appuntamenti_orfani`,
 );
 
 // Ogni statement di repo.ts deve essere preparabile sullo schema reale.
@@ -106,7 +123,8 @@ console.log(
 // spagnolo) fallisce solo a runtime, quando l'app prova a salvare. Qui le
 // chiavi di ogni factory di valori vengono confrontate con lo schema reale.
 const TABELLE_DAL_REPO = {
-  valoriAnagrafico: "anagrafici",
+  valoriAzienda: "aziende",
+  valoriReferente: "referenti",
   valoriRelazione: "relazioni",
   valoriAppuntamento: "appuntamenti",
 };

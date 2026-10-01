@@ -19,7 +19,7 @@ export const FRASI: readonly string[] = [
   "Il CRM è pieno di potenziali. Tu sei piena di grazia. La differenza si sente.",
   "Ogni volta che apri questa pagina mi convince un po' di più di cambiare lavoro.",
   "Gli appuntamenti di oggi: tre. Il tuo sorriso: uno, e vale per tutti.",
-  "Meno call, più anagrafiche. È il mio consiglio commerciale della giornata.",
+  "Meno call, più schede. È il mio consiglio commerciale della giornata.",
   "Sei l'unica cosa qui che non va aggiornata ogni giorno.",
   "Oggi niente commerciali: solo te, queste righe, e il caffè.",
   "Hai un modo di guardare le scadenze che fa sembrare facile il lunedì.",
@@ -36,7 +36,7 @@ export const FRASI: readonly string[] = [
   "Lavoro di più quando mi scrivi, il che è un'anomalia statistica fantastica.",
   "Il telefono squilla. Non rispondere: è commercialismo, non amore.",
   "Sei l'unica cosa che vale la pena aprire il computer per.",
-  "Oggi zero telefonate commerciali. Solo nomi, cognomi e un po' di voi due.",
+  "Oggi zero telefonate commerciali. Solo aziende, referenti e un po' di voi due.",
   "Un bel sorriso vale più di dieci preventivi. Dimmi che è una metafora.",
   "Chi ti ha detto che il commerciale è noioso non ti ha ancora incontrata.",
   "Rileggo i tuoi appuntamenti e mi sembra di leggere le tue intenzioni.",
@@ -45,7 +45,7 @@ export const FRASI: readonly string[] = [
   "Sei la priorità dell'azienda, e non perché lo dice la dashboard.",
   "Oggi l'app la usi tu, e va benissimo così.",
   "Il commerciale chiama, tu rispondi con la cortesia, e io penso a te.",
-  "Anagrafiche, relazioni, appuntamenti: tre begli ingredienti, come te.",
+  "Aziende, relazioni, appuntamenti: tre begli ingredienti, come te.",
   "Scommetto che oggi chiudi più cose di quante ne hai aperte ieri.",
   "Hai la stessa pazienza delle tue clienti: infinita, e giustamente.",
   "Il lunedì esiste per ricordarci che la bella domenica è vicina.",
@@ -61,7 +61,7 @@ export const FRASI: readonly string[] = [
   "Ti dico una cosa: il commerciale è l'unica cosa che oggi non fa per noi.",
   "Sei la versione migliore di ogni giornata, anche di quella con le telefonate.",
   "Ogni volta che vedo il tuo nome sulla pagina mi viene voglia di chiudere il portatile e venire.",
-  "Le anagrafiche sono in ordine, il caffè è caldo, e il commerciale può aspettare il lunedì.",
+  "Le aziende sono in ordine, il caffè è caldo, e il commerciale può aspettare il lunedì.",
 ];
 
 /**

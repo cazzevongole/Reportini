@@ -496,6 +496,43 @@ describe("L'indirizzo di rientro deve essere una pagina web", () => {
     // Il pacchetto desktop: si serve da 127.0.0.1 e ha quindi un'origine
     // vera, proprio per poter essere riportato qui da Google.
     expect(motivoRientroNonValido("http://127.0.0.1:42720")).toBe("");
+    // Un http su un dominio vero, invece, non va bene: Google accetta il
+    // rientro solo su https e risponderebbe redirect_uri_mismatch, cioè un
+    // errore che non nomina la causa. Meglio dirla qui.
+    expect(motivoRientroNonValido("http://reportini.cazzevongole.com")).toContain(
+      "non può funzionare",
+    );
+    expect(motivoRientroNonValido("http://reportini.cazzevongole.com")).toContain("https");
+  });
+
+  it("l'indirizzo sicuro è quello in https, e su localhost non cambia niente", async () => {
+    const { indirizzoSicuro } = await import("../src/lib/cloud/destinazione");
+    const pagina = (s: Partial<Location>) =>
+      ({
+        protocol: "http:",
+        host: "reportini.cazzevongole.com",
+        hostname: "reportini.cazzevongole.com",
+        pathname: "/panel",
+        search: "",
+        hash: "",
+        ...s,
+      }) as Location;
+
+    expect(indirizzoSicuro(pagina({}))).toBe("https://reportini.cazzevongole.com/panel");
+    // Il percorso, la query e il frammento sopravvivono: rimandare alla
+    // radice lascerebbe l'utente su una pagina che non è quella che aveva
+    // aperto.
+    expect(
+      indirizzoSicuro(pagina({ pathname: "/panel/aziende", search: "?a=1", hash: "#top" })),
+    ).toBe("https://reportini.cazzevongole.com/panel/aziende?a=1#top");
+    // Già in https: niente da fare.
+    expect(indirizzoSicuro(pagina({ protocol: "https:" }))).toBeNull();
+    // L'app desktop si serve da 127.0.0.1 in http e deve restare così: non
+    // ha un certificato, e forzare https la romperebbe.
+    expect(indirizzoSicuro(pagina({ host: "127.0.0.1:42720", hostname: "127.0.0.1" }))).toBeNull();
+    expect(indirizzoSicuro(pagina({ host: "localhost:5173", hostname: "localhost" }))).toBeNull();
+    // `file://` non è http: la pagina non ha un origine da raddrizzare.
+    expect(indirizzoSicuro(pagina({ protocol: "file:" }))).toBeNull();
   });
 
   it("senza origine dice cosa è andato storto", async () => {
@@ -703,10 +740,10 @@ describe("Accesso obbligatorio", () => {
   });
 
   it("senza sessione rimanda alla pagina di accesso", async () => {
-    await monta("/panel/anagrafici");
+    await monta("/panel/aziende");
     expect(window.location.pathname).toBe("/accedi");
     // Nessuna schermata dell'app deve comparire nel frattempo.
-    expect(contenitore.textContent).not.toContain("Schede anagrafiche");
+    expect(contenitore.textContent).not.toContain("Aziende registrate");
   });
 
   it("su GitHub Pages i link restano dentro /Reportini", async () => {
@@ -720,9 +757,9 @@ describe("Accesso obbligatorio", () => {
       expect(contenitore.textContent).toContain("La tua scrivania");
 
       const link = [...contenitore.querySelectorAll("a")].find((a) =>
-        a.getAttribute("href")?.includes("anagrafici"),
+        a.getAttribute("href")?.includes("aziende"),
       );
-      expect(link?.getAttribute("href")).toBe("/Reportini/panel/anagrafici");
+      expect(link?.getAttribute("href")).toBe("/Reportini/panel/aziende");
     } finally {
       vi.unstubAllEnvs();
     }
@@ -744,7 +781,7 @@ describe("Barra di navigazione", () => {
     const barra = contenitore.querySelector('nav[aria-label="Navigazione principale"]');
     expect(barra).not.toBeNull();
     const voci = [...(barra!.querySelectorAll("a") as NodeListOf<HTMLAnchorElement>)];
-    // Cinque voci: Home, Anagrafici, Relazioni, Appuntamenti, Impostazioni.
+    // Cinque voci: Home, Aziende, Relazioni, Appuntamenti, Impostazioni.
     expect(voci).toHaveLength(5);
     // Le relazioni devono restare raggiungibili dalla barra: sono il
     // documento che si consegna, non una schermata interna.

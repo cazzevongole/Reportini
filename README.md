@@ -1,6 +1,6 @@
 # Reportini
 
-Gestione delle **relazioni associate alle anagrafiche** e degli **appuntamenti sincronizzati con
+Gestione delle **relazioni associate alle aziende** e degli **appuntamenti sincronizzati con
 Google Calendar**. App *mobile first*: si usa dal telefono, dal browser e come applicazione
 desktop con Electron, con l'accesso tramite account Google e salvataggio online automatico.
 
@@ -45,18 +45,32 @@ esattamente lo stesso danno: l'appuntamento c'è, ma per l'app non esiste.
 
 ### Modello dei dati
 
-- `anagrafici` — scheda anagrafica (nome, cognome, documento, nascita, domicilio, contatti).
-- `relazioni` — relazioni con `anagraficoId` e stato (`bozza`, `revisione`, `firmato`, `consegnato`).
-- `appuntamenti` — appuntamenti con `anagraficoId` / `relazioneId`, promemoria e dati Google
+- `aziende` — scheda dell'azienda (ragione sociale, partita iva, sede, recapiti, note). È il
+  soggetto di relazioni e appuntamenti.
+- `referenti` — le persone con cui si parla dell'azienda (nome, cognome, telefono, email),
+  con `aziendaId` in cascata. **Non** sono il soggetto delle relazioni né degli appuntamenti:
+  servono per sapere a chi scrivere e per ritrovare un'azienda dal nome di chi se ne occupa.
+- `relazioni` — relazioni con `aziendaId` e stato (`bozza`, `revisione`, `firmato`, `consegnato`).
+- `appuntamenti` — appuntamenti con `aziendaId` / `relazioneId`, promemoria e dati Google
   (`googleEventId`, `googleHtmlLink`, `googleSyncAt`, `googleErrore`).
 - `preferenze` — coppia chiave/valore per le scelte dell'utente (per ora i colori degli eventi per
   stato). Sta nel database perché deve seguire l'utenza nel cloud e sui ripristini; non entra nel
   backup JSON, che è il patto dei dati.
 
-Le chiavi esterne sono attive (`ON DELETE CASCADE` sulle relazioni, `SET NULL` sugli appuntamenti,
-grazie al `PRAGMA foreign_keys = ON` in `migrations.ts`).
+Le chiavi esterne sono attive (`ON DELETE CASCADE` sui referenti e sulle relazioni, `SET NULL` sugli
+appuntamenti, grazie al `PRAGMA foreign_keys = ON` in `migrations.ts`).
 
 **Non ci sono dati dimostrativi**: l'installazione parte vuota.
+
+> **Le anagrafiche sono state aziende.** Nella versione 2 dello schema la scheda non è più di una
+> persona fisica (nome, cognome, documento, nascita) ma di un'azienda, con i referenti a parte.
+> Il passaggio **cancella** le anagrafiche di persona e le relazioni e gli appuntamenti che erano
+> agganciati a esse: una persona non può diventare un'azienda, e quegli appuntamenti avrebbero
+> un soggetto inesistente. Gli appuntamenti **senza** anagrafica sono invece conservati (sono quelli
+> presi allo sportello, e non hanno niente a che fare con il passaggio). La migrazione gira una
+> volta sola e si riconosce da `PRAGMA user_version = 2`: rifarla a ogni avvio azzererebbe tutto
+> quello che l'utente crea dopo. Una copia JSON esportata dalla versione precedente non è più
+> importabile, e l'app lo dice con una frase invece di svuotare il database a metà.
 
 ---
 
@@ -326,8 +340,8 @@ chiamata, mostra il messaggio e restituisce `null` se è fallita, così chi chia
 dati che non ci sono. Il provider sta fuori dal router: un avviso resta visibile anche cambiando
 pagina, per esempio dopo un'uscita dalla sessione.
 
-Le azioni che scrivono solo in locale (anagrafiche, relazioni, appuntamenti, copie di sicurezza)
-non fanno richieste di rete e quindi non hanno bisogno di avvisi.
+Le azioni che scrivono solo in locale (aziende, referenti, relazioni, appuntamenti, copie di
+sicurezza) non fanno richieste di rete e quindi non hanno bisogno di avvisi.
 
 ### Chiedilo allo sviluppatore
 
@@ -619,7 +633,7 @@ mai esistito" sta proprio in questo. Il collegamento all'evento resta anche quan
 è annullato, così la prossima modifica non crea un secondo evento — e tornando confermati il
 titolo e il colore tornano normali: il prefisso è una dichiarazione dello stato, non una cicatrice.
 
-E **la cancellazione a cascata pulisce anche Google**. Eliminare un'anagrafica o una relazione
+E **la cancellazione a cascata pulisce anche Google**. Eliminare un'azienda o una relazione
 elimina con lei gli appuntamenti collegati: gli ID evento vengono raccolti **prima** che le righe
 spariscano (`appuntamentiConEventoDaEliminare*`), poi ogni evento viene tolto da Google e solo alla
 fine si cancella la riga locale (`eliminaAppuntamentiEEventi`). Se Google non risponde per uno degli
@@ -704,9 +718,10 @@ Due dettagli che contano più di quanto sembrino:
   modo in cui l'API elimina un evento: nell'interfaccia sparisce, e con lui la ragione della
   fascia vuota. Il prefisso nel titolo è l'unica cosa che si legge in una vista per mese senza
   aprire l'evento.
-- **Il contesto dell'anagrafico vive solo nell'evento.** All'evento viene aggiunto
-  `Anagrafico: …`, `Documento: …` e `Relazione: …`; la descrizione che l'utente scrive resta quella
-  nel database e nel modulo di modifica. Scollegare l'evento tocca **solo** i marcatori di Google
+- **Il contesto dell'azienda vive solo nell'evento.** All'evento viene aggiunto
+  `Azienda: …`, `Partita Iva: …` e `Relazione: …`; la descrizione che l'utente scrive resta quella
+  nel database e nel modulo di modifica. Il referente non ci finisce: è un recapito, non il
+  soggetto dell'appuntamento. Scollegare l'evento tocca **solo** i marcatori di Google
   (`rimuoviCollegamentoGoogle()`), non riscrive l'appuntamento: prima scriveva qui anche la
   descrizione arricchita, e il blocco si accodava a ogni passaggio fino a ripetersi due, tre volte.
 
@@ -785,9 +800,16 @@ I test vitest coprono ventuno file; questi sono quelli che meritano una riga:
   scarto delle versioni successive, anteprima che legge una copia senza toccare il database di
   lavoro, e il percorso completo "guarda e richiudi" / "riparti da qui" dalle impostazioni.
 - `tests/repo.test.ts` gira sul motore SQLite vero e controlla le cancellazioni: che portino
-  via i riferimenti orfani e che le chiavi esterne restino attive anche dopo un salvataggio
-  (sql.js chiude e riapre il database a ogni export: senza rimettere il PRAGMA, le cascate
-  smetterebbero di funzionare).
+  via i riferimenti orfani (referenti, relazioni, appuntamenti) e che le chiavi esterne restino
+  attive anche dopo un salvataggio (sql.js chiude e riapre il database a ogni export: senza
+  rimettere il PRAGMA, le cascate smetterebbero di funzionare). Controlla anche che la ricerca
+  trovi un'azienda per ragione sociale, per partita iva **e per il nome del referente**, e che i
+  campi vengano ripuliti prima di essere salvati.
+- `tests/migrazioni.test.ts` parte da un database costruito a mano con lo schema **vecchio** e
+  verifica che le colonne nuove arrivino e che rifare le migrazioni non rompa niente. Il caso più
+  importante è il passaggio alle aziende: le persone spariscono, gli appuntamenti senza soggetto
+  restano, il secondo avvio non azzera le aziende appena create e le chiavi esterne tornano
+  attive dopo il `DROP TABLE`.
 - `tests/benvenuto.test.ts` e `tests/versione.test.ts` coprono l'archivio delle frasi di benvenuto
   e il controllo di versione che fa scoppiare il rilascio se il tag non torna.
 - `tests/cloud.test.tsx` verifica con un client Supabase finto l'accesso con Google, il
@@ -808,9 +830,9 @@ I test vitest coprono ventuno file; questi sono quelli che meritano una riga:
   di quello esistente, rimozione se l'appuntamento viene annullato — e che la spunta disattivata
   salvi in locale senza toccare Google. E che **eliminare** un appuntamento taga l'evento, con il
   caso in cui Google non risponde: l'appuntamento resta in lista e si riprova, invece di lasciare
-  un evento orfano di cui l'app non sa più niente. Verifica infine che il contesto dell'anagrafico
-  (nome, documento, relazione) finisca **solo** nell'evento e non nella descrizione salvata: è la
-  duplicazione che si vedeva a ogni modifica.
+  un evento orfano di cui l'app non sa più niente. Verifica infine che il contesto dell'azienda
+  (ragione sociale, partita iva, relazione) finisca **solo** nell'evento e non nella descrizione
+  salvata: è la duplicazione che si vedeva a ogni modifica.
 - `tests/aggiornamento.test.tsx` guida l'aggiornamento automatico con un ponte finto (Electron
   non serve): verifica che i controlli automatici partano presto e si ripetano **ogni mezz'ora**
   (e che la pulizia li fermi), che un controllo fallito resti silenzioso, che quello chiesto a mano
@@ -965,3 +987,30 @@ verde, ma Vite sostituisce la variabile con una stringa vuota, a quel punto `goo
 un'app pubblicata che funziona e non fa entrare nessuno con Google, senza un errore in console.
 Per questo il workflow avvisa con un `::warning::` quando il client id manca, e l'app nelle
 impostazioni dice "Client Google non configurato".
+
+### Il sito deve stare in https
+
+Non è una buona pratica: **senza https l'accesso con Google non funziona**. Google accetta
+`redirect_uri` in http solo per `localhost`, quindi su un dominio vero risponde
+`redirect_uri_mismatch` e il pulsante "Accedi" sembra premuto ma non succede niente.
+
+L'indirizzo di rientro è costruito da `window.location.origin` (`urlDiRitorno()` in
+`src/lib/cloud/destinazione.ts`), quindi *la pagina aperta decide*: aperta in http, il redirect
+che va su Google è in http, e fallisce. Sono tre i livelli che lo impediscono, ognuno con un
+compito diverso:
+
+1. **GitHub Pages** — in *Settings → Pages*, l'opzione **Enforce HTTPS**. Il server risponde con
+   un 301 verso `https://` e il problema sparisce alla fonte. Si può impostare anche dall'API:
+   `gh api -X PUT repos/<owner>/<repo>/pages -f cname=<dominio> -F https_enforced=true`.
+2. **Cloudflare** — con il record del dominio in modalità **proxied** e **Always Use HTTPS** acceso.
+   Copre anche i link e i segnaliboli che puntano a `http://`, e i domini serviti da Cloudflare
+   prima che GitHub Pages risponda.
+3. **Nel codice** — `indirizzoSicuro()` in `destinazione.ts`, chiamata da `src/main.tsx` prima di
+   montare l'app: se la pagina è in http e l'ospite non è locale, la rimanda su https conservando
+   percorso, query e frammento. `localhost`, `127.0.0.1` e `::1` sono esclusi di proposito: è da
+   lì che si serve l'app desktop, che non ha un certificato e deve restare in http.
+   `motivoRientroNonValido()` adesso rifiuta anche un `http://` su dominio vero, con una frase
+   che dice la causa invece di lasciare che l'errore arrivi da Google senza nome.
+
+I tre livelli servono tutti: il primo e il secondo chiudono la porta, il terzo copre il caso in
+cui qualcuno spegne il primo (per esempio un fork).

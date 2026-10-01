@@ -1,63 +1,82 @@
 import { all, get, insert, notifyChange, run, update, type SqlValue } from "./sqlite/engine";
 import type {
-  Anagrafico,
-  AnagraficoConTotali,
   Appuntamento,
   AppuntamentoDettagliato,
+  Azienda,
+  AziendaConTotali,
+  Referente,
   Relazione,
   RelazioneDettagliata,
 } from "./types";
 
 const now = () => new Date().toISOString();
 
-export function nomeCompleto(a: Pick<Anagrafico, "nome" | "cognome">): string {
-  return `${a.nome} ${a.cognome}`.trim();
+/** Il nome con cui l'azienda si mostra: la ragione sociale, o un avviso. */
+export function nomeAzienda(a: Pick<Azienda, "ragioneSociale">): string {
+  return a.ragioneSociale.trim() || "Senza ragione sociale";
 }
 
-export function iniziali(a: Pick<Anagrafico, "nome" | "cognome">): string {
-  const parti = `${a.nome} ${a.cognome}`.trim().split(/\s+/);
+/**
+ * Le iniziali di un'azienda, dalla ragione sociale.
+ *
+ * Non si può fare come per una persona: "Ferramenti Rossi S.r.l." non ha un
+ * nome e un cognome separati. Qui si prende la prima lettera delle prime due
+ * parole, che è quello che si vede in un riquadro.
+ */
+export function inizialiAzienda(a: Pick<Azienda, "ragioneSociale">): string {
+  const parti = a.ragioneSociale.trim().split(/\s+/).filter(Boolean);
   const primo = parti[0]?.[0] ?? "?";
-  const ultimo = parti.length > 1 ? (parti[parti.length - 1][0] ?? "") : "";
-  return (primo + ultimo).toUpperCase();
+  const secondo = parti.length > 1 ? (parti[1][0] ?? "") : "";
+  return (primo + secondo).toUpperCase();
 }
 
-/* -------------------------------- Anagrafici ------------------------------ */
+/** "Rossi Mario" — l'ordine con cui un referente si legge. */
+export function nomeReferente(r: Pick<Referente, "nome" | "cognome">): string {
+  return `${r.nome} ${r.cognome}`.trim() || "Senza nome";
+}
 
-export function elencaAnagrafici(ricerca = ""): AnagraficoConTotali[] {
+/* --------------------------------- Aziende -------------------------------- */
+
+export function elencaAziende(ricerca = ""): AziendaConTotali[] {
   const termine = `%${ricerca.trim()}%`;
-  return all<AnagraficoConTotali>(
+  return all<AziendaConTotali>(
     `SELECT a.*,
-       (SELECT COUNT(*) FROM relazioni r WHERE r.anagraficoId = a.id) AS numRelazioni,
-       (SELECT COUNT(*) FROM appuntamenti p WHERE p.anagraficoId = a.id) AS numAppuntamenti
-     FROM anagrafici a
+       (SELECT COUNT(*) FROM relazioni r WHERE r.aziendaId = a.id) AS numRelazioni,
+       (SELECT COUNT(*) FROM appuntamenti p WHERE p.aziendaId = a.id) AS numAppuntamenti,
+       (SELECT COUNT(*) FROM referenti f WHERE f.aziendaId = a.id) AS numReferenti
+     FROM aziende a
      WHERE ? = '%%'
-        OR a.nome LIKE ? OR a.cognome LIKE ? OR a.documento LIKE ?
+        OR a.ragioneSociale LIKE ? OR a.partitaIva LIKE ?
         OR a.citta LIKE ? OR a.email LIKE ? OR a.telefono LIKE ?
-     ORDER BY a.cognome COLLATE NOCASE, a.nome COLLATE NOCASE`,
-    [termine, termine, termine, termine, termine, termine, termine],
+        -- Anche per il nome del referente: è spesso l'unica traccia che
+        -- fa trovare un'azienda ("quella di Mario").
+        OR EXISTS (SELECT 1 FROM referenti f
+                    WHERE f.aziendaId = a.id
+                      AND (f.nome LIKE ? OR f.cognome LIKE ? OR f.email LIKE ?))
+     ORDER BY a.ragioneSociale COLLATE NOCASE`,
+    [termine, termine, termine, termine, termine, termine, termine, termine, termine],
   );
 }
 
-export function ottieniAnagrafico(id: number): AnagraficoConTotali | null {
-  return get<AnagraficoConTotali>(
+export function ottieniAzienda(id: number): AziendaConTotali | null {
+  return get<AziendaConTotali>(
     `SELECT a.*,
-       (SELECT COUNT(*) FROM relazioni r WHERE r.anagraficoId = a.id) AS numRelazioni,
-       (SELECT COUNT(*) FROM appuntamenti p WHERE p.anagraficoId = a.id) AS numAppuntamenti
-     FROM anagrafici a WHERE a.id = ?`,
+       (SELECT COUNT(*) FROM relazioni r WHERE r.aziendaId = a.id) AS numRelazioni,
+       (SELECT COUNT(*) FROM appuntamenti p WHERE p.aziendaId = a.id) AS numAppuntamenti,
+       (SELECT COUNT(*) FROM referenti f WHERE f.aziendaId = a.id) AS numReferenti
+     FROM aziende a WHERE a.id = ?`,
     [id],
   );
 }
 
-export type AnagraficoInput = Omit<Anagrafico, "id" | "createdAt" | "updatedAt">;
+export type AziendaInput = Omit<Azienda, "id" | "createdAt" | "updatedAt">;
 
-function valoriAnagrafico(data: AnagraficoInput) {
+function valoriAzienda(data: AziendaInput) {
   return {
-    nome: data.nome.trim(),
-    cognome: data.cognome.trim(),
-    documento: data.documento.trim().toUpperCase(),
-    dataNascita: data.dataNascita || null,
-    sesso: data.sesso,
-    nazionalita: data.nazionalita.trim(),
+    ragioneSociale: data.ragioneSociale.trim(),
+    // La partita iva è una cifra: si scrive sempre così, anche se l'utente
+    // la digita con i punti o con le lettere del regime differenzato.
+    partitaIva: data.partitaIva.trim().toUpperCase(),
     indirizzo: data.indirizzo.trim(),
     citta: data.citta.trim(),
     cap: data.cap.trim(),
@@ -69,73 +88,114 @@ function valoriAnagrafico(data: AnagraficoInput) {
   };
 }
 
-export function creaAnagrafico(data: AnagraficoInput): number {
+export function creaAzienda(data: AziendaInput): number {
   const timestamp = now();
-  return insert("anagrafici", {
-    ...valoriAnagrafico(data),
+  return insert("aziende", {
+    ...valoriAzienda(data),
     createdAt: timestamp,
     updatedAt: timestamp,
   });
 }
 
-export function aggiornaAnagrafico(id: number, data: AnagraficoInput): void {
-  update("anagrafici", id, valoriAnagrafico(data));
+export function aggiornaAzienda(id: number, data: AziendaInput): void {
+  update("aziende", id, valoriAzienda(data));
 }
 
 /**
- * Cosa verrebbe eliminato insieme all'anagrafica: le relazioni (in
- * cascata) e gli appuntamenti che, senza la persona, resterebbero senza
+ * Cosa verrebbe eliminato insieme all'azienda: i referenti e le relazioni (in
+ * cascata) e gli appuntamenti che, senza il soggetto, resterebbero senza
  * nessun riferimento. Serve alla conferma prima di cancellare: nessuno
  * deve scoprire dopo che un appuntamento è sparito.
  */
-export function effettoEliminazioneAnagrafica(id: number): {
+export function effettoEliminazioneAzienda(id: number): {
+  referenti: number;
   relazioni: number;
   appuntamenti: number;
 } {
   return {
+    referenti:
+      get<{ n: number }>("SELECT COUNT(*) AS n FROM referenti WHERE aziendaId = ?", [id])?.n ?? 0,
     relazioni:
-      get<{ n: number }>("SELECT COUNT(*) AS n FROM relazioni WHERE anagraficoId = ?", [id])?.n ??
-      0,
+      get<{ n: number }>("SELECT COUNT(*) AS n FROM relazioni WHERE aziendaId = ?", [id])?.n ?? 0,
     appuntamenti:
       get<{ n: number }>(
         `SELECT COUNT(*) AS n FROM appuntamenti
-          WHERE anagraficoId = ?
-             OR relazioneId IN (SELECT id FROM relazioni WHERE anagraficoId = ?)`,
+          WHERE aziendaId = ?
+             OR relazioneId IN (SELECT id FROM relazioni WHERE aziendaId = ?)`,
         [id, id],
       )?.n ?? 0,
   };
 }
 
-export function eliminaAnagrafico(id: number): void {
-  // Prima gli appuntamenti, poi l'anagrafica: così la cascata sulle
-  // relazioni non può lasciare appuntamenti appesi a un riferimento che
-  // non esiste più, che sulle altre pagine resterebbero visibili come righe
-  // senza nome.
+export function eliminaAzienda(id: number): void {
+  // Prima gli appuntamenti, poi l'azienda: così la cascata sulle relazioni
+  // non può lasciare appuntamenti appesi a un riferimento che non esiste
+  // più, che sulle altre pagine resterebbero visibili come righe senza nome.
   run(
     `DELETE FROM appuntamenti
-      WHERE anagraficoId = ?
-         OR relazioneId IN (SELECT id FROM relazioni WHERE anagraficoId = ?)`,
+      WHERE aziendaId = ?
+         OR relazioneId IN (SELECT id FROM relazioni WHERE aziendaId = ?)`,
     [id, id],
   );
-  run("DELETE FROM anagrafici WHERE id = ?", [id]);
+  run("DELETE FROM aziende WHERE id = ?", [id]);
 }
 
 /**
- * Gli appuntamenti che eliminando l'anagrafica porterebbero dietro l'evento su
+ * Gli appuntamenti che eliminando l'azienda porterebbero dietro l'evento su
  * Google, con i loro ID evento. La pagina raccoglie questa lista **prima** di
  * cancellare: dopo, le righe non esistono più e gli eventi resterebbero in
  * agenda orfani, non più raggiungibili da nessuno.
  */
-export function appuntamentiConEventoDaEliminareAnagrafico(id: number): {
+export function appuntamentiConEventoDaEliminareAzienda(id: number): {
   id: number;
   googleEventId: string | null;
 }[] {
   return all<{ id: number; googleEventId: string | null }>(
     `SELECT id, googleEventId FROM appuntamenti
-      WHERE anagraficoId = ?
-         OR relazioneId IN (SELECT id FROM relazioni WHERE anagraficoId = ?)`,
+      WHERE aziendaId = ?
+         OR relazioneId IN (SELECT id FROM relazioni WHERE aziendaId = ?)`,
     [id, id],
   );
+}
+
+/* -------------------------------- Referenti ------------------------------ */
+
+export function elencaReferenti(aziendaId: number): Referente[] {
+  return all<Referente>(
+    `SELECT * FROM referenti WHERE aziendaId = ?
+     ORDER BY cognome COLLATE NOCASE, nome COLLATE NOCASE`,
+    [aziendaId],
+  );
+}
+
+export type ReferenteInput = Omit<Referente, "id" | "createdAt" | "updatedAt">;
+
+function valoriReferente(data: ReferenteInput) {
+  return {
+    aziendaId: data.aziendaId,
+    nome: data.nome.trim(),
+    cognome: data.cognome.trim(),
+    telefono: data.telefono.trim(),
+    email: data.email.trim(),
+    updatedAt: now(),
+  };
+}
+
+export function creaReferente(data: ReferenteInput): number {
+  const timestamp = now();
+  return insert("referenti", {
+    ...valoriReferente(data),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  });
+}
+
+export function aggiornaReferente(id: number, data: ReferenteInput): void {
+  update("referenti", id, valoriReferente(data));
+}
+
+export function eliminaReferente(id: number): void {
+  run("DELETE FROM referenti WHERE id = ?", [id]);
 }
 
 /**
@@ -147,7 +207,7 @@ export function appuntamentiConEventoDaEliminareRelazione(id: number): {
   googleEventId: string | null;
 }[] {
   return all<{ id: number; googleEventId: string | null }>(
-    "SELECT id, googleEventId FROM appuntamenti WHERE relazioneId = ? AND anagraficoId IS NULL",
+    "SELECT id, googleEventId FROM appuntamenti WHERE relazioneId = ? AND aziendaId IS NULL",
     [id],
   );
 }
@@ -156,16 +216,16 @@ export function appuntamentiConEventoDaEliminareRelazione(id: number): {
 
 export function elencaRelazioni(
   filtro: {
-    anagraficoId?: number | null;
+    aziendaId?: number | null;
     stato?: string | null;
     ricerca?: string;
   } = {},
 ): RelazioneDettagliata[] {
   const condizioni: string[] = [];
   const parametri: Array<string | number> = [];
-  if (filtro.anagraficoId) {
-    condizioni.push("r.anagraficoId = ?");
-    parametri.push(filtro.anagraficoId);
+  if (filtro.aziendaId) {
+    condizioni.push("r.aziendaId = ?");
+    parametri.push(filtro.aziendaId);
   }
   if (filtro.stato) {
     condizioni.push("r.stato = ?");
@@ -173,16 +233,16 @@ export function elencaRelazioni(
   }
   if (filtro.ricerca?.trim()) {
     condizioni.push(
-      "(r.titolo LIKE ? OR r.tipo LIKE ? OR r.contenuto LIKE ? OR a.nome LIKE ? OR a.cognome LIKE ?)",
+      "(r.titolo LIKE ? OR r.tipo LIKE ? OR r.contenuto LIKE ? OR a.ragioneSociale LIKE ?)",
     );
     const termine = `%${filtro.ricerca.trim()}%`;
-    parametri.push(termine, termine, termine, termine, termine);
+    parametri.push(termine, termine, termine, termine);
   }
   const where = condizioni.length ? `WHERE ${condizioni.join(" AND ")}` : "";
   return all<RelazioneDettagliata>(
-    `SELECT r.*, a.nome AS anagraficoNome, a.cognome AS anagraficoCognome,
-            a.documento AS anagraficoDocumento
-     FROM relazioni r JOIN anagrafici a ON a.id = r.anagraficoId
+    `SELECT r.*, a.ragioneSociale AS aziendaRagioneSociale,
+            a.partitaIva AS aziendaPartitaIva
+     FROM relazioni r JOIN aziende a ON a.id = r.aziendaId
      ${where}
      ORDER BY r.data DESC, r.id DESC`,
     parametri,
@@ -193,7 +253,7 @@ export type RelazioneInput = Omit<Relazione, "id" | "createdAt" | "updatedAt">;
 
 function valoriRelazione(data: RelazioneInput) {
   return {
-    anagraficoId: data.anagraficoId,
+    aziendaId: data.aziendaId,
     titolo: data.titolo.trim(),
     tipo: data.tipo.trim(),
     stato: data.stato,
@@ -218,21 +278,21 @@ export function aggiornaRelazione(id: number, data: RelazioneInput): void {
 
 /**
  * Appuntamenti che, cancellando la relazione, perderebbero l'ultimo
- * riferimento: hanno la relazione ma non una persona. Quelli che hanno
- * anche l'anagrafica restano: la persona esiste ancora.
+ * riferimento: hanno la relazione ma non un'azienda. Quelli che hanno
+ * anche l'azienda restano: il soggetto esiste ancora.
  */
 export function effettoEliminazioneRelazione(id: number): { appuntamenti: number } {
   return {
     appuntamenti:
       get<{ n: number }>(
-        "SELECT COUNT(*) AS n FROM appuntamenti WHERE relazioneId = ? AND anagraficoId IS NULL",
+        "SELECT COUNT(*) AS n FROM appuntamenti WHERE relazioneId = ? AND aziendaId IS NULL",
         [id],
       )?.n ?? 0,
   };
 }
 
 export function eliminaRelazione(id: number): void {
-  run("DELETE FROM appuntamenti WHERE relazioneId = ? AND anagraficoId IS NULL", [id]);
+  run("DELETE FROM appuntamenti WHERE relazioneId = ? AND aziendaId IS NULL", [id]);
   run("DELETE FROM relazioni WHERE id = ?", [id]);
 }
 /* ------------------------------- Appuntamenti ---------------------------- */
@@ -241,7 +301,7 @@ export function elencaAppuntamenti(
   filtro: {
     da?: string | null;
     a?: string | null;
-    anagraficoId?: number | null;
+    aziendaId?: number | null;
   } = {},
 ): AppuntamentoDettagliato[] {
   const condizioni: string[] = [];
@@ -254,16 +314,16 @@ export function elencaAppuntamenti(
     condizioni.push("p.inizio <= ?");
     parametri.push(filtro.a);
   }
-  if (filtro.anagraficoId) {
-    condizioni.push("p.anagraficoId = ?");
-    parametri.push(filtro.anagraficoId);
+  if (filtro.aziendaId) {
+    condizioni.push("p.aziendaId = ?");
+    parametri.push(filtro.aziendaId);
   }
   const where = condizioni.length ? `WHERE ${condizioni.join(" AND ")}` : "";
   return all<AppuntamentoDettagliato>(
-    `SELECT p.*, a.nome AS anagraficoNome, a.cognome AS anagraficoCognome,
-            a.documento AS anagraficoDocumento, r.titolo AS relazioneTitolo
+    `SELECT p.*, a.ragioneSociale AS aziendaRagioneSociale,
+            a.partitaIva AS aziendaPartitaIva, r.titolo AS relazioneTitolo
      FROM appuntamenti p
-     LEFT JOIN anagrafici a ON a.id = p.anagraficoId
+     LEFT JOIN aziende a ON a.id = p.aziendaId
      LEFT JOIN relazioni r ON r.id = p.relazioneId
      ${where}
      ORDER BY p.inizio ASC`,
@@ -273,10 +333,10 @@ export function elencaAppuntamenti(
 
 export function ottieniAppuntamento(id: number): AppuntamentoDettagliato | null {
   return get<AppuntamentoDettagliato>(
-    `SELECT p.*, a.nome AS anagraficoNome, a.cognome AS anagraficoCognome,
-            a.documento AS anagraficoDocumento, r.titolo AS relazioneTitolo
+    `SELECT p.*, a.ragioneSociale AS aziendaRagioneSociale,
+            a.partitaIva AS aziendaPartitaIva, r.titolo AS relazioneTitolo
      FROM appuntamenti p
-     LEFT JOIN anagrafici a ON a.id = p.anagraficoId
+     LEFT JOIN aziende a ON a.id = p.aziendaId
      LEFT JOIN relazioni r ON r.id = p.relazioneId
      WHERE p.id = ?`,
     [id],
@@ -287,7 +347,7 @@ export type AppuntamentoInput = Omit<Appuntamento, "id" | "createdAt" | "updated
 
 function valoriAppuntamento(data: AppuntamentoInput) {
   return {
-    anagraficoId: data.anagraficoId,
+    aziendaId: data.aziendaId,
     relazioneId: data.relazioneId,
     titolo: data.titolo.trim(),
     descrizione: data.descrizione,
@@ -356,7 +416,7 @@ export function marcaErroreGoogle(id: number, messaggio: string): void {
  *
  * Serve perché "scollegare l'evento" non è un salvataggio dell'appuntamento:
  * farlo con aggiornaAppuntamento richiederebbe di riscrivere la descrizione,
- * e quella che si manda a Google è arricchita con il contesto dell'anagrafico.
+ * e quella che si manda a Google è arricchita con il contesto dell'azienda.
  * Riscrivendola, il contesto finirebbe nel database e da lì nel modulo di
  * modifica, dove si accumulerebbe a ogni passaggio.
  */
@@ -416,7 +476,7 @@ export function eliminaPreferenza(chiave: string): void {
 }
 
 export interface Riepilogo {
-  anagrafici: number;
+  aziende: number;
   relazioni: number;
   relazioniBozza: number;
   appuntamentiSettimana: number;
@@ -432,11 +492,11 @@ export function riepilogo(): Riepilogo {
   fineSettimana.setDate(fineSettimana.getDate() + 7);
 
   const conteggi = get<{
-    anagrafici: number;
+    aziende: number;
     relazioni: number;
     relazioniBozza: number;
   }>(
-    `SELECT (SELECT COUNT(*) FROM anagrafici) AS anagrafici,
+    `SELECT (SELECT COUNT(*) FROM aziende) AS aziende,
             (SELECT COUNT(*) FROM relazioni) AS relazioni,
             (SELECT COUNT(*) FROM relazioni WHERE stato = 'bozza') AS relazioniBozza`,
   );
@@ -451,10 +511,10 @@ export function riepilogo(): Riepilogo {
   );
 
   const prossimo = get<AppuntamentoDettagliato>(
-    `SELECT p.*, a.nome AS anagraficoNome, a.cognome AS anagraficoCognome,
-            a.documento AS anagraficoDocumento, r.titolo AS relazioneTitolo
+    `SELECT p.*, a.ragioneSociale AS aziendaRagioneSociale,
+            a.partitaIva AS aziendaPartitaIva, r.titolo AS relazioneTitolo
      FROM appuntamenti p
-     LEFT JOIN anagrafici a ON a.id = p.anagraficoId
+     LEFT JOIN aziende a ON a.id = p.aziendaId
      LEFT JOIN relazioni r ON r.id = p.relazioneId
      WHERE p.inizio >= ? AND p.stato <> 'annullato'
      ORDER BY p.inizio ASC LIMIT 1`,
@@ -462,7 +522,7 @@ export function riepilogo(): Riepilogo {
   );
 
   return {
-    anagrafici: Number(conteggi?.anagrafici ?? 0),
+    aziende: Number(conteggi?.aziende ?? 0),
     relazioni: Number(conteggi?.relazioni ?? 0),
     relazioniBozza: Number(conteggi?.relazioniBozza ?? 0),
     appuntamentiSettimana: Number(settimana?.totale ?? 0),
@@ -472,18 +532,20 @@ export function riepilogo(): Riepilogo {
 }
 
 export interface Backup {
-  version: 1;
+  version: 2;
   exportedAt: string;
-  anagrafici: Anagrafico[];
+  aziende: Azienda[];
+  referenti: Referente[];
   relazioni: Relazione[];
   appuntamenti: Appuntamento[];
 }
 
 export function creaBackup(): Backup {
   return {
-    version: 1,
+    version: 2,
     exportedAt: now(),
-    anagrafici: all<Anagrafico>("SELECT * FROM anagrafici ORDER BY id"),
+    aziende: all<Azienda>("SELECT * FROM aziende ORDER BY id"),
+    referenti: all<Referente>("SELECT * FROM referenti ORDER BY id"),
     relazioni: all<Relazione>("SELECT * FROM relazioni ORDER BY id"),
     appuntamenti: all<Appuntamento>("SELECT * FROM appuntamenti ORDER BY id"),
   };
@@ -493,10 +555,15 @@ export function creaBackup(): Backup {
 export function ripristinaBackup(backup: Backup): void {
   const senzaId = <T extends { id: number }>(righe: T[]): Record<string, SqlValue>[] =>
     righe.map(({ id: _id, ...resto }) => ({ ...resto }) as Record<string, SqlValue>);
+  // Nell'ordine inverso di come si scrive: referenti e relazioni dipendono
+  // dall'azienda, gli appuntamenti da entrambe. Svuotare al contrario
+  // lascerebbe, per un attimo, righe che puntano a qualcosa che non c'è.
   run("DELETE FROM appuntamenti");
   run("DELETE FROM relazioni");
-  run("DELETE FROM anagrafici");
-  senzaId(backup.anagrafici).forEach((riga) => insert("anagrafici", riga));
+  run("DELETE FROM referenti");
+  run("DELETE FROM aziende");
+  senzaId(backup.aziende).forEach((riga) => insert("aziende", riga));
+  senzaId(backup.referenti).forEach((riga) => insert("referenti", riga));
   senzaId(backup.relazioni).forEach((riga) => insert("relazioni", riga));
   senzaId(backup.appuntamenti).forEach((riga) => insert("appuntamenti", riga));
   notifyChange();

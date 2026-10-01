@@ -10,12 +10,13 @@ vi.mock("sql.js/dist/sql-wasm.wasm?url", () => ({
 }));
 import {
   aggiornaAppuntamento,
-  appuntamentiConEventoDaEliminareAnagrafico,
-  creaAnagrafico,
+  appuntamentiConEventoDaEliminareAzienda,
   creaAppuntamento,
+  creaAzienda,
+  creaReferente,
   eliminaPreferenza,
   elencaAppuntamenti,
-  elencaAnagrafici,
+  elencaAziende,
   marcaAppuntamentoSincronizzato,
   ottieniAppuntamento,
   scriviPreferenza,
@@ -196,29 +197,36 @@ async function nuovoDatabase() {
   // sopravvive al riavvio del database.
   const db = await initDatabase();
   // Un dispositivo nuovo parte vuoto: nessuna copia locale.
-  db.run("DELETE FROM anagrafici");
+  db.run("DELETE FROM referenti");
+  db.run("DELETE FROM aziende");
   db.run("DELETE FROM relazioni");
   db.run("DELETE FROM appuntamenti");
 }
 
 function creaSchedaConAppuntamento() {
-  const anagraficoId = creaAnagrafico({
-    nome: "Mario",
-    cognome: "Rossi",
-    documento: "VR123456A",
-    dataNascita: "1980-01-02",
-    sesso: "M",
-    nazionalita: "ITA",
+  const aziendaId = creaAzienda({
+    ragioneSociale: "Ferramenta Rossi S.r.l.",
+    partitaIva: "03012345678",
     indirizzo: "Via Roma 1",
     citta: "Verona",
     cap: "37100",
     provincia: "VR",
-    telefono: "0401234567",
-    email: "mario.rossi@example.it",
+    telefono: "0451234567",
+    email: "segreteria@ferramentarossi.it",
     note: "",
   });
+  // Il referente esiste per essere cercato e chiamato: nessuna delle due
+  // cose finisce nell'evento, quindi qui serve solo a coprire il fatto che
+  // azienda e referenti viaggiano insieme nel database che sale nel cloud.
+  creaReferente({
+    aziendaId,
+    nome: "Mario",
+    cognome: "Rossi",
+    telefono: "3401234567",
+    email: "mario.rossi@ferramentarossi.it",
+  });
   const appuntamentoId = creaAppuntamento({
-    anagraficoId,
+    aziendaId,
     relazioneId: null,
     titolo: "Ritiro documento",
     descrizione: "",
@@ -233,7 +241,7 @@ function creaSchedaConAppuntamento() {
     googleSyncAt: null,
     googleErrore: null,
   });
-  return { anagraficoId, appuntamentoId };
+  return { aziendaId, appuntamentoId };
 }
 
 /** Token Google già valido: equivale a un account Calendar collegato. */
@@ -262,7 +270,7 @@ beforeEach(() => {
 /* --------------------------------- test ----------------------------------- */
 
 describe("Reportini end-to-end: dati, Calendar, logout e rientro", () => {
-  it("crea l'anagrafico, pubblica l'evento su Calendar e conserva il collegamento", async () => {
+  it("crea l'azienda, pubblica l'evento su Calendar e conserva il collegamento", async () => {
     await nuovoDatabase();
     const { appuntamentoId } = creaSchedaConAppuntamento();
 
@@ -277,7 +285,13 @@ describe("Reportini end-to-end: dati, Calendar, logout e rientro", () => {
     expect(creato.start?.dateTime).toBe("2026-10-01T10:00:00.000Z");
     expect(creato.start?.timeZone).toBeTruthy();
     expect(creato.end?.timeZone).toBeTruthy();
-    // Il contesto dell'anagrafico viaggia nella descrizione.
+    // Il contesto dell'azienda viaggia nella descrizione: nell'evento, non
+    // nel database, e il referente non ci finisce — è un recapito, non il
+    // soggetto dell'appuntamento.
+    const eventoCreato = [...eventi.values()][0];
+    expect(eventoCreato.description).toContain("Ferramenta Rossi S.r.l.");
+    expect(eventoCreato.description).toContain("03012345678");
+    expect(eventoCreato.description).not.toContain("Mario");
     expect(chiamate.some((c) => c.metodo === "POST" && c.url.endsWith("/events"))).toBe(true);
 
     // Il collegamento è persistito in locale.
@@ -288,7 +302,7 @@ describe("Reportini end-to-end: dati, Calendar, logout e rientro", () => {
 
   it("dopo logout e rientro i dati tornano dal cloud e l'evento viene aggiornato, non duplicato", async () => {
     await nuovoDatabase();
-    const { anagraficoId, appuntamentoId } = creaSchedaConAppuntamento();
+    const { aziendaId, appuntamentoId } = creaSchedaConAppuntamento();
     await sincronizzaAppuntamento(appuntamentoId, "primary");
     const idEvento = ottieniAppuntamento(appuntamentoId)?.googleEventId;
     expect(idEvento).toBeTruthy();
@@ -306,12 +320,12 @@ describe("Reportini end-to-end: dati, Calendar, logout e rientro", () => {
     // Dispositivo nuovo: database vuoto, stato di sync dimenticato.
     resetSincronizzazione();
     await nuovoDatabase();
-    expect(elencaAnagrafici().length).toBe(0);
+    expect(elencaAziende().length).toBe(0);
     expect(elencaAppuntamenti({}).length).toBe(0);
 
     // --- login ---
     // L'utente ricollega anche Google Calendar: il popup si riapre come dopo
-    // ogni scadenza. L'anagrafica e il collegamento all'evento, invece,
+    // ogni scadenza. L'azienda e il collegamento all'evento, invece,
     // arrivano dal cloud e non da qui.
     finto.stato.sessione = { user: { id: UTENTE, email: "mara@example.it" } };
     collegaGoogle();
@@ -319,10 +333,13 @@ describe("Reportini end-to-end: dati, Calendar, logout e rientro", () => {
 
     expect(ripristino.scaricato).toBe(true);
     expect(ripristino.messaggio).toMatch(/ripristinati dal cloud/i);
-    const anagrafici = elencaAnagrafici();
-    expect(anagrafici.length).toBe(1);
-    expect(anagrafici[0].nome).toBe("Mario");
-    expect(anagrafici[0].id).toBe(anagraficoId);
+    const aziende = elencaAziende();
+    expect(aziende.length).toBe(1);
+    expect(aziende[0].ragioneSociale).toBe("Ferramenta Rossi S.r.l.");
+    expect(aziende[0].id).toBe(aziendaId);
+    // Anche i referenti sono tornati: senza, la scheda sarebbe quella di
+    // un'azienda a cui nessuno sa scrivere.
+    expect(aziende[0].numReferenti).toBe(1);
 
     // Soprattutto: il collegamento all'evento è sopravvissuto.
     const rientrato = ottieniAppuntamento(appuntamentoId);
@@ -417,8 +434,8 @@ describe("Reportini end-to-end: dati, Calendar, logout e rientro", () => {
 
 /* ---------------- la descrizione non deve crescere a ogni modifica ---------- */
 
-describe("Il contesto dell'anagrafico non si duplica", () => {
-  const CONTESTO = "Anagrafico: Mario Rossi\nDocumento: VR123456A";
+describe("Il contesto dell'azienda non si duplica", () => {
+  const CONTESTO = "Azienda: Ferramenta Rossi S.r.l.\nPartita Iva: 03012345678";
 
   it("scollegare non scrive il contesto nella descrizione salvata", async () => {
     await nuovoDatabase();
@@ -446,7 +463,7 @@ describe("Il contesto dell'anagrafico non si duplica", () => {
     await sincronizzaAppuntamento(appuntamentoId, "primary");
 
     const descrizione = [...eventi.values()][0].description ?? "";
-    const occorrenze = descrizione.split("Anagrafico: Mario Rossi").length - 1;
+    const occorrenze = descrizione.split("Azienda: Ferramenta Rossi S.r.l.").length - 1;
     expect(occorrenze).toBe(1);
     expect(ottieniAppuntamento(appuntamentoId)?.descrizione).toBe("");
   });
@@ -465,7 +482,7 @@ describe("Il contesto dell'anagrafico non si duplica", () => {
     await sincronizzaAppuntamento(appuntamentoId, "primary");
 
     const descrizione = [...eventi.values()][0].description ?? "";
-    expect(descrizione.split("Anagrafico: Mario Rossi").length - 1).toBe(1);
+    expect(descrizione.split("Azienda: Ferramenta Rossi S.r.l.").length - 1).toBe(1);
     expect(descrizione.split("Documento: VR123456A").length - 1).toBe(1);
   });
 });
@@ -816,15 +833,15 @@ describe("Eliminare un appuntamento toglie anche l'evento", () => {
     expect(ottieniAppuntamento(appuntamentoId)?.googleEventId).toBeTruthy();
   });
 
-  it("eliminare un'anagrafica porta via anche gli eventi su Google", async () => {
+  it("eliminare un'azienda porta via anche gli eventi su Google", async () => {
     await nuovoDatabase();
-    const { anagraficoId, appuntamentoId } = creaSchedaConAppuntamento();
+    const { aziendaId, appuntamentoId } = creaSchedaConAppuntamento();
     await pubblicaAppuntamento(appuntamentoId, "primary");
     expect(eventi.size).toBe(1);
 
     // La cascata: gli ID evento si raccolgono prima che le righe spariscano,
     // poi l'eliminazione passa da Google prima di toccare il database.
-    const conEvento = appuntamentiConEventoDaEliminareAnagrafico(anagraficoId);
+    const conEvento = appuntamentiConEventoDaEliminareAzienda(aziendaId);
     expect(conEvento.map((a) => a.id)).toContain(appuntamentoId);
     const esito = await eliminaAppuntamentiEEventi(conEvento.map((a) => a.id));
 
@@ -836,11 +853,11 @@ describe("Eliminare un appuntamento toglie anche l'evento", () => {
 
   it("se Google non risponde nella cascata, la riga locale resta e si può riprovare", async () => {
     await nuovoDatabase();
-    const { anagraficoId, appuntamentoId } = creaSchedaConAppuntamento();
+    const { aziendaId, appuntamentoId } = creaSchedaConAppuntamento();
     await pubblicaAppuntamento(appuntamentoId, "primary");
     fetchFinto.mockImplementationOnce(async () => risposta({ error: "rateLimitExceeded" }, 429));
 
-    const conEvento = appuntamentiConEventoDaEliminareAnagrafico(anagraficoId);
+    const conEvento = appuntamentiConEventoDaEliminareAzienda(aziendaId);
     const esito = await eliminaAppuntamentiEEventi(conEvento.map((a) => a.id));
 
     // L'appuntamento resta: cancellarlo comunque lascerebbe l'evento orfano
@@ -909,7 +926,7 @@ describe("Il modulo dell'appuntamento", () => {
 
   it("salvando crea l'evento su Google Calendar e avvisa", async () => {
     await nuovoDatabase();
-    creaSchedaConAppuntamento(); // almeno un anagrafico, come nella pagina reale
+    creaSchedaConAppuntamento(); // almeno un'azienda, come nella pagina reale
     await monta();
 
     const spunta = contenitore.querySelector<HTMLInputElement>('input[type="checkbox"]');

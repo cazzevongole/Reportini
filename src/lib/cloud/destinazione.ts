@@ -19,6 +19,47 @@ export function urlDiRitorno(origine: string, base: string): string {
   return `${origine.replace(/\/+$/, "")}${percorso}`;
 }
 
+/** I pochi campi di un indirizzo di pagina che servono qui. */
+export interface IndirizzoPagina {
+  protocol: string;
+  host: string;
+  hostname: string;
+  pathname: string;
+  search: string;
+  hash: string;
+}
+
+/**
+ * Un ospite a cui non si può chiedere un certificato.
+ *
+ * Sono i nomi che il browser e Google già trattano come sicuri per
+ * definizione: il certificato non esiste e non servirebbe. `127.0.0.1` e
+ * `::1` sono qui perché è da lì che si serve l'app desktop — forzare https
+ * lì romperebbe il pacchetto, che non ha da dove prendere un certificato.
+ */
+export function ospiteLocale(hostname: string): boolean {
+  const h = hostname.replace(/^\[|\]$/g, "");
+  return h === "localhost" || h === "127.0.0.1" || h === "::1" || h === "0.0.0.0";
+}
+
+/**
+ * Lo stesso indirizzo, ma su https — o `null` se va bene come sta.
+ *
+ * Serve perché una pagina aperta in http non può fare l'accesso: Google
+ * accetta `redirect_uri` in http solo per `localhost`, e su un dominio vero
+ * risponde `redirect_uri_mismatch`. Il pulsante sembra premuto e non
+ * succede niente.
+ *
+ * Qui non si decide *se* il sito va servito in https — quello lo decidono
+ * GitHub Pages e Cloudflare — ma si corregge chi arriva comunque dalla
+ * porta sbagliata, senza farglielo notare.
+ */
+export function indirizzoSicuro(url: IndirizzoPagina): string | null {
+  if (url.protocol !== "http:") return null;
+  if (ospiteLocale(url.hostname)) return null;
+  return `https://${url.host}${url.pathname}${url.search}${url.hash}`;
+}
+
 /**
  * Il percorso base da dare al router e agli URL di rientro.
  *
@@ -48,10 +89,31 @@ export function baseRoutte(): string {
  * meglio dirlo che mandare l'utente da Google con un indirizzo che non può
  * tornare.
  *
+ * Un `http://` su un dominio vero è trattato come non valido, anche se è
+ * una pagina web: su http Google non accetta il rientro, quindi accettarlo
+ * qui significherebbe mandare l'utente a un errore di Google invece che
+ * spiegare il problema. Su `localhost` e `127.0.0.1` resta valido: è l'app
+ * desktop, e lì l'eccezione vale.
+ *
  * Restituisce "" quando va bene, altrimenti la frase da mostrare.
  */
 export function motivoRientroNonValido(url: string): string {
-  if (/^https?:\/\//i.test(url)) return "";
+  if (/^https:\/\//i.test(url)) return "";
+  if (/^http:\/\//i.test(url)) {
+    let hostname = "";
+    try {
+      hostname = new URL(url).hostname;
+    } catch {
+      hostname = "";
+    }
+    if (!ospiteLocale(hostname)) {
+      return (
+        `Questa pagina è aperta in http ("${url}") e su http Google non accetta di riportarti qui, ` +
+        "quindi l'accesso non può funzionare. Apri Reportini con l'indirizzo che inizia per https."
+      );
+    }
+    return "";
+  }
   return (
     `L'indirizzo di rientro "${url}" non è una pagina web, quindi Google non può riportarti qui. ` +
     "L'app desktop si serve da 127.0.0.1 per avere un origine: se questa frase compare, " +

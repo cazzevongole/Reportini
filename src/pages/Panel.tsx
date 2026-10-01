@@ -1,28 +1,28 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import AnagraficoForm from "../components/AnagraficoForm";
 import AppuntamentoForm from "../components/AppuntamentoForm";
+import AziendaForm from "../components/AziendaForm";
 import {
+  BuildingIcon,
   CalendarIcon,
   ChevronRightIcon,
   FileTextIcon,
   PlusIcon,
-  UsersIcon,
 } from "../components/icons";
 import { Button, Card, EmptyState, Sheet, Stat } from "../components/ui";
 import { useLiveQuery } from "../hooks/useLiveQuery";
 import { dataLunga, durata, inizioGiorno, ora, relativo } from "../lib/date";
 import {
-  elencaAnagrafici,
   elencaAppuntamenti,
+  elencaAziende,
   elencaRelazioni,
-  iniziali,
-  nomeCompleto,
+  inizialiAzienda,
+  nomeAzienda,
   riepilogo,
 } from "../lib/repo";
 
 export default function Panel() {
-  const [foglio, setFoglio] = useState<"anagrafico" | "appuntamento" | null>(null);
+  const [foglio, setFoglio] = useState<"azienda" | "appuntamento" | null>(null);
   const dati = useLiveQuery(() => riepilogo());
   const oggi = useLiveQuery(() =>
     elencaAppuntamenti({
@@ -31,7 +31,7 @@ export default function Panel() {
     }),
   );
   const recenti = useLiveQuery(() => elencaRelazioni().slice(0, 3));
-  const anagraficiRecenti = useLiveQuery(() => elencaAnagrafici().slice(0, 4));
+  const aziendeRecenti = useLiveQuery(() => elencaAziende().slice(0, 4));
   const attivi = oggi.filter((appuntamento) => appuntamento.stato !== "annullato");
 
   return (
@@ -49,8 +49,8 @@ export default function Panel() {
 
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat
-          label="Anagrafici"
-          value={dati.anagrafici}
+          label="Aziende"
+          value={dati.aziende}
           hint={`${dati.relazioni} relazioni`}
           tone="muted"
         />
@@ -72,9 +72,9 @@ export default function Panel() {
       </div>
 
       <div className="mb-6 grid gap-2.5 sm:grid-cols-2">
-        <Button onClick={() => setFoglio("anagrafico")} size="lg">
+        <Button onClick={() => setFoglio("azienda")} size="lg">
           <PlusIcon className="h-4 w-4" />
-          Nuovo anagrafico
+          Nuova azienda
         </Button>
         <Button variant="secondary" size="lg" onClick={() => setFoglio("appuntamento")}>
           <CalendarIcon className="h-4 w-4" />
@@ -114,9 +114,7 @@ export default function Panel() {
                 <div className="min-w-0 flex-1 border-l border-ink-100 pl-4">
                   <p className="truncate font-medium text-ink-900">{appuntamento.titolo}</p>
                   <p className="mt-0.5 truncate text-xs text-ink-400">
-                    {appuntamento.anagraficoNome
-                      ? `${appuntamento.anagraficoNome} ${appuntamento.anagraficoCognome}`
-                      : "Senza anagrafico"}
+                    {appuntamento.aziendaRagioneSociale || "Senza azienda"}
                     {appuntamento.luogo ? ` · ${appuntamento.luogo}` : ""}
                   </p>
                 </div>
@@ -133,34 +131,33 @@ export default function Panel() {
 
       <section className="mb-8">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg">Anagrafici recenti</h2>
-          <Link to="/panel/anagrafici" className="text-[13px] font-medium text-brand-700">
-            Vedi tutti
+          <h2 className="text-lg">Aziende recenti</h2>
+          <Link to="/panel/aziende" className="text-[13px] font-medium text-brand-700">
+            Vedi tutte
           </Link>
         </div>
-        {anagraficiRecenti.length === 0 ? (
+        {aziendeRecenti.length === 0 ? (
           <Card className="p-6 text-center">
-            <UsersIcon className="mx-auto h-7 w-7 text-ink-300" />
-            <p className="mt-3 text-sm text-ink-400">Crea il primo anagrafico per iniziare.</p>
+            <BuildingIcon className="mx-auto h-7 w-7 text-ink-300" />
+            <p className="mt-3 text-sm text-ink-400">Crea la prima azienda per iniziare.</p>
           </Card>
         ) : (
           <ul className="grid gap-2.5 sm:grid-cols-2">
-            {anagraficiRecenti.map((anagrafico) => (
-              <li key={anagrafico.id}>
+            {aziendeRecenti.map((azienda) => (
+              <li key={azienda.id}>
                 <Link
-                  to={`/panel/anagrafici/${anagrafico.id}`}
+                  to={`/panel/aziende/${azienda.id}`}
                   className="card flex items-center gap-3 p-3.5 transition-shadow hover:shadow-lift"
                 >
                   <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-ink-100 font-display text-sm text-ink-700">
-                    {iniziali(anagrafico)}
+                    {inizialiAzienda(azienda)}
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium text-ink-900">
-                      {nomeCompleto(anagrafico)}
+                      {nomeAzienda(azienda)}
                     </span>
                     <span className="block truncate text-xs text-ink-400">
-                      {anagrafico.numRelazioni} relazioni · {anagrafico.numAppuntamenti}{" "}
-                      appuntamenti
+                      {azienda.numReferenti} referenti · {azienda.numRelazioni} relazioni
                     </span>
                   </span>
                   <ChevronRightIcon className="h-4 w-4 text-ink-300" />
@@ -189,8 +186,7 @@ export default function Panel() {
               <li key={relazione.id} className="card p-4">
                 <p className="font-medium text-ink-900">{relazione.titolo}</p>
                 <p className="mt-0.5 text-xs text-ink-400">
-                  {relazione.anagraficoNome} {relazione.anagraficoCognome} ·{" "}
-                  {dataLunga(`${relazione.data}T12:00:00`)}
+                  {relazione.aziendaRagioneSociale} · {dataLunga(`${relazione.data}T12:00:00`)}
                 </p>
               </li>
             ))}
@@ -199,12 +195,12 @@ export default function Panel() {
       </section>
 
       <Sheet
-        open={foglio === "anagrafico"}
+        open={foglio === "azienda"}
         onClose={() => setFoglio(null)}
-        title="Nuovo anagrafico"
-        description="Basta il nome: il resto puoi completarlo dopo."
+        title="Nuova azienda"
+        description="Basta la ragione sociale: il resto puoi completarlo dopo."
       >
-        <AnagraficoForm onSaved={() => setFoglio(null)} onCancel={() => setFoglio(null)} />
+        <AziendaForm onSaved={() => setFoglio(null)} onCancel={() => setFoglio(null)} />
       </Sheet>
 
       <Sheet

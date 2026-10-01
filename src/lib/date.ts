@@ -58,17 +58,6 @@ export function relativo(iso: string): string {
   return `tra ${Math.round(minuti / 10080)} sett.`;
 }
 
-export function eta(dataNascita: string | null): string | null {
-  if (!dataNascita) return null;
-  const data = new Date(dataNascita);
-  if (Number.isNaN(data.getTime())) return null;
-  const oggi = new Date();
-  let anni = oggi.getFullYear() - data.getFullYear();
-  const mese = oggi.getMonth() - data.getMonth();
-  if (mese < 0 || (mese === 0 && oggi.getDate() < data.getDate())) anni -= 1;
-  return anni >= 0 ? `${anni} anni` : null;
-}
-
 /* ------------------------- helper per datetime-local ----------------------- */
 
 /** Valore locale per <input type="datetime-local"> (nessuno spostamento UTC). */

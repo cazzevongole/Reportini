@@ -16,15 +16,11 @@ vi.mock("sql.js/dist/sql-wasm.wasm?url", () => ({
 }));
 
 import { initDatabase, nonReplicato, segnaReplicato } from "../src/lib/sqlite/engine";
-import { creaAnagrafico, eliminaAnagrafico, elencaAnagrafici } from "../src/lib/repo";
+import { creaAzienda, eliminaAzienda, elencaAziende } from "../src/lib/repo";
 
-const ANAGRAFICO = {
-  nome: "Mario",
-  cognome: "Rossi",
-  documento: "VR123456A",
-  dataNascita: "1980-01-02",
-  sesso: "M" as const,
-  nazionalita: "ITA",
+const AZIENDA = {
+  ragioneSociale: "Ferramenta Rossi S.r.l.",
+  partitaIva: "01234567890",
   indirizzo: "Via Roma 1",
   citta: "Verona",
   cap: "37100",
@@ -49,16 +45,16 @@ describe("Scritture non ancora replicate", () => {
   });
 
   it("una scrittura lo accende", async () => {
-    creaAnagrafico(ANAGRAFICO);
+    creaAzienda(AZIENDA);
     expect(nonReplicato()).toBe(true);
   });
 
   it("una cancellazione lo accende: è il caso che riportava gli appuntamenti eliminati", async () => {
-    const id = creaAnagrafico(ANAGRAFICO);
+    const id = creaAzienda(AZIENDA);
     segnaReplicato();
     expect(nonReplicato()).toBe(false);
 
-    eliminaAnagrafico(id);
+    eliminaAzienda(id);
 
     // Una cancellazione non è una scrittura che lascia il cloud più recente di
     // quanto sembri: il cloud ha ancora la riga che qui non c'è più.
@@ -66,7 +62,7 @@ describe("Scritture non ancora replicate", () => {
   });
 
   it("un caricamento riuscito lo spegne", () => {
-    creaAnagrafico(ANAGRAFICO);
+    creaAzienda(AZIENDA);
     expect(nonReplicato()).toBe(true);
 
     segnaReplicato();
@@ -75,7 +71,7 @@ describe("Scritture non ancora replicate", () => {
   });
 
   it("sopravvive a un riavvio, che è tutto il punto", async () => {
-    const id = creaAnagrafico(ANAGRAFICO);
+    const id = creaAzienda(AZIENDA);
     expect(nonReplicato()).toBe(true);
 
     // Riavvio: il modulo è ricaricato da capo, come fa l'app quando si
@@ -89,11 +85,11 @@ describe("Scritture non ancora replicate", () => {
     // che da solo non bastava.
     expect(riavviato.getVersion()).toBe(0);
     // Il database, invece, è sopravvissuto al riavvio: era già salvato.
-    expect(elencaAnagrafici().map((a) => a.id)).toContain(id);
+    expect(elencaAziende().map((a) => a.id)).toContain(id);
   });
 
   it("un riavvio dopo il caricamento non lascia il flag acceso", async () => {
-    creaAnagrafico(ANAGRAFICO);
+    creaAzienda(AZIENDA);
     segnaReplicato();
 
     vi.resetModules();

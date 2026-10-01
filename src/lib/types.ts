@@ -1,15 +1,19 @@
-export type Sesso = "M" | "F" | "O" | "";
 export type StatoRelazione = "bozza" | "revisione" | "firmato" | "consegnato";
 export type StatoAppuntamento = "in-attesa" | "confermato" | "annullato";
 
-export interface Anagrafico {
+/**
+ * Il soggetto di relazioni e appuntamenti: un'azienda, non una persona.
+ *
+ * I campi sono quelli che servono per identificarla e scriverle — ragione
+ * sociale e partita iva, più il recapito — e niente altro. Quello che
+ * riguarda le persone (nascita, sesso, nazionalità, documento) non è qui:
+ * le persone sono i referenti, che vivono nella tabella accanto e non
+ * entrano in nessuna relazione né in nessun appuntamento.
+ */
+export interface Azienda {
   id: number;
-  nome: string;
-  cognome: string;
-  documento: string;
-  dataNascita: string | null;
-  sesso: Sesso;
-  nazionalita: string;
+  ragioneSociale: string;
+  partitaIva: string;
   indirizzo: string;
   citta: string;
   cap: string;
@@ -21,9 +25,26 @@ export interface Anagrafico {
   updatedAt: string;
 }
 
+/**
+ * La persona con cui si parla dell'azienda.
+ *
+ * Nobile, non referentato: il referente è il modo in cui l'azienda viene
+ * cercata e come si sa a chi scrivere, non un soggetto delle relazioni.
+ */
+export interface Referente {
+  id: number;
+  aziendaId: number;
+  nome: string;
+  cognome: string;
+  telefono: string;
+  email: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Relazione {
   id: number;
-  anagraficoId: number;
+  aziendaId: number;
   titolo: string;
   tipo: string;
   stato: StatoRelazione;
@@ -35,7 +56,7 @@ export interface Relazione {
 
 export interface Appuntamento {
   id: number;
-  anagraficoId: number | null;
+  aziendaId: number | null;
   relazioneId: number | null;
   titolo: string;
   descrizione: string;
@@ -61,20 +82,19 @@ export interface Appuntamento {
   updatedAt: string;
 }
 
-export interface AnagraficoConTotali extends Anagrafico {
+export interface AziendaConTotali extends Azienda {
   numRelazioni: number;
   numAppuntamenti: number;
+  numReferenti: number;
 }
 
 export interface RelazioneDettagliata extends Relazione {
-  anagraficoNome: string;
-  anagraficoCognome: string;
-  anagraficoDocumento: string;
+  aziendaRagioneSociale: string;
+  aziendaPartitaIva: string;
 }
 
 export interface AppuntamentoDettagliato extends Appuntamento {
-  anagraficoNome: string | null;
-  anagraficoCognome: string | null;
-  anagraficoDocumento: string | null;
+  aziendaRagioneSociale: string | null;
+  aziendaPartitaIva: string | null;
   relazioneTitolo: string | null;
 }

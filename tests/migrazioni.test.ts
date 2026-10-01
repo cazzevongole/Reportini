@@ -43,6 +43,40 @@ const APPUNTAMENTI_VECCHI = `
   );
 `;
 
+/** Lo schema di quando le anagrafiche erano persone fisiche. */
+const SCHEMA_PERSONE = `
+  CREATE TABLE anagrafici (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL DEFAULT '',
+    cognome TEXT NOT NULL DEFAULT '',
+    documento TEXT NOT NULL DEFAULT '',
+    dataNascita TEXT,
+    sesso TEXT NOT NULL DEFAULT '',
+    nazionalita TEXT NOT NULL DEFAULT '',
+    indirizzo TEXT NOT NULL DEFAULT '',
+    citta TEXT NOT NULL DEFAULT '',
+    cap TEXT NOT NULL DEFAULT '',
+    provincia TEXT NOT NULL DEFAULT '',
+    telefono TEXT NOT NULL DEFAULT '',
+    email TEXT NOT NULL DEFAULT '',
+    note TEXT NOT NULL DEFAULT '',
+    createdAt TEXT NOT NULL,
+    updatedAt TEXT NOT NULL
+  );
+  CREATE TABLE relazioni (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    anagraficoId INTEGER NOT NULL REFERENCES anagrafici(id) ON DELETE CASCADE,
+    titolo TEXT NOT NULL DEFAULT '',
+    tipo TEXT NOT NULL DEFAULT '',
+    stato TEXT NOT NULL DEFAULT 'bozza',
+    contenuto TEXT NOT NULL DEFAULT '',
+    data TEXT NOT NULL,
+    createdAt TEXT NOT NULL,
+    updatedAt TEXT NOT NULL
+  );
+  ${APPUNTAMENTI_VECCHI.replace("anagraficoId INTEGER,", "anagraficoId INTEGER REFERENCES anagrafici(id) ON DELETE SET NULL,")}
+`;
+
 let SQL: Awaited<ReturnType<typeof initSqlJs>>;
 
 beforeAll(async () => {
@@ -69,6 +103,128 @@ function valoriInNomi(valori: unknown[]): string[] {
     .map((riga) => (Array.isArray(riga) ? riga[1] : undefined))
     .filter((nome): nome is string => typeof nome === "string");
 }
+
+/** Quante righe ha una tabella. */
+function conta(db: Database, tabella: string): number {
+  const righe = db.exec(`SELECT COUNT(*) FROM ${tabella}`);
+  return Number(righe[0]?.values[0]?.[0] ?? 0);
+}
+
+describe("Passaggio dalle anagrafiche di persona alle aziende", () => {
+  it("butta via le persone e crea aziende e referenti", async () => {
+    const db = new SQL.Database();
+    db.run(SCHEMA_PERSONE);
+    db.run(
+      `INSERT INTO anagrafici (nome, cognome, documento, createdAt, updatedAt)
+       VALUES ('Mario', 'Rossi', 'VR123456A', 'a', 'b')`,
+    );
+    db.run(
+      `INSERT INTO relazioni (anagraficoId, titolo, data, createdAt, updatedAt)
+       VALUES (1, 'Certificato', '2026-01-01', 'a', 'b')`,
+    );
+    db.run(
+      `INSERT INTO appuntamenti (anagraficoId, titolo, inizio, fine, createdAt, updatedAt)
+       VALUES (1, 'Sportello', 'a', 'b', 'a', 'b')`,
+    );
+
+    runMigrations(db);
+
+    // La tabella delle persone non esiste più, e le sue righe con lei.
+    expect(colonne(db, "anagrafici")).toEqual([]);
+    expect(
+      db.exec("SELECT COUNT(*) FROM sqlite_master WHERE name = 'anagrafici'")[0].values[0][0],
+    ).toBe(0);
+    // Le aziende ci sono, con i campi giusti e **vuote**: nessuna persona
+    // è diventata un'azienda.
+    expect(colonne(db, "aziende")).toEqual([
+      "id",
+      "ragioneSociale",
+      "partitaIva",
+      "indirizzo",
+      "citta",
+      "cap",
+      "provincia",
+      "telefono",
+      "email",
+      "note",
+      "createdAt",
+      "updatedAt",
+    ]);
+    expect(conta(db, "aziende")).toBe(0);
+    expect(colonne(db, "referenti")).toEqual([
+      "id",
+      "aziendaId",
+      "nome",
+      "cognome",
+      "telefono",
+      "email",
+      "createdAt",
+      "updatedAt",
+    ]);
+    // Le relazioni agganciate a una persona che non c'è più non hanno più
+    // un soggetto: resterebbero come righe invisibili in ogni elenco.
+    expect(conta(db, "relazioni")).toBe(0);
+    expect(conta(db, "appuntamenti")).toBe(0);
+    // E le chiavi esterne tornano su: dopo un DROP TABLE SQLite le lascia
+    // disattivate, e senza cascate eliminare un'azienda lascerebbe
+    // referenti e relazioni appesi.
+    expect(db.exec("PRAGMA foreign_keys")[0].values[0][0]).toBe(1);
+  });
+
+  it("non rifà il passaggio al secondo avvio, e non butta le aziende create", async () => {
+    const db = new SQL.Database();
+    db.run(SCHEMA_PERSONE);
+    runMigrations(db);
+
+    const adesso = new Date().toISOString();
+    db.run(
+      `INSERT INTO aziende (ragioneSociale, partitaIva, createdAt, updatedAt)
+       VALUES ('Ferramenta Rossi S.r.l.', '03012345678', ?, ?)`,
+      [adesso, adesso],
+    );
+    const idAzienda = db.exec("SELECT id FROM aziende")[0].values[0][0];
+    db.run(
+      `INSERT INTO referenti (aziendaId, nome, cognome, createdAt, updatedAt)
+       VALUES (?, 'Mario', 'Rossi', ?, ?)`,
+      [idAzienda, adesso, adesso],
+    );
+
+    // Ogni avvio dell'app ripercorre le migrazioni: se il passaggio si
+    // rifacesse, qui sparirebbe tutto quello che l'utente ha appena creato.
+    runMigrations(db);
+    runMigrations(db);
+
+    expect(conta(db, "aziende")).toBe(1);
+    expect(conta(db, "referenti")).toBe(1);
+  });
+
+  it("un appuntamento senza anagrafica resta: non c'entra con il passaggio", async () => {
+    const db = new SQL.Database();
+    // Il database più vecchio di tutti: `appuntamenti` senza neanche
+    // googleErrore. Il passaggio non può nominare una colonna che a quel
+    // database non esiste, o l'app non aprirebbe più.
+    db.run(SCHEMA_PERSONE);
+    db.run(
+      `INSERT INTO appuntamenti (anagraficoId, titolo, inizio, fine, createdAt, updatedAt)
+       VALUES (NULL, 'Sportello', 'a', 'b', 'a', 'b')`,
+    );
+    expect(colonne(db, "appuntamenti")).not.toContain("googleErrore");
+
+    runMigrations(db);
+
+    // Non aveva una persona e non ne ha una azienda: è un appuntamento
+    // preso allo sportello, e perderlo sarebbe una perdita senza motivo.
+    expect(conta(db, "appuntamenti")).toBe(1);
+    expect(db.exec("SELECT titolo FROM appuntamenti")[0].values[0][0]).toBe("Sportello");
+    expect(colonne(db, "appuntamenti")).toContain("aziendaId");
+    expect(colonne(db, "appuntamenti")).toContain("googleErrore");
+    // E la tabella di passaggio non resta li a fare rumore.
+    expect(
+      db.exec("SELECT COUNT(*) FROM sqlite_master WHERE name = 'appuntamenti_da_recuperare'")[0]
+        .values[0][0],
+    ).toBe(0);
+  });
+});
 
 describe("Migrazioni del database locale", () => {
   it("aggiunge a un database vecchio la colonna che gli manca", async () => {

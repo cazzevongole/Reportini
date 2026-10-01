@@ -6,9 +6,9 @@ import { pubblicaAppuntamento } from "../lib/google/sync";
 import {
   aggiornaAppuntamento,
   creaAppuntamento,
-  elencaAnagrafici,
+  elencaAziende,
   elencaRelazioni,
-  nomeCompleto,
+  nomeAzienda,
   type AppuntamentoInput,
 } from "../lib/repo";
 import type { Appuntamento, StatoAppuntamento } from "../lib/types";
@@ -19,20 +19,20 @@ const PROMEMORIE = [0, 10, 30, 60, 1440];
 
 export default function AppuntamentoForm({
   appuntamento,
-  anagraficoIdIniziale,
+  aziendaIdIniziale,
   onSaved,
   onCancel,
 }: {
   appuntamento?: Appuntamento | null;
-  anagraficoIdIniziale?: number | null;
+  aziendaIdIniziale?: number | null;
   onSaved: (id: number) => void;
   onCancel: () => void;
 }) {
-  const anagrafici = elencaAnagrafici();
-  const [anagraficoId, setAnagraficoId] = useState<number | null>(
-    appuntamento ? appuntamento.anagraficoId : (anagraficoIdIniziale ?? anagrafici[0]?.id ?? null),
+  const aziende = elencaAziende();
+  const [aziendaId, setAziendaId] = useState<number | null>(
+    appuntamento ? appuntamento.aziendaId : (aziendaIdIniziale ?? aziende[0]?.id ?? null),
   );
-  const relazioni = elencaRelazioni({ anagraficoId });
+  const relazioni = elencaRelazioni({ aziendaId });
   const googlePronto = isConnected();
   const { notifica, esegui } = useAvvisi();
   const [errore, setErrore] = useState("");
@@ -48,7 +48,7 @@ export default function AppuntamentoForm({
     }
     const inizio = aggiungiMinuti(new Date().toISOString(), 60);
     return {
-      anagraficoId: anagraficoIdIniziale ?? anagrafici[0]?.id ?? null,
+      aziendaId: aziendaIdIniziale ?? aziende[0]?.id ?? null,
       relazioneId: null,
       titolo: "Appuntamento allo sportello",
       descrizione: "",
@@ -95,7 +95,7 @@ export default function AppuntamentoForm({
       setErrore("L'ora di fine deve essere successiva a quella di inizio.");
       return;
     }
-    const dati = { ...form, anagraficoId };
+    const dati = { ...form, aziendaId };
     // Prima il salvataggio in locale, sempre: se Google è irraggiungibile
     // l'appuntamento non deve perdersi, e l'errore di rete non deve
     // cancellare quello che l'utente aveva scritto.
@@ -136,25 +136,25 @@ export default function AppuntamentoForm({
         />
       </Field>
 
-      <Field label="Anagrafico" hint="Facoltativo: un appuntamento può non essere collegato.">
+      <Field label="Azienda" hint="Facoltativo: un appuntamento può non essere collegato.">
         <Select
-          value={anagraficoId ?? ""}
+          value={aziendaId ?? ""}
           onChange={(event) => {
             const id = event.target.value ? Number(event.target.value) : null;
-            setAnagraficoId(id);
-            setForm((precedente) => ({ ...precedente, anagraficoId: id, relazioneId: null }));
+            setAziendaId(id);
+            setForm((precedente) => ({ ...precedente, aziendaId: id, relazioneId: null }));
           }}
         >
-          <option value="">Senza anagrafico</option>
-          {anagrafici.map((anagrafico) => (
-            <option key={anagrafico.id} value={anagrafico.id}>
-              {nomeCompleto(anagrafico)}
+          <option value="">Senza azienda</option>
+          {aziende.map((azienda) => (
+            <option key={azienda.id} value={azienda.id}>
+              {nomeAzienda(azienda)}
             </option>
           ))}
         </Select>
       </Field>
 
-      {anagraficoId && relazioni.length > 0 ? (
+      {aziendaId && relazioni.length > 0 ? (
         <Field label="Relazione collegata">
           <Select
             value={form.relazioneId ?? ""}

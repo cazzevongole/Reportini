@@ -22,11 +22,12 @@ async function caricaSql(): Promise<SqlJsStatic> {
 }
 
 export interface Anteprima {
-  anagrafici: number;
+  aziende: number;
+  referenti: number;
   relazioni: number;
   appuntamenti: number;
   ultimoAggiornamento: string | null;
-  anagraficheElenco: Array<{ id: number; nome: string; cognome: string; documento: string }>;
+  aziendeElenco: Array<{ id: number; ragioneSociale: string; partitaIva: string }>;
   appuntamentiElenco: Array<{ id: number; titolo: string; inizio: string; stato: string }>;
 }
 
@@ -53,27 +54,36 @@ export async function leggiAnteprima(byte: Uint8Array): Promise<Anteprima> {
   const copia = new sql.Database(byte);
   try {
     const conteggi = interroga<{
-      anagrafici: number;
+      aziende: number;
+      referenti: number;
       relazioni: number;
       appuntamenti: number;
       ultimoAggiornamento: string | null;
     }>(
       copia,
-      `SELECT (SELECT COUNT(*) FROM anagrafici) AS anagrafici,
+      `SELECT (SELECT COUNT(*) FROM aziende) AS aziende,
+              (SELECT COUNT(*) FROM referenti) AS referenti,
               (SELECT COUNT(*) FROM relazioni) AS relazioni,
               (SELECT COUNT(*) FROM appuntamenti) AS appuntamenti,
               (SELECT MAX(updatedAt) FROM appuntamenti) AS ultimoAggiornamento`,
-    )[0] ?? { anagrafici: 0, relazioni: 0, appuntamenti: 0, ultimoAggiornamento: null };
+    )[0] ?? {
+      aziende: 0,
+      referenti: 0,
+      relazioni: 0,
+      appuntamenti: 0,
+      ultimoAggiornamento: null,
+    };
 
     return {
-      anagrafici: conteggi.anagrafici ?? 0,
+      aziende: conteggi.aziende ?? 0,
+      referenti: conteggi.referenti ?? 0,
       relazioni: conteggi.relazioni ?? 0,
       appuntamenti: conteggi.appuntamenti ?? 0,
       ultimoAggiornamento: conteggi.ultimoAggiornamento ?? null,
-      anagraficheElenco: interroga(
+      aziendeElenco: interroga(
         copia,
-        `SELECT id, nome, cognome, documento
-        FROM anagrafici ORDER BY cognome, nome LIMIT 20`,
+        `SELECT id, ragioneSociale, partitaIva
+        FROM aziende ORDER BY ragioneSociale COLLATE NOCASE LIMIT 20`,
       ),
       appuntamentiElenco: interroga(
         copia,

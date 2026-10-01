@@ -89,7 +89,7 @@ export default function Impostazioni() {
       },
       {
         successo: (c) =>
-          `Copia esportata: ${c.anagrafici.length} anagrafiche, ${c.relazioni.length} relazioni, ${c.appuntamenti.length} appuntamenti.`,
+          `Copia esportata: ${c.aziende.length} aziende, ${c.relazioni.length} relazioni, ${c.appuntamenti.length} appuntamenti.`,
         errore: "Esportazione non riuscita",
       },
     );
@@ -105,8 +105,15 @@ export default function Impostazioni() {
     await esegui(
       async () => {
         const copia = JSON.parse(await file.text()) as Backup;
-        if (!Array.isArray(copia.anagrafici) || !Array.isArray(copia.appuntamenti)) {
-          throw new Error("Il file non ha il formato atteso");
+        if (!Array.isArray(copia.aziende) || !Array.isArray(copia.appuntamenti)) {
+          // Una copia esportata prima del passaggio alle aziende ha il campo
+          // "anagrafici": importarla cosi fallirebbe a metà, con il
+          // database già svuotato. Meglio dirlo prima di toccare niente.
+          throw new Error(
+            (copia as { anagrafici?: unknown }).anagrafici
+              ? "Questa copia è di una versione precedente (anagrafiche di persona) e non può essere importata."
+              : "Il file non ha il formato atteso",
+          );
         }
         ripristinaBackup(copia);
       },

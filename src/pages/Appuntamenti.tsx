@@ -166,9 +166,9 @@ export default function Appuntamenti() {
                         <h3 className="mt-1.5 truncate font-medium text-ink-900">
                           {appuntamento.titolo}
                         </h3>
-                        {appuntamento.anagraficoNome ? (
+                        {appuntamento.aziendaRagioneSociale ? (
                           <p className="mt-0.5 truncate text-xs text-ink-400">
-                            {appuntamento.anagraficoNome} {appuntamento.anagraficoCognome}
+                            {appuntamento.aziendaRagioneSociale}
                             {appuntamento.relazioneTitolo
                               ? ` · ${appuntamento.relazioneTitolo}`
                               : ""}

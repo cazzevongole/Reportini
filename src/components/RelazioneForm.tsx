@@ -2,8 +2,8 @@ import { useState, type FormEvent } from "react";
 import {
   aggiornaRelazione,
   creaRelazione,
-  elencaAnagrafici,
-  nomeCompleto,
+  elencaAziende,
+  nomeAzienda,
   type RelazioneInput,
 } from "../lib/repo";
 import type { Relazione, StatoRelazione } from "../lib/types";
@@ -25,8 +25,8 @@ const TIPO_ESEMPIO = [
 
 const MODELLO = `RELAZIONE
 
-Anagrafico:
-Documento:
+Azienda:
+Partita Iva:
 Pratica:
 
 Antefatti
@@ -42,23 +42,23 @@ Conclusione
 
 export default function RelazioneForm({
   relazione,
-  anagraficoIdIniziale,
+  aziendaIdIniziale,
   onSaved,
   onCancel,
 }: {
   relazione?: Relazione | null;
-  anagraficoIdIniziale?: number | null;
+  aziendaIdIniziale?: number | null;
   onSaved: (id: number) => void;
   onCancel: () => void;
 }) {
-  const anagrafici = elencaAnagrafici();
+  const aziende = elencaAziende();
   const [form, setForm] = useState<RelazioneInput>(() => {
     if (relazione) {
       const { id: _id, createdAt: _c, updatedAt: _u, ...resto } = relazione;
       return resto;
     }
     return {
-      anagraficoId: anagraficoIdIniziale ?? anagrafici[0]?.id ?? 0,
+      aziendaId: aziendaIdIniziale ?? aziende[0]?.id ?? 0,
       titolo: "",
       tipo: "",
       stato: "bozza",
@@ -74,8 +74,8 @@ export default function RelazioneForm({
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (!form.anagraficoId) {
-      setErrore("Seleziona l'anagrafico a cui appartiene la relazione.");
+    if (!form.aziendaId) {
+      setErrore("Seleziona l'azienda a cui appartiene la relazione.");
       return;
     }
     if (!form.titolo.trim()) {
@@ -92,16 +92,16 @@ export default function RelazioneForm({
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      <Field label="Anagrafico">
+      <Field label="Azienda">
         <Select
-          value={form.anagraficoId || ""}
-          onChange={(event) => set("anagraficoId", Number(event.target.value))}
+          value={form.aziendaId || ""}
+          onChange={(event) => set("aziendaId", Number(event.target.value))}
         >
           <option value="">Seleziona…</option>
-          {anagrafici.map((anagrafico) => (
-            <option key={anagrafico.id} value={anagrafico.id}>
-              {nomeCompleto(anagrafico)}
-              {anagrafico.documento ? ` · ${anagrafico.documento}` : ""}
+          {aziende.map((azienda) => (
+            <option key={azienda.id} value={azienda.id}>
+              {nomeAzienda(azienda)}
+              {azienda.partitaIva ? ` · ${azienda.partitaIva}` : ""}
             </option>
           ))}
         </Select>
