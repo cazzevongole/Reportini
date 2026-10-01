@@ -199,7 +199,7 @@ describe("Archivio delle versioni", () => {
   });
 
   it("la versione scelta si rilegge byte per byte", async () => {
-    const byte = await copiaConDati("Mario");
+    const byte = await copiaConDati("Ferramenta Rossi S.r.l.");
     await archivio.registraVersione(byte, ORA);
     const versione = (await archivio.elencaVersioni())[0];
     const riletta = await archivio.leggiVersione(versione.id);
@@ -249,7 +249,7 @@ describe("Versioni nelle impostazioni", () => {
   });
 
   it("guardare una versione non modifica nulla", async () => {
-    const byte = await copiaConDati("Mario");
+    const byte = await copiaConDati("Ferramenta Rossi S.r.l.");
     await archivio.registraVersione(byte, ORA);
     await monta();
 
@@ -259,16 +259,16 @@ describe("Versioni nelle impostazioni", () => {
     });
 
     expect(testo()).toContain("Solo anteprima");
-    expect(testo()).toContain("Rossi");
+    expect(testo()).toContain("Ferramenta Rossi");
     // Nessuna sostituzione, nessuno scarto.
     expect(stato.sostituito).toHaveLength(0);
     expect(await archivio.elencaVersioni()).toHaveLength(1);
   });
 
   it("ripartire da una versione sostituisce i dati e scarta le successive", async () => {
-    const vecchia = await copiaConDati("Mario");
+    const vecchia = await copiaConDati("Ferramenta Rossi S.r.l.");
     await archivio.registraVersione(vecchia, ORA - 7_200_000);
-    const nuova = await copiaConDati("Giulia");
+    const nuova = await copiaConDati("Verdi Impianti S.n.c.");
     await archivio.registraVersione(nuova, ORA);
     await monta();
 
@@ -281,7 +281,7 @@ describe("Versioni nelle impostazioni", () => {
       bottoni("Guarda")[1]?.click();
       await aspetta(50);
     });
-    expect(testo()).toContain("Mario");
+    expect(testo()).toContain("Ferramenta Rossi");
 
     await act(async () => {
       bottone("Riparti da qui")?.click();

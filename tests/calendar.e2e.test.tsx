@@ -483,7 +483,7 @@ describe("Il contesto dell'azienda non si duplica", () => {
 
     const descrizione = [...eventi.values()][0].description ?? "";
     expect(descrizione.split("Azienda: Ferramenta Rossi S.r.l.").length - 1).toBe(1);
-    expect(descrizione.split("Documento: VR123456A").length - 1).toBe(1);
+    expect(descrizione.split("Partita Iva: 03012345678").length - 1).toBe(1);
   });
 });
 
