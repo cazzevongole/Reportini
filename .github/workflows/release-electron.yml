@@ -153,6 +153,11 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add package.json electron/package.json CHANGELOG.md
+            # Anche la cancellazione di `.rilascio`: lo script la fa quando
+            # consuma l'ordine, ma senza questa riga resterebbe solo sul disco
+            # del runner e il file resterebbe **nel tag**, dove il job che
+            # impacchetta lo rileggerebbe come un ordine nuovo.
+            git add -A .rilascio || true
             git commit -m "Versione $VERSIONE"
             git tag "$TAG"
             git push origin "HEAD:master" "$TAG"

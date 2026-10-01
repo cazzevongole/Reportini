@@ -254,6 +254,15 @@ pubblicare un numero che nessuno ha chiesto è peggio che non pubblicare niente.
 `paths-ignore`, perché il commit che prepara l'ordine non deve far partire un rilascio: quello
 deve partire dal push *successivo*, quello con dentro il codice da rilasciare.
 
+La cancellazione finisce **nel commit di versione**, e non è un dettaglio: il pacchetto si
+costruisce dal tag, e se `minor` restasse dentro il tag il job che impacchetta — che esegue
+`versione.mjs` per controllare che la versione torni con il tag — avrebbe trovato l'ordine e
+alzato la versione *di nuovo*, pubblicando pacchetti con un numero che non era quello della
+release. Per questo `versione.mjs` senza argomenti controlla e non scrive mai, `.rilascio` o no:
+è un controllo, e un controllo che alza la versione è il difetto più grave che quel file possa
+avere, perché il numero del pacchetto è pubblico e non si può più correggere. Il test
+`il controllo non alza niente, anche con un ordine in giro` copre esattamente questo.
+
 E non parte per niente quando il commit tocca solo ciò che non finisce nel pacchetto — le funzioni
 Supabase, i test, il README, gli script di CI, la formattazione. Il filtro è una lista di path in
 `paths-ignore`, e ogni riga che manca è un pacchetto identico al precedente pubblicato come nuovo:

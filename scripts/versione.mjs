@@ -7,6 +7,12 @@
 // radice, contenente `patch`, `minor` o `major`. Quando c'è, il livello viene
 // da lì e non dalla riga di comando.
 //
+// Ma l'ordine vale **solo quando c'è un livello da eseguire**. Senza argomenti
+// questo script controlla e basta, `.rilascio` o no: viene eseguito anche dal
+// job che impacchetta, per confrontare la versione con il tag, e lì alzare è
+// un disastro — il pacchetto esce con un numero diverso da quello della
+// release, e non c'è modo di accorgersene dopo.
+//
 // Perché serve. Il workflow che pubblica i pacchetti alza la versione da solo
 // e il suo default è `patch`: un modello dati che cambia (le anagrafiche che
 // diventano aziende, le relazioni che diventano report) uscirebbe come
@@ -163,10 +169,14 @@ export function alza(livello, { ordine = ORDINE } = {}) {
 // `file://` + quello dà due slash, mentre l'URL ne ha tre.
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const argomento = process.argv[2];
-  const ordine = leggiOrdine();
-  if (argomento === undefined && ordine === "") {
+  if (argomento === undefined) {
+    // Controllo, e nient'altro: nessuna scrittura, e `.rilascio` non viene
+    // letto. Un controllo che alza la versione è il peggior difetto che
+    // questo file può avere, perché il numero del pacchetto è pubblico e il
+    // tag è già stato pubblicato quando il pacchetto si costruisce.
     console.log(`versione coerente: ${controlla()}`);
   } else {
+    const ordine = leggiOrdine();
     const livello = ordine || argomento;
     if (ordine) console.log(`ordine in ${ORDINE}: ${ordine}`);
     const { attuale, prossima, consumato } = alza(livello);

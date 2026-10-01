@@ -115,6 +115,32 @@ describe("L'ordine in .rilascio", () => {
       rmSync(cartella, { recursive: true, force: true });
     }
   });
+
+  it("il controllo non alza niente, anche con un ordine in giro", () => {
+    // Il difetto che è costato un rilascio: il job che impacchetta esegue
+    // questo script per confrontare la versione con il tag, e nel tag c'era
+    // ancora `.rilascio`. Il controllo ha letto l'ordine e ha fatto
+    // 0.3.0 → 0.4.0, così i pacchetti sono usciti col numero sbagliato sotto
+    // un tag che diceva un altro numero: un rilascio che non si può più
+    // correggere. Senza argomenti non si scrive niente, e l'ordine resta
+    // intatto per chi verrà a eseguirlo davvero.
+    const cartella = scenario("0.8.8");
+    try {
+      writeFileSync(join(cartella, ".rilascio"), "major");
+      const uscita = execFileSync("node", ["scripts/versione.mjs"], {
+        cwd: cartella,
+        encoding: "utf8",
+      });
+      expect(uscita).toContain("versione coerente: 0.8.8");
+      expect(leggiVersione(cartella, SORGENTE)).toBe("0.8.8");
+      expect(leggiVersione(cartella, ECO)).toBe("0.8.8");
+      // E l'ordine non è stato consumato: consumarlo sarebbe stato un altro
+      // modo di alzare la versione al momento sbagliato.
+      expect(existsSync(join(cartella, ".rilascio"))).toBe(true);
+    } finally {
+      rmSync(cartella, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("Versione del pacchetto", () => {
