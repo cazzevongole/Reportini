@@ -170,10 +170,20 @@ export function alza(livello, { ordine = ORDINE } = {}) {
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const argomento = process.argv[2];
   if (argomento === undefined) {
-    // Controllo, e nient'altro: nessuna scrittura, e `.rilascio` non viene
-    // letto. Un controllo che alza la versione è il peggior difetto che
+    // Controllo, e nient'altro: nessuna scrittura, e l'ordine non viene
+    // eseguito. Un controllo che alza la versione è il peggior difetto che
     // questo file può avere, perché il numero del pacchetto è pubblico e il
     // tag è già stato pubblicato quando il pacchetto si costruisce.
+    //
+    // L'ordine però viene **letto**: `leggiOrdine()` non alza niente, si
+    // limita a fermarsi se contiene una parola che non è un livello. Senza
+    // questa lettura un `.rilascio` corrotto — un refuso, una parola
+    // rimasta da un'attività precedente — passava inosservato nel ramo di
+    // controllo, e il giorno dopo il rilascio avrebbe alzato la versione con
+    // il livello di riserva del workflow invece che con quello chiesto,
+    // pubblicando un numero che nessuno aveva deciso. È la differenza fra
+    // "non lo so" e "va bene": qui si deve sapere.
+    leggiOrdine();
     console.log(`versione coerente: ${controlla()}`);
   } else {
     const ordine = leggiOrdine();

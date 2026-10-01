@@ -175,9 +175,36 @@ describe("Versione del pacchetto", () => {
   });
 
   it("rifiuta un livello di incremento che non esiste", () => {
-    expect(() =>
-      execFileSync("node", [SCRIPT, "enorme"], { stdio: ["ignore", "pipe", "pipe"] }),
-    ).toThrow();
+    // Prova lo script in una cartella sua, come tutti gli altri test di
+    // alzata: sulla cartella vera l'argomento verrebbe ignorato se c'è un
+    // `.rilascio`, e il test passerebbe senza aver provato niente — o peggio,
+    // alzerebbe davvero la versione del repository.
+    const cartella = scenario("0.8.8");
+    try {
+      expect(() => alzaIn(cartella, "enorme")).toThrow();
+      // E la versione è rimasta quella di prima: un livello rifiutato non
+      // deve aver scritto niente.
+      expect(leggiVersione(cartella, SORGENTE)).toBe("0.8.8");
+    } finally {
+      rmSync(cartella, { recursive: true, force: true });
+    }
+  });
+
+  it("un livello inesistente in .rilascio blocca, invece di tirare a indovinare", () => {
+    // La regola è dichiarata nel README e vale per il file quanto per
+    // l'argomento. Il pericolo qui è diverso e peggiore: con `patch` di
+    // riserva l'ordine verrebbe ignorato e la release uscirebbe con un
+    // numero che nessuno ha chiesto, senza che nessuno se ne accorga.
+    const cartella = scenario("0.8.8");
+    try {
+      writeFileSync(join(cartella, ".rilascio"), "enorme\n");
+      expect(() =>
+        execFileSync("node", ["scripts/versione.mjs"], { cwd: cartella, stdio: "pipe" }),
+      ).toThrow();
+      expect(leggiVersione(cartella, SORGENTE)).toBe("0.8.8");
+    } finally {
+      rmSync(cartella, { recursive: true, force: true });
+    }
   });
 
   it.each([
