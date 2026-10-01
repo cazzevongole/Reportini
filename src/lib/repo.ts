@@ -422,13 +422,13 @@ export function segnaAttivitaCompletata(id: number, completata: boolean): void {
 /**
  * Segna una chiamata come fatta, o torna indietro.
  *
- * Scrive `stato` e `completata` **insieme**, e non in due chiamate: sono la
+ * Scrive stato e completata **insieme**, e non in due chiamate: sono la
  * stessa cosa detta in due colonne, e due scritture lasciano una finestra in
  * cui la chiamata è "fatta" ma non ancora confermata. In quella finestra un
  * evento su Google la mostra occupata ma non come fatta — una contraddizione
  * che nessuno vede e che il riepilogo conta come "da fare".
  *
- * La traduzione la fa `colonneChiamata()` in `types.ts`, e non va rifatta a
+ * La traduzione la fa colonneChiamata() in types.ts, e non va rifatta a
  * mano nei moduli.
  */
 export function segnaChiamataCompletata(id: number, completata: boolean): void {
