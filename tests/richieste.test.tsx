@@ -37,6 +37,7 @@ interface Riga {
   risposta: string | null;
   created_at: string;
   updated_at: string;
+  cancellata_il: string | null;
 }
 
 const UTENTE = { id: "u-1", email: "anna@esempio.it" };
@@ -103,6 +104,7 @@ const { stato, supabaseFinto } = vi.hoisted(() => {
                 id: `r-${stato.prossimoId++}`,
                 stato: "aperta",
                 risposta: null,
+                cancellata_il: null,
               } as Riga;
               stato.righe = [nuova, ...stato.righe];
               return { data: nuova, error: null };
@@ -144,6 +146,7 @@ function riga(parte: Partial<Riga> = {}): Riga {
     risposta: null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
+    cancellata_il: null,
     ...parte,
   };
 }
@@ -157,6 +160,18 @@ async function monta(nodo: React.ReactNode) {
 
 function testo() {
   return contenitore.textContent ?? "";
+}
+
+/** La sezione nascosta, montata sulla sua rotta. */
+async function montaSviluppo() {
+  await monta(
+    <MemoryRouter initialEntries={["/panel/sviluppo"]}>
+      <Routes>
+        <Route path="/panel/sviluppo" element={<Sviluppo />} />
+        <Route path="/panel" element={<p>Il pannello</p>} />
+      </Routes>
+    </MemoryRouter>,
+  );
 }
 
 function perEtichetta(nome: string): HTMLElement {
@@ -342,17 +357,6 @@ describe("Puntamento dalla pagina impostazioni", () => {
 });
 
 describe("Sezione nascosta dello sviluppatore", () => {
-  async function montaSviluppo() {
-    await monta(
-      <MemoryRouter initialEntries={["/panel/sviluppo"]}>
-        <Routes>
-          <Route path="/panel/sviluppo" element={<Sviluppo />} />
-          <Route path="/panel" element={<p>Il pannello</p>} />
-        </Routes>
-      </MemoryRouter>,
-    );
-  }
-
   it("chi non è lo sviluppatore viene rimandato al pannello, senza vedere nulla", async () => {
     await montaSviluppo();
     expect(testo()).toBe("Il pannello");
@@ -368,6 +372,16 @@ describe("Sezione nascosta dello sviluppatore", () => {
     expect(testo()).toContain("Richieste degli utenti");
     expect(testo()).toContain("anna@esempio.it");
 
+    // Su una richiesta aperta c'è una sola azione, "Prendo in carico":
+    // "Segna risolta" compare solo quando il lavoro è già preso. I due
+    // bottoni insieme erano proprio la parte poco chiara che la nuova UI
+    // toglie: due scelte per uno stato solo, con quale premere deciso da chi
+    // legge la pagina per primo.
+    await act(async () => {
+      perEtichetta("Prendo in carico").click();
+    });
+    expect(stato.righe[0].stato).toBe("in corso");
+
     await act(async () => {
       perEtichetta("Segna risolta").click();
     });
@@ -378,5 +392,96 @@ describe("Sezione nascosta dello sviluppatore", () => {
     stato.errore = { code: "42P01", message: "relation does not exist" };
     await montaSviluppo();
     expect(testo()).toContain("richieste.sql");
+  });
+});
+
+describe("Le richieste dell'utente sono divise in due", () => {
+  it("quelle risolte non stanno con quelle aperte", async () => {
+    stato.righe = [
+      riga({ id: "r-1", titolo: "Aperta", stato: "aperta" }),
+      riga({ id: "r-2", titolo: "Chiusa", stato: "risolta", risposta: "Fatto così." }),
+    ];
+    await monta(<ChiediloAlloSviluppatore />);
+
+    // I due gruppi ci sono entrambi, e con le richieste giuste: è la domanda
+    // che l'utente si fa guardando la pagina, non il numero di righe.
+    expect(testo()).toContain("In corso");
+    expect(testo()).toContain("Risolte");
+    const elenco = testo();
+    const inCorso = elenco.indexOf("In corso");
+    const risolte = elenco.indexOf("Risolte");
+    expect(inCorso).toBeLessThan(risolte);
+    // "Aperta" sta prima di "Risolte" nel testo, cioè nel gruppo giusto.
+    expect(elenco.indexOf("Aperta")).toBeLessThan(risolte);
+  });
+
+  it("una richiesta cancellata non compare in nessuno dei due", async () => {
+    stato.righe = [
+      riga({ id: "r-1", titolo: "Ancora qui" }),
+      riga({ id: "r-2", titolo: "Nascosta", cancellata_il: new Date().toISOString() }),
+    ];
+    await monta(<ChiediloAlloSviluppatore />);
+    expect(testo()).toContain("Ancora qui");
+    expect(testo()).not.toContain("Nascosta");
+  });
+});
+
+describe("Cancellare una richiesta passata", () => {
+  it("la toglie dagli elenchi ma non dal database", async () => {
+    stato.sviluppatore = true;
+    // Una sola richiesta: con due, `perEtichetta` trova la prima e il
+    // test misurerebbe la cancellazione di quella, non della seconda.
+    stato.righe = [riga({ id: "r-1", titolo: "Seconda" })];
+    await montaSviluppo();
+
+    await act(async () => {
+      perEtichetta("Cancella").click();
+    });
+    // Prima di confermare non è successo niente: è quello il punto di una
+    // conferma, e un test che lo salta passerebbe anche senza.
+    expect(testo()).toContain("Seconda");
+    expect(stato.righe[0].cancellata_il).toBeNull();
+
+    await act(async () => {
+      perEtichetta("Sì, nascondila").click();
+    });
+    expect(testo()).not.toContain("Seconda");
+    // La riga c'è ancora, con la cancellazione logica: è ciò che rende
+    // l'operazione recuperabile.
+    expect(stato.righe[0].cancellata_il).toBeTruthy();
+    // E la pagina lo dichiara, invece di far finta che non esista più.
+    expect(testo()).toContain("nascosta");
+  });
+
+  it("annullando la conferma non cancella niente", async () => {
+    stato.sviluppatore = true;
+    stato.righe = [riga({ id: "r-1", titolo: "Resta qui" })];
+    await montaSviluppo();
+
+    // Due `act` e non uno: il riquadro di conferma non esiste fino a che
+    // React non ha renderizzato la richiesta aperta, quindi cercarlo nello
+    // stesso giro in cui si preme "Cancella" cerca un bottone che non è
+    // ancora stato creato.
+    await act(async () => {
+      perEtichetta("Cancella").click();
+    });
+    await act(async () => {
+      perEtichetta("Annulla").click();
+    });
+    expect(testo()).toContain("Resta qui");
+    expect(stato.righe[0].cancellata_il).toBeNull();
+  });
+
+  it("le richieste nascoste sono dichiarate, non sparite in silenzio", async () => {
+    stato.sviluppatore = true;
+    stato.righe = [
+      riga({ id: "r-1", titolo: "Visibile" }),
+      riga({ id: "r-2", titolo: "Nascosta", cancellata_il: new Date().toISOString() }),
+    ];
+    await montaSviluppo();
+    // Un conteggio che include le nascoste sarebbe un numero che mente su
+    // quello che l'elenco sotto mostra.
+    expect(testo()).toContain("nascosta");
+    expect(testo()).toContain("Visibile");
   });
 });

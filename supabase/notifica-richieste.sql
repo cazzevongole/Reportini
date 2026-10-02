@@ -68,6 +68,57 @@ create extension if not exists pg_net;
 -- `security definer` perché la funzione deve poter leggere `sviluppatori`, che
 -- nessun client può leggere: senza, la lista dei destinatari risulterebbe
 -- vuota e nessuno riceverebbe niente.
+-- `modo` distingue le due mail, che sono due destinatari diversi dello stesso
+-- evento: `nuova` avvisa gli sviluppatori, `chiusura` avvisa l'utente che ha
+-- scritto. Sono due funzioni e non una perché i destinatari si leggono da due
+-- tabelle diverse, e farlo con una sola avrebbe significato scegliere a ogni
+-- richiesta quale delle due liste mandare a `array_agg`.
+create or replace function public.manda_avviso_chiusura()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  indirizzo_funzione text;
+  chiave_notifica text;
+begin
+  select decrypted_secret into indirizzo_funzione
+    from vault.decrypted_secrets where name = 'notifica_richieste_url';
+  select decrypted_secret into chiave_notifica
+    from vault.decrypted_secrets where name = 'notifica_richieste_chiave';
+
+  if indirizzo_funzione is null or chiave_notifica is null then
+    raise warning 'notifica_richieste: manca nel Vault url o chiave, nessuna chiusura per %',
+      new.id;
+    return new;
+  end if;
+
+  perform net.http_post(
+    url := indirizzo_funzione,
+    body := jsonb_build_object(
+      -- `modo` è ciò che la Edge Function usa per scegliere a chi scrivere.
+      'modo', 'chiusura',
+      'id', new.id::text,
+      'tipo', new.tipo,
+      'titolo', new.titolo,
+      'corpo', new.corpo,
+      -- Qui l'email è il destinatario, non il mittente: è l'utente che ha
+      -- scritto la richiesta ed è a lui che si risponde.
+      'email', new.email,
+      'risposta', new.risposta,
+      'creata', new.created_at,
+      'chiusa', new.updated_at
+    ),
+    headers := jsonb_build_object(
+      'x-reportini-notifica', chiave_notifica
+    )
+  );
+
+  return new;
+end;
+$$;
+
 create or replace function public.manda_avviso_richiesta()
 returns trigger
 language plpgsql
@@ -109,6 +160,9 @@ begin
   perform net.http_post(
     url := indirizzo_funzione,
     body := jsonb_build_object(
+      -- `modo` è ciò che la Edge Function usa per scegliere a chi scrivere:
+      -- questa mail va agli sviluppatori, quella di chiusura all'utente.
+      'modo', 'nuova',
       'id', new.id::text,
       'tipo', new.tipo,
       'titolo', new.titolo,
@@ -143,6 +197,25 @@ $$;
 create or replace trigger richieste_avviso_mail
   after insert on public.richieste
   for each row execute function public.manda_avviso_richiesta();
+
+-- Quando una richiesta passa a "risolta", l'utente che l'ha scritta riceve
+-- una mail con la risposta. Il trigger è su `update` e non su `delete`, quindi
+-- non parte quando una richiesta già risolta viene riaperta e poi risolta di
+-- nuovo: la condizione sotto è ciò che distingue le due cose.
+--
+-- `when` conta anche le modifiche che non c'entrano. Salvare la risposta senza
+-- cambiare stato è un `update` come gli altri, e senza il confronto qui
+-- sotto l'utente riceverebbe una mail ogni volta che lo sviluppatore
+-- corregge un refuso. La condizione guarda i due stati, non il fatto che la
+-- riga sia cambiata.
+create or replace trigger richieste_avviso_chiusura
+  after update on public.richieste
+  for each row
+  when (
+    new.stato = 'risolta'
+    and old.stato is distinct from 'risolta'
+  )
+  execute function public.manda_avviso_chiusura();
 
 /* ------------------------- la verifica della chiave ------------------------ */
 

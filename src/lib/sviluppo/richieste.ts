@@ -30,6 +30,15 @@ export interface Richiesta {
   email: string;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Quando è stata cancellata, se lo è stata.
+   *
+   * La cancellazione non è una delete: la riga resta e questa colonna dice
+   * perché non la vedi più. È la ragione per cui il filtro sugli elenchi è
+   * di lettura e non di permesso: le richieste cancellate restano leggibili
+   * da chi le ha scritte, e questo `if` è l'unica cosa che le nasconde.
+   */
+  cancellataIl: string | null;
 }
 
 export const TIPI: { valore: TipoRichiesta; etichetta: string }[] = [
@@ -99,6 +108,12 @@ interface RigaRichiesta {
   email: string;
   created_at: string;
   updated_at: string;
+  /**
+   * `undefined` e non `null` quando il database non ce l'ha: può succedere
+   * con lo script vecchio, eseguito prima che la colonna esistesse, e va
+   * trattato come "non cancellata" invece che come un errore.
+   */
+  cancellata_il?: string | null;
 }
 
 function rigaARichiesta(riga: RigaRichiesta): Richiesta {
@@ -112,10 +127,16 @@ function rigaARichiesta(riga: RigaRichiesta): Richiesta {
     email: riga.email,
     createdAt: riga.created_at,
     updatedAt: riga.updated_at,
+    cancellataIl: riga.cancellata_il ?? null,
   };
 }
 
-const COLONNE = "id,tipo,titolo,corpo,stato,risposta,email,created_at,updated_at";
+/** Le richieste che l'elenco mostra: tutte meno quelle cancellate. */
+export function visibili(richieste: Richiesta[]): Richiesta[] {
+  return richieste.filter((r) => !r.cancellataIl);
+}
+
+const COLONNE = "id,tipo,titolo,corpo,stato,risposta,email,created_at,updated_at,cancellata_il";
 
 async function utenteCorrente(): Promise<{ id: string; email: string }> {
   if (!supabase) throw new Error("Supabase non è collegato: senza account non si può scrivere.");
@@ -202,6 +223,70 @@ export async function rispondi(id: string, testo: string): Promise<void> {
   const { error } = await supabase
     .from("richieste")
     .update({ risposta: testo.trim() || null, updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw spiega(error);
+}
+
+/* ------------------------------ le due liste ------------------------------ */
+
+/**
+ * Le richieste dell'utente, divise in "in corso" e "risolte".
+ *
+ * La divisione è per stato, non per data: "in corso" sono quelle su cui
+ * qualcuno sta lavorando — aperte o prese in carico — e "risolte" quelle
+ * chiuse. È la stessa distinzione che lo sviluppatore vede nei suoi tre
+ * gruppi, scritta una volta sola: senza, le due pagine potrebbero dare
+ * nomi diversi allo stesso stato e l'utente non saprebbe a cosa si riferisce
+ * la parola "risolta" che ha visto dall'altra parte.
+ *
+ * "Risolte" tiene l'ordine inverso — le più recenti in cima — perché in un
+ * elenco di cose chiuse la domanda è sempre "le ultime", e con le più
+ * vecchie in cima servirebbe scorrere per trovare quella di oggi.
+ */
+export function dividiPerStato(richieste: Richiesta[]): {
+  inCorso: Richiesta[];
+  risolte: Richiesta[];
+} {
+  const visibili_ = visibili(richieste);
+  const inCorso = visibili_.filter((r) => r.stato !== "risolta");
+  const risolte = visibili_.filter((r) => r.stato === "risolta").reverse();
+  return { inCorso, risolte };
+}
+
+/* ------------------------------- cancellare ------------------------------- */
+
+/**
+ * Nasconde una richiesta dagli elenchi, senza cancellarla dal database.
+ *
+ * È un `update` e non una delete per due motivi, e il secondo è quello che
+ * l'ha resa reversibile: la riga resta, con la risposta che lo sviluppatore
+ * aveva scritto, e si torna indietro con `ripristinaRichiesta`. Una delete
+ * non avrebbe nessuna delle due cose.
+ *
+ * Non serve chiedere il permesso a mano: la policy `richieste_modifica` nel
+ * database accetta solo lo sviluppatore, quindi un utente normale riceve un
+ * errore dal server e non dal modulo. Qui non si controlla nulla apposta.
+ */
+export async function cancellaRichiesta(id: string): Promise<void> {
+  if (!supabase) throw new RichiesteNonAttive("Supabase non è collegato.");
+  const { error } = await supabase
+    .from("richieste")
+    .update({ cancellata_il: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw spiega(error);
+}
+
+/**
+ * Il contrario di `cancellaRichiesta`: la richiesta torna negli elenchi.
+ *
+ * Esiste perché la cancellazione è logica, e una cancellazione logica senza
+ * il suo contrario è una delete con un nome gentile.
+ */
+export async function ripristinaRichiesta(id: string): Promise<void> {
+  if (!supabase) throw new RichiesteNonAttive("Supabase non è collegato.");
+  const { error } = await supabase
+    .from("richieste")
+    .update({ cancellata_il: null, updated_at: new Date().toISOString() })
     .eq("id", id);
   if (error) throw spiega(error);
 }

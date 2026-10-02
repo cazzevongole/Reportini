@@ -7,6 +7,7 @@ import {
   LIMITE_CORPO,
   LIMITE_TITOLO,
   TIPI,
+  dividiPerStato,
   elencaRichieste,
   etichettaStato,
   inviaRichiesta,
@@ -64,6 +65,44 @@ function RichiestaCard({
   );
 }
 
+/**
+ * Un gruppo di richieste sotto un titolo.
+ *
+ * Il titolo c'è anche quando il gruppo è vuoto, con un testo che dice perché è
+ * vuoto: togliere l'intestazione lascia una pagina senza dire da che parte
+ * guardare, che è la metà del motivo per cui due elenchi senza titoli non
+ * aiutano nessuno.
+ */
+function Gruppo({
+  titolo,
+  richieste,
+  vuoto,
+}: {
+  titolo: string;
+  richieste: Richiesta[];
+  vuoto: string;
+}) {
+  return (
+    <div className="mt-4 first:mt-6">
+      <h4 className="flex items-baseline gap-2 text-sm font-semibold text-ink-700">
+        {titolo}
+        <span className="text-xs font-normal text-ink-400">
+          {richieste.length === 1 ? "1 richiesta" : `${richieste.length} richieste`}
+        </span>
+      </h4>
+      {richieste.length === 0 ? (
+        <p className="mt-1.5 text-sm text-ink-400">{vuoto}</p>
+      ) : (
+        <ul className="mt-2 flex flex-col gap-2.5">
+          {richieste.map((richiesta) => (
+            <RichiestaCard key={richiesta.id} richiesta={richiesta} />
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export default function ChiediloAlloSviluppatore() {
   const { esegui } = useAvvisi();
   const [tipo, setTipo] = useState<TipoRichiesta>("fix");
@@ -72,6 +111,8 @@ export default function ChiediloAlloSviluppatore() {
   const [occupato, setOccupato] = useState(false);
   const [elenco, setElenco] = useState<Richiesta[]>([]);
   const [problema, setProblema] = useState<string | null>(null);
+
+  const { inCorso, risolte } = dividiPerStato(elenco);
 
   const carica = useCallback(async () => {
     try {
@@ -209,11 +250,23 @@ export default function ChiediloAlloSviluppatore() {
             quello che succede.
           </p>
         ) : (
-          <ul className="mt-2 flex flex-col gap-2.5">
-            {elenco.map((richiesta) => (
-              <RichiestaCard key={richiesta.id} richiesta={richiesta} />
-            ))}
-          </ul>
+          <>
+            {/* Due gruppi e non uno solo con i filtri: qui la domanda non è
+                "mostrami le risolte", è "su cosa state lavorando e cosa è
+                già finito". Un elenco unico costringerebbe a leggere ogni
+                titolo per ricavarne lo stato, che è già scritto due volte
+                più in alto. */}
+            <Gruppo
+              titolo="In corso"
+              richieste={inCorso}
+              vuoto="Nessuna richiesta aperta. Quando ne scrivi una, la vedi qui finché non è risolta."
+            />
+            <Gruppo
+              titolo="Risolte"
+              richieste={risolte}
+              vuoto="Nessuna richiesta risolta per ora."
+            />
+          </>
         )}
       </Card>
     </section>

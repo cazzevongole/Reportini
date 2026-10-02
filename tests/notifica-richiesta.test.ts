@@ -231,3 +231,96 @@ describe("I segreti che servono", () => {
     expect(segretiMancanti({ ...COMPLETI, RESEND_API_KEY: "" })).toEqual(["RESEND_API_KEY"]);
   });
 });
+
+/* ----------------------------- la mail di chiusura ------------------------ */
+
+/**
+ * La mail di chiusura va all'utente che ha scritto la richiesta, non agli
+ * sviluppatori: sono due lati opposti della stessa conversazione e mandare
+ * il messaggio sbagliato significa che lo sviluppatore riceve la risposta
+ * che ha appena scritto, e l'utente non riceve niente.
+ */
+const CHIUSURA = {
+  modo: "chiusura" as const,
+  id: "3f2a",
+  tipo: "fix",
+  titolo: "La stampa del riepilogo resta bianca",
+  corpo: "Apre il PDF e non compare niente.",
+  email: "anna@esempio.it",
+  risposta: "Corretto: il riepilogo ora include l'azienda.",
+  creata: "2026-10-01 10:00",
+  chiusa: "2026-10-02 09:00",
+};
+
+describe("La mail di chiusura", () => {
+  it("va all'utente che ha scritto la richiesta", () => {
+    const messaggio = costruisciMessaggio(CHIUSURA, { mittente: "Reportini <segnalazioni@x.it>" });
+    expect(messaggio?.a).toEqual(["anna@esempio.it"]);
+  });
+
+  it("non usa la lista degli sviluppatori", () => {
+    // Il trigger di chiusura non manda `destinatari`, e se lo facesse
+    // andrebbe a leggere la tabella sbagliata: la prova è che il
+    // destinatario esiste anche senza quella lista.
+    const messaggio = costruisciMessaggio(CHIUSURA, { mittente: "Reportini <segnalazioni@x.it>" });
+    expect(messaggio?.a).not.toContain("dev@esempio.it");
+  });
+
+  it("porta la risposta dello sviluppatore, che è la notizia", () => {
+    const messaggio = costruisciMessaggio(CHIUSURA, { mittente: "Reportini <segnalazioni@x.it>" });
+    // Nel testo piano la risposta è quella scritta, apostrofo compreso.
+    expect(messaggio?.testo).toContain("Corretto: il riepilogo ora include l'azienda.");
+    // Nell'HTML gli stessi caratteri sono le entità: confrontare la stringa
+    // grezza fallirebbe per l'apostrofo, che qui è `&#39;`. Il punto del
+    // confronto è che la risposta c'è, non che resti identica.
+    expect(messaggio?.html).toContain("Corretto: il riepilogo ora include l&#39;azienda.");
+  });
+
+  it("non parte se l'utente non ha un indirizzo", () => {
+    // Una sessione Google può non dare l'email. Senza destinatario la mail
+    // non parte: meglio che partire e rimbalzare, che è quello che fa
+    // `indirizziValidi` anche nella mail d'avviso.
+    const messaggio = costruisciMessaggio(
+      { ...CHIUSURA, email: "" },
+      { mittente: "Reportini <segnalazioni@x.it>" },
+    );
+    expect(messaggio).toBeNull();
+  });
+
+  it("senza risposta scritta dice lo stesso, invece di mandare una mail vuota", () => {
+    // Chiudere senza scrivere è una richiesta chiusa senza spiegazione, e
+    // una mail vuota si legge come un errore dell'invio.
+    const messaggio = costruisciMessaggio(
+      { ...CHIUSURA, risposta: null },
+      { mittente: "Reportini <segnalazioni@x.it>" },
+    );
+    expect(messaggio?.testo).toContain("senza una risposta scritta");
+  });
+
+  it("sfuggia la risposta come ogni altro testo", () => {
+    // La risposta viene dal database e finisce in una mail che un programma
+    // di posta apre: senza escape, un `<a href>` scritto in una risposta
+    // diventa un collegamento cliccabile.
+    const messaggio = costruisciMessaggio(
+      { ...CHIUSURA, risposta: "Prova <a href='https://esempio.it'>Segui</a>" },
+      { mittente: "Reportini <segnalazioni@x.it>" },
+    );
+    expect(messaggio?.html).toContain("&lt;a href=");
+    expect(messaggio?.html).not.toContain("<a href='https://esempio.it'>");
+  });
+
+  it("dice risolta, non chiusa, che è la parola che l'utente ha visto", () => {
+    expect(oggetto(CHIUSURA)).toContain("risolta");
+  });
+
+  it("senza modo resta la mail d'avviso, per un trigger vecchio", () => {
+    // Chi ha eseguito lo script vecchio e non lo ha rigenerato ha ancora il
+    // trigger che non manda `modo`: deve continuare a funzionare.
+    const { modo: _modo, ...senzaModo } = CHIUSURA;
+    const messaggio = costruisciMessaggio(
+      { ...senzaModo, destinatari: ["dev@esempio.it"] },
+      { mittente: "Reportini <segnalazioni@x.it>" },
+    );
+    expect(messaggio?.a).toEqual(["dev@esempio.it"]);
+  });
+});

@@ -16,15 +16,32 @@
 // emerge mesi dopo, da una casella che non si ricorda più.
 // =============================================================================
 
+/**
+ * Quale delle due mail è questa.
+ *
+ * Sono due perché i destinatari sono due tabelle diverse: `nuova` va agli
+ * indirizzi della tabella `sviluppatori`, `chiusura` all'unico indirizzo
+ * dell'utente che ha scritto. Sono anche due lati opposti della stessa
+ * conversazione, e tenerli insieme in una funzione sola significa che
+ * ogni modifica alla mail di chiusura rischia di rompere quella d'avviso.
+ */
+export type ModoNotifica = "nuova" | "chiusura";
+
 /** Come arriva la richiesta dal trigger, con i destinatari già risolti. */
 export interface RichiestaNotifica {
+  /** Quale delle due mail mandare. Se manca è `nuova`: è il modo di prima. */
+  modo?: ModoNotifica;
   id?: string;
   tipo?: string;
   titolo?: string;
   corpo?: string;
   /** Email di chi ha scritto: viene dalla sessione, non dal modulo. */
   email?: string;
+  /** La risposta dello sviluppatore, presente solo nella mail di chiusura. */
+  risposta?: string | null;
   creata?: string;
+  /** Quando la richiesta è passata a "risolta". */
+  chiusa?: string;
   /** Agli indirizzi della tabella `sviluppatori`, letti dal database. */
   destinatari?: string[];
 }
@@ -139,6 +156,12 @@ const TITOLO_MINIMO = 20;
  * dovesse crescere ancora.
  */
 export function oggetto(richiesta: RichiestaNotifica, lunghezzaMassima = OGGETTO_MASSIMO): string {
+  // La mail di chiusura non porta la domanda dell'utente nel soggetto: porta
+  // il fatto che è stata chiusa, che è la notizia. Il titolo della richiesta
+  // resta nel corpo, dove c'è spazio per leggerlo intero.
+  if (richiesta.modo === "chiusura") {
+    return "Reportini · la tua richiesta è stata risolta";
+  }
   const etichetta = ETICHETTE[richiesta.tipo ?? ""] ?? "Richiesta";
   const titolo = (richiesta.titolo ?? "").trim().replace(/\s+/g, " ");
   if (!titolo) return `Reportini · ${etichetta}`;
@@ -202,6 +225,76 @@ function corpoHtml(richiesta: RichiestaNotifica, sito: string): string {
 </html>`;
 }
 
+/* ----------------------------- la mail di chiusura ------------------------- */
+
+/**
+ * Il testo della risposta, o un testo che dice comunque qualcosa.
+ *
+ * Il "se non c'è risposta" non è una cortesia: è il caso in cui lo sviluppatore
+ * chiude la richiesta senza scrivere niente, che è una richiesta chiusa senza
+ * spiegazione. Meglio una riga che dice come trovare la risposta che una mail
+ * vuota, che l'utente legge come un errore dell'invio.
+ */
+function rispostaLeggibile(risposta: string | null | undefined): string {
+  const testo = (risposta ?? "").trim();
+  return testo || "La richiesta è stata chiusa senza una risposta scritta.";
+}
+
+/**
+ * Il corpo della mail di chiusura, in testo piano.
+ *
+ * Qui `email` non è il mittente: è il destinatario, e non compare nel testo
+ * perché scrivere a qualcuno il suo indirizzo non aggiunge niente.
+ */
+function testoChiusura(richiesta: RichiestaNotifica, sito: string): string {
+  return [
+    "La tua richiesta su Reportini è stata risolta.",
+    "",
+    `Richiesta: ${(richiesta.titolo ?? "").trim() || "(senza titolo)"}`,
+    "",
+    "Che cosa è stato fatto:",
+    rispostaLeggibile(richiesta.risposta),
+    "",
+    `Per rileggerla e aprirne un'altra: ${sito}/panel`,
+    "",
+    "Questa mail l'ha mandata Reportini quando la richiesta è passata a",
+    "risolta. Se hai scritto qualcosa che non ti torna, rispondi pure.",
+  ].join("\n");
+}
+
+/**
+ * Il documento HTML della mail di chiusura.
+ *
+ * La risposta dello sviluppatore viene sfuggita come tutto il resto: è testo
+ * che arriva dal database, e senza `sfuggiHtml` un `<a href=…>` scritto in una
+ * risposta diventerebbe un collegamento cliccabile nella mail di qualcun altro.
+ */
+function corpoChiusuraHtml(richiesta: RichiestaNotifica, sito: string): string {
+  const titolo = sfuggiHtml((richiesta.titolo ?? "").trim() || "Richiesta senza titolo");
+  const risposta = sfuggiHtml(rispostaLeggibile(richiesta.risposta));
+  return `<!doctype html>
+<html lang="it">
+<body style="margin:0;padding:24px;background:#f7f6f2;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#1c1b18">
+  <div style="max-width:600px;margin:0 auto;background:#fff;border:1px solid #e6e4de;border-radius:12px;padding:24px">
+    <p style="margin:0 0 4px;font-size:13px;color:#6f6b63">Reportini</p>
+    <p style="margin:0 0 16px;font-size:13px;color:#6f6b63">La tua richiesta è stata risolta</p>
+    <h1 style="margin:0 0 20px;font-size:17px;line-height:1.4;font-weight:600;color:#6f6b63">${titolo}</h1>
+    <div style="margin:0 0 20px;border-left:2px solid #12b394;padding:2px 0 2px 12px">
+      <p style="margin:0 0 6px;font-size:13px;color:#6f6b63">Che cosa è stato fatto</p>
+      <p style="margin:0;font-size:15px;line-height:1.6;white-space:pre-wrap">${risposta}</p>
+    </div>
+    <p style="margin:0 0 20px">
+      <a href="${sito}/panel" style="background:#1c1b18;color:#fff;text-decoration:none;padding:10px 16px;border-radius:8px;display:inline-block;font-size:14px">Apri Reportini</a>
+    </p>
+    <p style="margin:0;font-size:12px;line-height:1.6;color:#6f6b63">
+      Se hai scritto qualcosa che non ti torna, puoi rispondere a questa mail:
+      arriva a chi sviluppa l'app.
+    </p>
+  </div>
+</body>
+</html>`;
+}
+
 /**
  * Il messaggio da mandare, o `null` se non c'è nessuno a cui mandarlo.
  *
@@ -215,6 +308,28 @@ export function costruisciMessaggio(
   opzioni: Opzioni,
 ): Messaggio | null {
   const sito = (opzioni.sito ?? "https://reportini.cazzevongole.com").replace(/\/+$/, "");
+
+  // Il modo di prima è "nuova": senza il campo si continua a mandare la mail
+  // d'avviso, ed è quello che vuole un trigger vecchio che non è stato
+  // ancora rigenerato.
+  const modo = richiesta.modo ?? "nuova";
+
+  if (modo === "chiusura") {
+    // Qui il destinatario è l'utente che ha scritto, che arriva in `email` e
+    // non in `destinatari`: passare per lo stesso filtro serve anche perché
+    // l'indirizzo viene dal database e non da un modulo, ma il filtro resta
+    // quello che scarta un indirizzo che non è un indirizzo.
+    const allUtente = indirizziValidi([richiesta.email ?? ""]);
+    if (allUtente.length === 0) return null;
+    return {
+      da: opzioni.mittente,
+      a: allUtente,
+      oggetto: oggetto(richiesta),
+      testo: testoChiusura(richiesta, sito),
+      html: corpoChiusuraHtml(richiesta, sito),
+    };
+  }
+
   const a = indirizziValidi(richiesta.destinatari ?? []);
   if (a.length === 0) return null;
   const rispondiA = (richiesta.email ?? "").trim();

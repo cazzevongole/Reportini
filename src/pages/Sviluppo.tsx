@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { Badge, Button, EmptyState, PageHeader, Stat, Textarea } from "../components/ui";
-import { CheckIcon, MessageIcon, RotateIcon } from "../components/icons";
+import { CheckIcon, MessageIcon, RotateIcon, TrashIcon } from "../components/icons";
 import { useAvvisi } from "../components/Avvisi";
 import { relativo } from "../lib/date";
 import {
   STATI,
   cambiaStato,
+  cancellaRichiesta,
   elencaRichieste,
   etichettaStato,
   rispondi,
   verificaRuolo,
+  visibili,
   type Richiesta,
   type StatoRichiesta,
 } from "../lib/sviluppo/richieste";
@@ -33,6 +35,29 @@ const FILTRI: { valore: StatoRichiesta | "tutte"; etichetta: string }[] = [
   ...STATI.map((s) => ({ valore: s.valore, etichetta: s.etichetta })),
 ];
 
+/**
+ * Che cosa offre la pagina su una richiesta, per stato.
+ *
+ * Una riga per stato, con un solo bottone che cambia lo stato: è la
+ * risposta alla domanda "come vanno usati i pulsanti?". Prima ce n'erano
+ * quattro per richiesta e due scrivevano lo stesso campo, quindi l'ordine
+ * in cui venivano premuti decideva se la risposta veniva salvata o persa.
+ * Qui l'azione primaria porta con sé la risposta, e "Salva la risposta"
+ * esiste solo per il caso in cui si vuole salvare senza cambiare stato.
+ *
+ * `risolvi` è diverso dagli altri due solo per l'icona: è l'unica azione
+ * che chiude il lavoro, e renderla uguale alle altre la renderebbe
+ * invisibile in una lista lunga.
+ */
+const AZIONI: Record<
+  StatoRichiesta,
+  { etichetta: string; stato: StatoRichiesta | null; primaria: "prendi" | "risolvi" | null }
+> = {
+  aperta: { etichetta: "Prendo in carico", stato: "in corso", primaria: "prendi" },
+  "in corso": { etichetta: "Segna risolta", stato: "risolta", primaria: "risolvi" },
+  risolta: { etichetta: "", stato: null, primaria: null },
+};
+
 export default function Sviluppo() {
   const { esegui } = useAvvisi();
   const [vista, setVista] = useState<Vista>("caricamento");
@@ -40,6 +65,10 @@ export default function Sviluppo() {
   const [richieste, setRichieste] = useState<Richiesta[]>([]);
   const [filtro, setFiltro] = useState<StatoRichiesta | "tutte">("tutte");
   const [bozze, setBozze] = useState<Record<string, string>>({});
+  // Quale richiesta ha il riquadro di conferma aperto: una stringa e non un
+  // booleano, perché due richieste aperte insieme porterebbero a confermare
+  // quella sbagliata con un bottone che dice "cancella" senza dire quale.
+  const [daCancellare, setDaCancellare] = useState<string | null>(null);
   const [occupato, setOccupato] = useState(false);
 
   const carica = useCallback(async () => {
@@ -79,6 +108,14 @@ export default function Sviluppo() {
   const cambia = useCallback(
     async (id: string, stato: StatoRichiesta, risposta?: string) => {
       setOccupato(true);
+      // `esito` non viene confrontato con `null` per capire se è andata: le
+      // tre operazioni ritornano `void`, quindi `esegui` restituisce
+      // `undefined` anche quando riescono, e `if (!esito)` prendeva sempre
+      // la via dell'errore. Il risultato era che la pagina non si
+      // ricaricava e la richiesta restava con lo stato vecchio anche se il
+      // database l'aveva cambiato — la metà delle volte in cui l'utente ha
+      // premuto "Segna risolta" e non è successo niente. `=== null` è
+      // l'unico valore che `esegui` restituisce quando l'azione è fallita.
       const esito = await esegui(
         async () => {
           await cambiaStato(id, stato);
@@ -87,7 +124,7 @@ export default function Sviluppo() {
         { successo: "Richiesta aggiornata" },
       );
       setOccupato(false);
-      if (!esito) return;
+      if (esito === null) return;
       await carica();
     },
     [carica, esegui],
@@ -113,8 +150,13 @@ export default function Sviluppo() {
     );
   }
 
-  const visibili = filtro === "tutte" ? richieste : richieste.filter((r) => r.stato === filtro);
-  const conta = (stato: StatoRichiesta) => richieste.filter((r) => r.stato === stato).length;
+  // Le cancellate non compaiono in nessun gruppo, nemmeno nel conteggio: un
+  // numero che include richieste che l'elenco sotto non mostra mente su
+  // quello che conta.
+  const attive = visibili(richieste);
+  const filtrate = filtro === "tutte" ? attive : attive.filter((r) => r.stato === filtro);
+  const conta = (stato: StatoRichiesta) => attive.filter((r) => r.stato === stato).length;
+  const nascoste = richieste.length - attive.length;
 
   return (
     <div>
@@ -135,7 +177,16 @@ export default function Sviluppo() {
         <Stat label="Risolte" value={conta("risolta")} />
       </div>
 
-      <div className="mb-4 inline-flex flex-wrap rounded-xl border border-ink-200 p-1">
+      {nascoste > 0 ? (
+        <p className="mt-3 text-sm text-ink-400">
+          {nascoste === 1
+            ? "Una richiesta è nascosta e non compare qui."
+            : `${nascoste} richieste sono nascoste e non compaiono qui.`}{" "}
+          Sono ancora nel database: si recupera annullando la cancellazione.
+        </p>
+      ) : null}
+
+      <div className="mt-4 inline-flex flex-wrap rounded-xl border border-ink-200 p-1">
         {FILTRI.map((f) => (
           <button
             key={f.valore}
@@ -151,7 +202,7 @@ export default function Sviluppo() {
         ))}
       </div>
 
-      {visibili.length === 0 ? (
+      {filtrate.length === 0 ? (
         <EmptyState
           icon={<MessageIcon className="h-7 w-7" />}
           title="Nessuna richiesta qui"
@@ -159,7 +210,7 @@ export default function Sviluppo() {
         />
       ) : (
         <ul className="flex flex-col gap-3">
-          {visibili.map((richiesta) => (
+          {filtrate.map((richiesta) => (
             <li key={richiesta.id} className="card p-4">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge tone={richiesta.tipo === "fix" ? "clay" : "brand"}>
@@ -175,31 +226,47 @@ export default function Sviluppo() {
               <h3 className="mt-2 text-[15px] font-medium text-ink-900">{richiesta.titolo}</h3>
               <p className="mt-1 whitespace-pre-wrap text-sm text-ink-500">{richiesta.corpo}</p>
 
-              <div className="mt-3 flex flex-wrap gap-2">
-                {richiesta.stato !== "in corso" ? (
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    disabled={occupato}
-                    onClick={() => void cambia(richiesta.id, "in corso", testoRisposta(richiesta))}
-                  >
-                    Prendo in carico
-                  </Button>
-                ) : null}
-                {richiesta.stato !== "risolta" ? (
+              {/* Un'azione sola per stato, e dice cosa succede.
+                  Prima erano quattro pulsanti e due facevano cose che si
+                  sovrapponevano: "Segna risolta" e "Salva la risposta"
+                  scrivevano entrambi lo stesso campo, e quello che restava
+                  premendo per primo decideva se la risposta appena scritta
+                  veniva salvata o persa. Qui la risposta si scrive una
+                  volta e l'azione la porta con sé, quindi non c'è un ordine
+                  giusto da indovinare. */}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {AZIONI[richiesta.stato].primaria ? (
                   <Button
                     size="sm"
                     disabled={occupato}
-                    onClick={() => void cambia(richiesta.id, "risolta", testoRisposta(richiesta))}
+                    onClick={() =>
+                      void cambia(
+                        richiesta.id,
+                        AZIONI[richiesta.stato].stato!,
+                        testoRisposta(richiesta),
+                      )
+                    }
                   >
-                    <CheckIcon className="h-4 w-4" />
-                    Segna risolta
+                    {AZIONI[richiesta.stato].primaria === "risolvi" ? (
+                      <CheckIcon className="h-4 w-4" />
+                    ) : null}
+                    {AZIONI[richiesta.stato].etichetta}
                   </Button>
                 ) : null}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={occupato}
+                  onClick={() =>
+                    void cambia(richiesta.id, richiesta.stato, testoRisposta(richiesta))
+                  }
+                >
+                  Salva la risposta
+                </Button>
                 {richiesta.stato === "risolta" ? (
                   <Button
                     size="sm"
-                    variant="ghost"
+                    variant="secondary"
                     disabled={occupato}
                     onClick={() => void cambia(richiesta.id, "aperta", testoRisposta(richiesta))}
                   >
@@ -208,15 +275,46 @@ export default function Sviluppo() {
                 ) : null}
                 <Button
                   size="sm"
-                  variant="secondary"
+                  variant="ghost"
                   disabled={occupato}
-                  onClick={() =>
-                    void cambia(richiesta.id, richiesta.stato, testoRisposta(richiesta))
-                  }
+                  onClick={() => setDaCancellare(richiesta.id)}
                 >
-                  Salva la risposta
+                  <TrashIcon className="h-4 w-4" />
+                  Cancella
                 </Button>
               </div>
+
+              {daCancellare === richiesta.id ? (
+                <div className="mt-3 rounded-xl border border-clay-200 bg-clay-50 p-3 text-sm text-clay-900">
+                  <p>
+                    Nascondere questa richiesta dagli elenchi? Non sparisce: resta nel database con
+                    la risposta, e si può recuperare.
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button
+                      variant="danger"
+                      disabled={occupato}
+                      onClick={() => {
+                        setOccupato(true);
+                        void esegui(() => cancellaRichiesta(richiesta.id), {
+                          successo: "Richiesta nascosta",
+                          errore: "Cancellazione non riuscita",
+                        }).then((esito) => {
+                          setOccupato(false);
+                          if (esito === null) return;
+                          setDaCancellare(null);
+                          return carica();
+                        });
+                      }}
+                    >
+                      Sì, nascondila
+                    </Button>
+                    <Button variant="ghost" onClick={() => setDaCancellare(null)}>
+                      Annulla
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
 
               <div className="mt-3">
                 <label className="field-label" htmlFor={`risposta-${richiesta.id}`}>
