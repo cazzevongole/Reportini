@@ -8,12 +8,11 @@
 # illeggibile dentro un diff pieno di virgolette e tabelle riallineate.
 *.md
 
-# Le funzioni su Supabase vengono confrontate, carattere per carattere, con
-# quelle pubblicate (scripts/verifica-edge-function.mjs). Riformattarle
-# senza ripublicarle farebbe fallire quel controllo, e ripubblicarle per
-# cinque righe di spazi non vale la pena. Vanno formattate insieme alla
-# prossima modifica vera del codice.
-supabase/
+# `supabase/*.sql` non viene formattato: i quattro file sono commento in
+# massima parte, e riformattarli allineerebbe i commenti senza toccare un
+# solo errore, rendendo illeggibili nel diff le modifiche vere. Il codice
+# dentro `supabase/functions/` invece è formattato come il resto: non ha più
+# motivo di stare in questa lista.
 
 # Generati e dipendenze.
 dist

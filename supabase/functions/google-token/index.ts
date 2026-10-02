@@ -104,7 +104,7 @@ function intestazioniCors(richiesta: Request, env: Env): Record<string, string> 
     "Access-Control-Allow-Origin": accettata ? origine : ammesse[0],
     "Access-Control-Allow-Headers": "authorization,content-type,apikey",
     "Access-Control-Allow-Methods": "POST,OPTIONS",
-    "Vary": "Origin",
+    Vary: "Origin",
   };
 }
 
@@ -299,7 +299,8 @@ Deno.serve(async (richiesta: Request): Promise<Response> => {
 
       /* --------------------------------- revoca ---------------------------- */
       case "revoca": {
-        if (!corpo.token) return json({ errore: "Manca il token da revocare." }, 400, richiesta, env);
+        if (!corpo.token)
+          return json({ errore: "Manca il token da revocare." }, 400, richiesta, env);
         const risposta = await fetch(`${ORIGINE_REVOCA}?token=${encodeURIComponent(corpo.token)}`, {
           method: "POST",
         });

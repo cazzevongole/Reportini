@@ -49,12 +49,21 @@ describe("L'ordine in cui viene applicato lo schema", () => {
     expect(FILE_SCHEMA[0]).toBe("setup.sql");
   });
 
-  it("i tre file esistono tutti", () => {
+  it("i file dell'elenco esistono tutti", () => {
     // Uno script che legge un file che non c'è fallisce a metà applicazione,
     // con lo schema a metà: il caso peggiore, perché non è ripetibile.
     for (const nome of FILE_SCHEMA) {
       expect(() => sql(nome), `manca supabase/${nome}`).not.toThrow();
     }
+  });
+
+  it("deploy.sql viene dopo le richieste, di cui non dipende", () => {
+    // Non ha dipendenze, ma senza la tabella che crea il deploy delle Edge
+    // Function non ha dove registrare l'hash di ciò che ha pubblicato, e
+    // conviene che la tabella ci sia quando ci si arriva.
+    expect(FILE_SCHEMA.indexOf("deploy.sql")).toBeGreaterThan(
+      FILE_SCHEMA.indexOf("notifica-richieste.sql"),
+    );
   });
 
   it("legge esattamente i file dell'elenco", () => {

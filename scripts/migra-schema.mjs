@@ -40,10 +40,14 @@ const RADICE = join(QUI, "..");
  * `setup.sql` crea il bucket e le RLS, e non dipende da niente.
  * `richieste.sql` crea le tabelle su cui poggia il trigger.
  * `notifica-richieste.sql` mette il trigger su `public.richieste`, quindi
- * viene per ultimo: applicarlo prima troverebbe una tabella che potrebbe
- * non esserci e fallirebbe per un motivo che non c'entra.
+ * viene dopo `richieste.sql`: applicarlo prima troverebbe una tabella che
+ * potrebbe non esserci e fallirebbe per un motivo che non c'entra.
+ *
+ * `deploy.sql` non ha dipendenze, ma sta per ultimo perché senza la tabella
+ * che crea il deploy delle Edge Function non ha dove registrare l'hash di
+ * ciò che ha pubblicato, e conviene che ci sia quando ci si arriva.
  */
-export const FILE_SCHEMA = ["setup.sql", "richieste.sql", "notifica-richieste.sql"];
+export const FILE_SCHEMA = ["setup.sql", "richieste.sql", "notifica-richieste.sql", "deploy.sql"];
 
 /**
  * Una riga che SCRIVE un segreto, per intero o in parte.

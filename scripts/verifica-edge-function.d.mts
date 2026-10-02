@@ -6,37 +6,18 @@
  * toccare la rete.
  */
 
-/** Una funzione da confrontare, con tutti i suoi file. */
-export interface Confronto {
-  /** Il nome della funzione, come la chiama Supabase. */
-  nome: string;
-  /** I file del repository: percorso relativo → contenuto. */
-  locale: Record<string, string>;
-  /** I file pubblicati, se la funzione esiste. */
-  pubblicato?: Record<string, string> | null;
-}
-
-/**
- * I problemi fra i file di una funzione nel repository e quelli pubblicati.
- *
- * Vuota quando coincidono: è il caso che il rilascio richiede.
- */
-export declare function confronta(confronto: Confronto): string[];
-
-/**
- * Le parti del sorgente che non cambiano il comportamento.
- *
- * Toglie solo i fine riga e l'eventuale shebang, così un file davvero
- * diverso viene ancora segnalato.
- */
-export declare function normalizza(testo: string): string;
-
 /** Le funzioni da confrontare, tutte. */
 export declare const FUNZIONI: string[];
 
+/** L'hash del codice di una funzione, come lo calcola il deploy. */
+export declare function hashDi(nome: string): string;
+
 /**
- * I file di una funzione, come li ha il repository: percorso relativo →
- * contenuto. La cartella della funzione è la fonte, così un file nuovo non
- * può restare fuori dal confronto per dimenticanza.
+ * I problemi fra le funzioni del repository e quelle risultate pubblicate.
+ *
+ * Vuota quando coincidono: è il caso che il rilascio richiede.
  */
-export declare function leggiFunzione(nome: string): Record<string, string>;
+export declare function confronta(
+  locale: Record<string, string>,
+  pubblicati: Record<string, string> | null,
+): string[];

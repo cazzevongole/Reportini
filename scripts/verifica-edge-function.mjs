@@ -12,113 +12,91 @@
 // codice nel repository aveva il nuovo dominio nell'elenco delle origini
 // ammesse, ma la funzione pubblicata era ancora la versione precedente: il
 // preflight CORS rispondeva con l'origine sbagliata e l'accesso con Google
-// si fermava. Un errore che non nomina la causa.
-//
-// Confronta tutti i file di ogni funzione, non solo `index.ts`: dal primo
-// backend in poi c'è stato `notifica-richiesta`, che ha accanto a `index.ts`
-// un `corpo.ts` con la costruzione della mail. Un confronto che guardasse solo
-// il punto d'ingresso lascerebbe fuori proprio il file dove sta la logica.
+// si fermava. Un errore che non nomina la causa. E non è un caso che sia
+// sfuggito: per mesi questo controllo è passato senza confrontare niente, e
+// per tutto quel tempo la funzione online era una versione indietro di varie
+// release.
 //
 // Come si comporta:
 //
-//   - senza SUPABASE_ACCESS_TOKEN non può interrogare l'API: esce dicendolo,
-//     e non fallisce. In locale e su un fork non c'è il token, e un controllo
-//     che non può girare è uno che si impara a ignorare;
-//   - con il token, confronta ogni file pubblicato con quello del repository
-//     e, se differiscono, dice cosa fare.
+//   - senza SUPABASE_ACCESS_TOKEN non può interrogare il database: esce
+//     dicendolo, e non fallisce. In locale e su un fork non c'è il token, e
+//     un controllo che non può girare è uno che si impara a ignorare;
+//   - con il token, per ogni funzione confronta l'hash del codice qui con
+//     quello registrato dall'ultimo deploy, e se differiscono dice cosa fare.
 //
-// Non modifica niente: è un controllo, non un deploy. Il deploy resta una
-// scelta, perché pubblicare allegramente una versione nuova del backend non è
-// una cosa da fare in risposta a un merge.
+// Perché un hash e non un confronto del sorgente. Perché il confronto del
+// sorgente non è possibile, e insistere sarebbe un errore: la copia
+// pubblicata non è il file che è stato scritto. Supabase transpila e
+// riformatta prima di pubblicare, e nell'archivio che l'API restituisce i
+// commenti sono ripiegati su una riga e le dichiarazioni di tipo di
+// TypeScript sono sparite del tutto. Un confronto del testo direbbe che due
+// funzioni sono diverse anche quando sono lo stesso identico file.
+//
+// L'hash è calcolato sul file di partenza, prima del transpile, e registrato
+// nel database dal deploy. Quindi sopravvive, ed è esatto: se qualcuno tocca
+// una funzione e non la ripubblica, i due hash non coincidono.
+//
+// Il limite, che vale la pena dire qui perché è la cosa che va ricordata di
+// questo controllo: confronta il codice con ciò che la CI *dichiara* di aver
+// pubblicato, non con ciò che gira davvero in produzione. Se qualcuno
+// pubblica a mano dalla dashboard, l'hash registrato non cambia e il
+// controllo resta verde. È il motivo per cui anche la pubblicazione passa da
+// `deploya-edge-function.mjs`: se l'unica via per pubblicare è la CI, allora
+// "l'ultimo deploy è passato da qui" e il confronto coincide con la verità.
+//
+// Non modifica niente: è un controllo, non un deploy.
 
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import {
+  FUNZIONI as FUNZIONI_DA_PUBBLICARE,
+  hashFunzione,
+  leggiFile,
+} from "./deploya-edge-function.mjs";
 
 /** Le funzioni da confrontare, tutte. */
-export const FUNZIONI = ["google-token", "notifica-richiesta"];
+export const FUNZIONI = FUNZIONI_DA_PUBBLICARE.map((f) => f.nome);
 
 /**
- * I file di una funzione, come li ha il repository: nome relativo → contenuto.
+ * L'hash di una funzione, come lo calcola il deploy.
  *
- * La cartella della funzione è la fonte: aggiungere un file e dimenticare di
- * registrarlo da qualche parte è il modo tipico di pubblicarne solo metà.
+ * Non è duplicato: è la stessa funzione, chiamata. Se le due copie
+ * divergessero, il confronto starebbe misurando una cosa e il deploy
+ * pubblicerebbe un'altra, che è il caso peggiore: due copie del calcolo
+ * dell'hash che dicono cose diverse sullo stesso file.
  */
-export function leggiFunzione(nome) {
-  const cartella = join("supabase", "functions", nome);
-  const file = {};
-  for (const voce of readdirSync(cartella)) {
-    if (!voce.endsWith(".ts")) continue;
-    file[`${nome}/${voce}`] = readFileSync(join(cartella, voce), "utf8");
-  }
-  return file;
+export function hashDi(nome) {
+  return hashFunzione(leggiFile(nome));
 }
 
 /**
- * Le parti del sorgente che non cambiano il comportamento.
- *
- * Il confronto è sul testo, non sul comportamento: l'API restituisce il
- * sorgente come l'ha impacchettato il runtime, che può differire per i fine
- * riga e per la riga di shebang. Qui si tolgono solo le differenze che
- * non possono cambiare cosa fa la funzione, così un file davvero diverso
- * viene ancora segnalato.
- */
-export function normalizza(testo) {
-  return testo
-    .replace(/\r\n/g, "\n")
-    .replace(/^#![^\n]*\n/, "")
-    .trimEnd();
-}
-
-/**
- * Il percorso di un file come lo si apre dal repository.
- *
- * L'API di Supabase chiama i suoi file `notifica-richiesta/corpo.ts`, senza
- * la cartella delle funzioni: è la chiave giusta per cercarli, ma è un
- * percorso che nel repository non esiste, e un messaggio che nomina un file
- * che non si trova non serve a niente.
- */
-function percorsoDiRepository(percorso) {
-  return `supabase/functions/${percorso}`;
-}
-
-/**
- * I problemi fra i file di una funzione nel repository e quelli pubblicati.
+ * I problemi fra le funzioni del repository e quelle risultate pubblicate.
  *
  * Vuota quando coincidono: è il caso che il rilascio richiede.
  */
-export function confronta({ nome, locale, pubblicato }) {
-  if (pubblicato === undefined || pubblicato === null) {
-    return [`la funzione ${nome} non risulta pubblicata su questo progetto`];
-  }
+export function confronta(locale, pubblicati) {
   const problemi = [];
-  for (const [percorso, contenuto] of Object.entries(locale)) {
-    const remoto = pubblicato[percorso];
-    if (remoto === undefined) {
-      problemi.push(
-        `il file ${percorsoDiRepository(percorso)} è nel repository ma non su Supabase:`,
-      );
-      problemi.push("  Se la modifica è voluta, pubblica la funzione.");
+  for (const nome of FUNZIONI) {
+    const atteso = locale[nome];
+    const trovato = pubblicati?.[nome];
+    if (!atteso) continue;
+    if (!trovato) {
+      problemi.push(`la funzione ${nome} non risulta mai stata pubblicata da questo repository:`);
+      problemi.push("  Per pubblicarla, con la CLI di Supabase:");
+      problemi.push(`    supabase functions deploy ${nome} --no-verify-jwt`);
+      problemi.push("  e poi registrare l'hash di ciò che è stato pubblicato:");
+      problemi.push("    node scripts/deploya-edge-function.mjs --registra");
       continue;
     }
-    if (normalizza(contenuto) !== normalizza(remoto)) {
-      problemi.push(
-        `il file ${percorsoDiRepository(percorso)} pubblicato non è quello del repository:`,
-      );
-      problemi.push(`  nel repository ${normalizza(contenuto).length} caratteri,`);
-      problemi.push(`  su Supabase     ${normalizza(remoto).length} caratteri.`);
+    if (atteso !== trovato) {
+      problemi.push(`la funzione ${nome} non è allineata con il repository:`);
+      problemi.push(`  nel repository sha256 ${atteso.slice(0, 16)}…`);
+      problemi.push(`  pubblicata     sha256 ${trovato.slice(0, 16)}…`);
       problemi.push("  Se la modifica è voluta, pubblica la funzione; altrimenti qualcuno");
       problemi.push("  l'ha modificata solo su Supabase e il repository non lo dice.");
     }
   }
-  for (const percorso of Object.keys(pubblicato)) {
-    if (!(percorso in locale)) {
-      problemi.push(`il file ${percorso} è su Supabase ma non nel repository:`);
-      problemi.push("  Il codice pubblicato è una copia che nessuno legge più.");
-    }
-  }
   if (problemi.length === 0) return [];
-  return [`la funzione ${nome} non è allineata con il repository:`, ...problemi];
+  return problemi;
 }
 
 /** Il token e il progetto, dai nomi che usa la CLI di Supabase. */
@@ -133,36 +111,39 @@ function impostazioni() {
 }
 
 /**
- * I sorgenti pubblicati, via API di gestione.
+ * Gli hash registrati dall'ultimo deploy, via API di gestione.
  *
- * La risposta è un array di file, ognuno con il nome relativo
- * ("notifica-richiesta/index.ts"): si tiene tutto, perché una funzione è
- * fatta di più file e published solo il primo non funziona.
+ * `read_only` è il default e resta a `true`: questo script non deve poter
+ * scrivere, nemmeno per sbaglio. Scrivere è compito di
+ * `deploya-edge-function.mjs`.
  */
-async function sorgentiPubblicati(token, ref, nome) {
-  const risposta = await fetch(
-    `https://api.supabase.com/v1/projects/${ref}/functions/${nome}/body`,
-    { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } },
-  );
+async function hashRegistrati(token, ref) {
+  const risposta = await fetch(`https://api.supabase.com/v1/projects/${ref}/database/query`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      query: "select nome, codice_sha256 from public.edge_function_deploy",
+      read_only: true,
+    }),
+  });
   if (!risposta.ok) {
     throw new Error(`l'API di Supabase ha risposto ${risposta.status} ${risposta.statusText}`);
   }
-  const dati = await risposta.json();
-  if (!Array.isArray(dati) || dati.length === 0) {
-    throw new Error("la risposta non contiene i sorgenti della funzione");
-  }
-  const file = {};
-  for (const voce of dati) {
-    if (voce?.name && voce?.content) file[voce.name] = voce.content;
-  }
-  return file;
+  const righe = await risposta.json();
+  const mappa = {};
+  for (const r of righe) mappa[r.nome] = r.codice_sha256;
+  return mappa;
 }
 
 // Si esegue solo se il file è il punto d'ingresso, così i test possono
 // importare `confronta` senza far partire una richiesta di rete.
 // `argv[1]` non c'è quando il modulo viene importato con `node -e`, quindi
 // la domanda va posta solo se il percorso c'è.
-const ingresso = process.argv[1] ? pathToFileURL(process.argv[1]).href : null;
+const ingresso = process.argv[1] ? new URL(`file://${process.argv[1]}`).href : null;
 if (ingresso === import.meta.url) {
   const { token, ref, mancanti } = impostazioni();
   if (mancanti?.length) {
@@ -170,34 +151,36 @@ if (ingresso === import.meta.url) {
     // girare. Si dice quale serve e si esce senza rompere la build.
     console.log(
       `Edge Function non confrontate: manca ${mancanti.join(" e ")}. ` +
-        "Su GitHub Actions il secret si chiama SUPABASE_ACCESS_TOKEN e si imposta in " +
-        "Settings > Secrets and variables > Actions; l'ambiente 'prod' non serve, " +
-        "perché il confronto non pubblica niente.",
+        "Su GitHub Actions il secret si chiama SUPABASE_ACCESS_TOKEN e la variabile " +
+        "SUPABASE_PROJECT_REF; l'ambiente 'prod' non serve, perché il confronto non " +
+        "pubblica niente.",
     );
     process.exit(0);
   }
 
-  const problemi = [];
-  for (const nome of FUNZIONI) {
-    try {
-      const esiti = confronta({
-        nome,
-        locale: leggiFunzione(nome),
-        pubblicato: await sorgentiPubblicati(token, ref, nome),
-      });
-      if (esiti.length > 0) problemi.push(...esiti);
-      else console.log(`Edge Function ${nome}: il codice pubblicato è quello del repository`);
-    } catch (causa) {
-      // Una funzione che non si può interrogare non deve far fallire la
-      // build: si segnala e si lascia decidere a chi guarda. Il fallimento
-      // vero, il codice diverso, è già gestito sopra e lì l'uscita è 1.
-      console.log(`Edge Function ${nome} non confrontata: ${causa.message}`);
-    }
+  const locale = {};
+  for (const nome of FUNZIONI) locale[nome] = hashDi(nome);
+
+  let pubblicati;
+  try {
+    pubblicati = await hashRegistrati(token, ref);
+  } catch (causa) {
+    // Una tabella che non esiste non è un codice diverso: è un controllo che
+    // non può girare. Fallire qui renderebbe la build rossa su un repository
+    // in cui `deploy.sql` non è ancora stato applicato, che è una situazione
+    // normale e non un errore da segnalare.
+    console.log(`Edge Function non confrontate: ${causa.message}`);
+    console.log("  Se la tabella manca, applica supabase/deploy.sql.");
+    process.exit(0);
   }
 
+  const problemi = confronta(locale, pubblicati);
   if (problemi.length > 0) {
     console.error(problemi.map((e) => `ERRORE: ${e}`).join("\n"));
     process.exit(1);
+  }
+  for (const nome of FUNZIONI) {
+    console.log(`Edge Function ${nome}: allineata con il repository`);
   }
   process.exit(0);
 }

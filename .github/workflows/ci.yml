@@ -153,3 +153,26 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+
+      # Le Edge Function NON si pubblicano da qui, e va detto perché, perché è
+      # una scelta e non una dimenticanza.
+      #
+      # L'API di gestione accetterebbe la pubblicazione: `POST /functions/deploy`
+      # risponde 200 e sembra riuscita. Ma l'archivio che si può costruire a
+      # mano non è quello che produce la CLI, e la funzione pubblicata così
+      # non parte: risponde `503 BOOT_ERROR`. Provato su `notifica-richiesta`,
+      # il 2 ottobre 2026, e riportato indietro con
+      # `supabase functions deploy`.
+      #
+      # Finché non c'è un modo di produrre l'eszip corretto, la pubblicazione
+      # resta a mano con la CLI. Quello che invece fa la CI è il confronto di
+      # `verifica-edge-function.mjs`, che è la metà che si può automatizzare:
+      # dice se il codice qui è quello che risulta pubblicato.
+      #
+      # Con la CLI, dopo aver modificato una funzione:
+      #   supabase functions deploy <nome> --no-verify-jwt
+      #   node scripts/deploya-edge-function.mjs --registra
+      #
+      # Il secondo passo serve perché il confronto legge l'hash da
+      # `public.edge_function_deploy`, e quel `--registra` lo scrive: senza, il
+      # confronto segnalerebbe che la funzione non è allineata anche se lo è.

@@ -166,9 +166,10 @@ test, dove un guasto lo blocca prima di arrivare in giro.
    *Run*): è idempotente, quindi puoi rieseguirlo. In fondo ci sono le due query di verifica.
 5. Copia il **Project URL** e la chiave **public** (`sb_publishable_…`) nelle variabili
    `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`.
-6. Se vuoi Google Calendar, pubblica anche la Edge Function `google-token` (vedi la sezione
-   sotto): è lei che custodisce il `client_secret`. Senza, l'accesso funziona lo stesso ma gli
-   appuntamenti restano solo nell'app.
+6. Se vuoi Google Calendar, servono l'Edge Function `google-token` e i suoi segreti (vedi la
+   sezione sotto): è lei che custodisce il `client_secret`. Senza, l'accesso funziona lo stesso ma
+   gli appuntamenti restano solo nell'app. La funzione la pubblica la CI al primo merge su
+   `master`.
 
 La sicurezza per account si basa sulle Row Level Security di Supabase: ogni utente vede e scrive
 solo i propri file, perché il percorso nel bucket è `<user-id>/reportini.sqlite`.
@@ -252,7 +253,8 @@ La versione non sta in una discussione: sale da sola.
 
 | Dove | Cosa fa |
 | --- | --- |
-| `scripts/verifica-edge-function.mjs` | confronta il codice delle Edge Function nel repository (file per file) con quello pubblicato su Supabase, e dice quale dei due è da cambiare |
+| `scripts/verifica-edge-function.mjs` | confronta l'hash del codice delle Edge Function nel repository con quello registrato dall'ultimo deploy, e dice quale dei due è da cambiare |
+| `scripts/deploya-edge-function.mjs` | calcola l'hash del codice delle Edge Function e, con `--registra`, lo scrive nel database perché il confronto possa accorgersi di una divergenza |
 | `scripts/versione.mjs` | **un unico script per la versione**: senza argomenti controlla che le copie coincidano e che il tag sia quello giusto; con `patch`, `minor` o `major` alza la versione in `package.json` e in `electron/package.json` e scrive il `CHANGELOG.md`. Un `.rilascio` nella radice vince sul suo argomento e viene cancellato dopo l'uso |
 | `scripts/verifica-node.mjs` | controlla che Node sia abbastanza recente per i test, e spiega cosa fare se non lo è |
 | `.github/workflows/release-electron.yml` | **un unico workflow**: a ogni merge su `master` alza la versione, crea il tag, costruisce i pacchetti (mac, Windows, Linux) e pubblica la release come **latest** |
@@ -535,14 +537,21 @@ se il browser è già chiuso.
 **Per metterlo in piedi** (una volta sola), nell'ordine:
 
 1. Su [resend.com](https://resend.com) verificare il dominio e prendere una chiave API.
-2. Pubblicare la funzione e caricare i segreti:
+2. Caricare i segreti, e poi pubblicare la funzione. I segreti restano a mano perché sono
+   chiavi, non schema: nessuna CI li deve scrivere.
 
 ```bash
 supabase link --project-ref <ref>
-supabase functions deploy notifica-richiesta --no-verify-jwt
 supabase secrets set RESEND_API_KEY=<chiave resend>
 supabase secrets set RESEND_MITTENTE=Reportini <segnalazioni@dominio.verificato>
 supabase secrets set SITO_URL=https://reportini.cazzevongole.com
+```
+
+   Poi la pubblicazione, che è un comando e non un merge:
+
+```bash
+supabase functions deploy notifica-richiesta --no-verify-jwt
+node scripts/deploya-edge-function.mjs --registra
 ```
 
 3. Nella console SQL (*Dashboard → SQL Editor → New query*) eseguire:
@@ -653,16 +662,23 @@ schermata di Google, l'URI c'è; se compare `redirect_uri_mismatch`, manca.
      l'utente: non serve un secondo client OAuth.
 3. In Supabase, *Authentication → Providers → Google*: incolla **lo stesso** Client ID e Client
    Secret del passo 1.
-4. Pubblica la funzione e carica i segreti:
+4. Carica i segreti, e poi pubblica la funzione. I segreti restano a mano perché sono chiavi, non
+   schema.
 
 ```bash
 supabase link --project-ref <ref>
-supabase functions deploy google-token --no-verify-jwt
 supabase secrets set GOOGLE_CLIENT_ID=<client id>
 supabase secrets set GOOGLE_CLIENT_SECRET=<client secret>
 supabase secrets set PROGETTO_URL=<project url>
 supabase secrets set PROGETTO_CHIAVE=<chiave pubblica>
 supabase secrets set ORIGINI_AMMESSE=https://reportini.cazzevongole.com,http://localhost:5173
+```
+
+   Poi la pubblicazione, che è un comando e non un merge:
+
+```bash
+supabase functions deploy google-token --no-verify-jwt
+node scripts/deploya-edge-function.mjs --registra
 ```
 
 In `ORIGINI_AMMESSE` le origini si separano con la **virgola**, e la virgola va
@@ -1159,7 +1175,7 @@ ciò che una pull request dovrebbe evitare.
 
 ### Perché non `supabase db push`
 
-Lo schema è in tre file che si possono rieseguire — `if not exists`, `create or replace` — e non
+Lo schema è in quattro file che si possono rieseguire — `if not exists`, `create or replace` — e non
 in una cartella di migrazioni numerate. Ogni file descrive **lo stato finale**, non un passo, e
 rieseguirlo è innocuo: è questa proprietà che permette allo script di non tenere nessun registro
 di cosa è già stato applicato. Il database stesso è lo stato, e il file dice come arrivarci da
@@ -1168,7 +1184,7 @@ qualunque punto di partenza — anche da un database di tre settimane fa.
 Il rovescio della medaglia è che **non c'è un rollback**. Applicare lo schema non può annullare un
 deploy: se un file dice qualcosa di sbagliato, il danno è già dentro. Per questo i file sono
 scritti per essere innocui da rieseguire, e non per essere annullabili: nessuno contiene un
-`drop table`, e i tre non si cancellano fra loro.
+`drop table`, e i quattro non si cancellano fra loro.
 
 ### Cosa non passa da qui, e perché
 
@@ -1198,10 +1214,69 @@ fermarsi lascerebbe lo schema a metà, che è lo stato peggiore. Al termine esce
 messaggio dice quale file è fallito e perché.
 
 Un `403` vuol dire che il token può leggere ma non scrivere: serve uno scope `database:write`, e
-`verifica-edge-function.mjs` va bene con quello di sola lettura perché non modifica niente. Un
+`verifica-edge-function.mjs` va bene anche con quello di sola lettura perché non modifica niente. Un
 `already exists` vuol dire che un file ha un `create` senza `if not exists`, e da quel momento
 ogni merge successivo fallisce: è il difetto che questa automatizzazione rende visibile, perché
 prima nessuno lo notava.
+
+## Le Edge Function: la CI controlla, la CLI pubblica
+
+Lo **schema** si applica da solo; le **Edge Function no**. La pubblicazione resta un comando, e
+va detto perché, perché la distinzione è il punto:
+
+```bash
+supabase functions deploy <nome> --no-verify-jwt        # pubblica (CLI)
+node scripts/deploya-edge-function.mjs --registra        # registra l'hash
+node scripts/verifica-edge-function.mjs                  # controlla (lo fa anche la CI)
+```
+
+Il tentativo di automatizzare anche la pubblicazione è stato fatto ed è fallito, e il motivo vale
+la pena che resti scritto. L'API di gestione accetterebbe il lavoro: `POST /functions/deploy`
+risponde `200` e sembra riuscita. Ma l'archivio che si può costruire a mano non è quello che
+produce la CLI, e la funzione pubblicata così **non parte**: risponde `503 BOOT_ERROR`. Provato su
+`notifica-richiesta` il 2 ottobre 2026, e riportato indietro con la CLI.
+
+Quello che si può automatizzare, e che è la metà che conta, è il **controllo**: la CI dice se il
+codice nel repository è quello che risulta pubblicato. Per farlo serve sapere *quale* codice è
+online, ed è il punto in cui la soluzione precedente si rivelava fragile.
+
+### Perché un hash e non un confronto del sorgente
+
+La copia pubblicata **non è il file che è stato scritto**. Supabase transpila e riformatta prima
+di pubblicare, e nell'archivio che l'API restituisce i commenti sono ripiegati su una riga e le
+dichiarazioni di tipo di TypeScript sono sparite del tutto. Un confronto del testo direbbe quindi
+che due funzioni sono diverse anche quando sono lo stesso identico file.
+
+L'hash è calcolato sul file di partenza, prima del transpile, e finisce in
+`public.edge_function_deploy` con il `--registra`. Sopravvive, ed è esatto: se qualcuno tocca una
+funzione e non la ripubblica, i due hash non coincidono e `scripts/verifica-edge-function.mjs` lo
+segnala.
+
+I due passi vanno fatti **insieme**, e in quest'ordine. `--registra` da solo scriverebbe un hash che
+non descrive il codice online e il confronto direbbe che è tutto allineato mentre non lo è: è il
+motivo per cui lo script non registra niente senza quel flag.
+
+L'hash tiene conto anche del **nome** dei file oltre che del contenuto, così che uno scambio fra due
+file gemelli non passi inosservato, e **ignora i fine riga**, così che lo stesso codice dia lo stesso
+hash su Windows e su Linux.
+
+### Il limite, che va ricordato
+
+Il confronto dice se il codice del repository coincide con ciò che la CI **dichiara** di aver
+pubblicato, non con ciò che gira davvero in produzione. Se qualcuno pubblica a mano dalla dashboard
+di Supabase, l'hash registrato non cambia e il controllo resta verde mentre il codice online è un
+altro.
+
+È il motivo per cui la pubblicazione è in CI e non a mano: se l'unica via prevista per pubblicare
+passa di qui, allora "l'ultimo deploy è passato da qui" e il confronto coincide con la verità. Il
+limite è reale, ma è un limite che si chiude togliendo una strada, non aggiungendo un controllo.
+
+### Un difetto che questo meccanismo rende impossibile
+
+`verify_jwt` è dichiarato in `scripts/deploya-edge-function.mjs` e coperto da un test. Il default
+della CLI è `true`, e sono entrambe le funzioni pubblicate con `--no-verify-jwt`: le chiama `pg_net`
+dal database, che non ha un token di sessione da mostrare. Un deploy che dimenticasse il parametro
+le renderebbe irraggiungibili con un `401` in cui nessun messaggio nomina la chiave.
 
 ## Pubblicare su GitHub Pages
 

@@ -201,8 +201,8 @@ function testoPiano(richiesta: RichiestaNotifica, sito: string): string {
 function corpoHtml(richiesta: RichiestaNotifica, sito: string): string {
   const titolo = sfuggiHtml((richiesta.titolo ?? "").trim());
   const corpo = sfuggiHtml((richiesta.corpo ?? "").trim());
-  const email = sfuggiHtml((richiesta.email ?? "indirizzo non noto"));
-  const quando = sfuggiHtml((richiesta.creata ?? "momento non noto"));
+  const email = sfuggiHtml(richiesta.email ?? "indirizzo non noto");
+  const quando = sfuggiHtml(richiesta.creata ?? "momento non noto");
   return `<!doctype html>
 <html lang="it">
 <body style="margin:0;padding:24px;background:#f7f6f2;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#1c1b18">
@@ -342,8 +342,6 @@ export function costruisciMessaggio(
     // Se l'indirizzo dell'utente non c'è (sessione Google senza email), la
     // mail parte senza `Reply-To` invece di dichiarare come destinatario di
     // risposta un indirizzo vuoto, che Resend rifiuta.
-    ...(rispondiA && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rispondiA)
-      ? { rispondiA }
-      : {}),
+    ...(rispondiA && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rispondiA) ? { rispondiA } : {}),
   };
 }

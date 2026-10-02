@@ -55,7 +55,12 @@
 // funzione risponde 502 con `domain is not verified`, il problema è lì e non
 // qui: si verifica il dominio su Resend e si ricarica `RESEND_MITTENTE`.
 
-import { costruisciMessaggio, segretiMancanti, type RichiestaNotifica, type Segreti } from "./corpo.ts";
+import {
+  costruisciMessaggio,
+  segretiMancanti,
+  type RichiestaNotifica,
+  type Segreti,
+} from "./corpo.ts";
 
 const ORIGINE_RESEND = "https://api.resend.com/emails";
 
