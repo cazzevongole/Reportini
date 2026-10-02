@@ -4,6 +4,10 @@ dist-ssr
 electron/node_modules
 electron/renderer
 electron/release
+# Il grafo di graphify: un file HTML da oltre megabyte e un manifest che
+# cambia a ogni build, rigenerabili con `graphify .`. Non entra nel
+# repository perché nessuno lo legge a mano e occuperebbe la storia.
+graphify-out/
 # Il progetto usa bun (bun.lock): un package-lock.json qui è un artefatto di
 # qualche comando npm, non il lockfile del progetto.
 package-lock.json
