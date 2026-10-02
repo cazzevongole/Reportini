@@ -1231,10 +1231,34 @@ node scripts/verifica-edge-function.mjs                  # controlla (lo fa anch
 ```
 
 Il tentativo di automatizzare anche la pubblicazione è stato fatto ed è fallito, e il motivo vale
-la pena che resti scritto. L'API di gestione accetterebbe il lavoro: `POST /functions/deploy`
-risponde `200` e sembra riuscita. Ma l'archivio che si può costruire a mano non è quello che
-produce la CLI, e la funzione pubblicata così **non parte**: risponde `503 BOOT_ERROR`. Provato su
-`notifica-richiesta` il 2 ottobre 2026, e riportato indietro con la CLI.
+la pena che resti scritto. L'API di gestione accetterebbe il lavoro e risponderebbe `200`, ma la
+funzione resterebbe spenta: `503 BOOT_ERROR`.
+
+La parte che costò più di tutte le altre fu accertare **che l'archivio non è il problema**. L'eszip
+fu replicato a mano e risultò identico, byte per byte, a quello scaricato con
+`GET /functions/<nome>/body` dopo un deploy della CLI che funzionava; e il runtime espone il
+comando `bundle`, che lo produce identico lui stesso:
+
+```bash
+docker run --rm -v "$PWD:/w" -w /w/functions \
+  --entrypoint edge-runtime public.ecr.aws/supabase/edge-runtime:v1.77.1 \
+  bundle --entrypoint notifica-richiesta/index.ts --output /w/mio.eszip
+```
+
+Il `-w /w/functions` non è decorativo: il nome del servizio finisce nei metadati dell'archivio, e
+lanciando il comando dalla radice del repository si ottiene un eszip diverso.
+
+Il difetto era un altro, ed è dell'API: `PATCH` con `application/vnd.denoland.eszip` **cancella i
+primi quattro byte del corpo**. Si vede rileggendo indietro ciò che è stato salvato — il file
+restituito da `GET /functions/<nome>/body` è 4 byte più corto e comincia con `P2.3` invece che con
+`ESZIP2.3`. Anticipando quei 4 byte l'eszip si salva intero, ma la funzione **resta** in
+`BOOT_ERROR` pur avendo gli stessi byte e gli stessi metadati di una funzione che prima andava:
+quindi `PATCH` la lascia in uno stato che il runtime non riesce ad avviare.
+
+Funziona invece `PATCH` in JSON con il campo `body`, che vuole il **sorgente** di un file solo: la
+funzione si avvia. Il limite è il file solo, e `notifica-richiesta` sono due, quindi serve un
+bundling — che è quello che fa la CLI. Tutto verificato su `notifica-richiesta` il 3 ottobre 2026,
+e riportato indietro con la CLI.
 
 Quello che si può automatizzare, e che è la metà che conta, è il **controllo**: la CI dice se il
 codice nel repository è quello che risulta pubblicato. Per farlo serve sapere *quale* codice è

@@ -226,8 +226,17 @@ describe("Il guscio della verifica, con la release al posto di GitHub", () => {
   it("senza tag lo script esce con 1, invece di dare un voto a caso", () => {
     // Qui si esegue davvero il processo, perché è l'unica cosa che non si
     // può provare dalla funzione: `main` legge gli argomenti.
+    //
+    // `stdio` tutto in pipe: senza, l'errore che lo script scrive -- e che è
+    // un'annotazione GitHub Actions, perché lo script è pensato per la CI --
+    // finisce nello stderr del test runner e la CI lo raccoglie come se fosse
+    // un difetto del repository. È successo: l'annotazione "Va indicato il tag
+    // della release da verificare" è comparsa sulla run che ha passato tutto.
     try {
-      execFileSync("node", ["scripts/verifica-release.mjs"], { encoding: "utf8" });
+      execFileSync("node", ["scripts/verifica-release.mjs"], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      });
       expect.unreachable("senza tag lo script doveva fallire");
     } catch (errore) {
       expect((errore as { status?: number }).status).toBe(1);

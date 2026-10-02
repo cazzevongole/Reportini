@@ -29,12 +29,14 @@
 // Non è un rollback. Pubblicare non può annullare una pubblicazione: se un
 // file dice qualcosa di sbagliato, il guasto è già in produzione.
 //
-// La pubblicazione, per ora, la fa la CLI e non questo script:
-// `POST /functions/deploy` risponde 200 anche quando l'archivio non è quello
-// giusto, e la funzione pubblicata così non parte (`503 BOOT_ERROR`). Provato
-// su `notifica-richiesta` il 2 ottobre 2026. Quindi questo script registra
-// l'hash di ciò che è stato pubblicato, e non pubblica: se lo facesse, la CI
-// spegnerebbe le notifiche a ogni push.
+// La pubblicazione, per ora, la fa la CLI e non questo script. Non perché
+// l'archivio sia difficile da produrre — l'eszip è stato replicato byte per
+// byte, e `edge-runtime bundle` lo fa senza sforzo — ma perché l'API mette
+// `PATCH` in uno stato da cui la funzione non riparte: risponde 200 e lascia
+// `503 BOOT_ERROR`. Provato su `notifica-richiesta` il 3 ottobre 2026, nei due
+// sensi: con l'eszip costruito a mano e con quello prodotto dal runtime. Quindi
+// questo script registra l'hash di ciò che è stato pubblicato, e non pubblica:
+// se lo facesse, la CI spegnerebbe le notifiche a ogni push.
 //
 //   supabase functions deploy <nome> --no-verify-jwt
 //   node scripts/deploya-edge-function.mjs --registra
@@ -181,15 +183,46 @@ export async function registraHash(token, ref, nome, hash) {
  * che accetta il runtime. Resta qui perché il tentativo merita la documentazione
  * più che la rimozione: è la strada che sembrava giusta e che non lo era.
  *
- * I due modi provati, e perché nessuno dei due serve:
+ * I modi provati, e perché nessuno serve. La conclusione è arrivata il 3
+ * ottobre 2026, ed è che **l'eszip non è il problema**: l'archivio è esattamente
+ * quello che la CLI produce.
  *
  *   - `POST /functions/deploy` con multipart: risponde 201 e **crea** una
  *     funzione nuova con slug UUID, senza toccare quella esistente. Prove:
  *     sono nate due funzioni spurie, poi cancellate.
  *   - `PATCH /functions/<nome>` con `application/vnd.denoland.eszip`:
- *     aggiorna davvero la funzione esistente, ma un eszip costruito a mano
- *     non si avvia (`503 BOOT_ERROR`) perché non contiene i pezzi che il
- *     runtime usa all'avvio.
+ *     aggiorna la funzione esistente e risponde 200, ma questa la **spegne**:
+ *     `503 BOOT_ERROR`. Non è colpa dell'archivio. L'eszip inviato è stato
+ *     confrontato byte per byte con quello scaricato da `GET /functions/<nome>/body`
+ *     dopo un deploy della CLI che funzionava: identico, 53253 byte, magic
+ *     `ESZIP2.3` incluso. E identico anche a quello che produce il runtime
+ *     stesso con `edge-runtime bundle` (vedi sotto).
+ *
+ * Per costruire l'eszip a mano era servito il formato, ed è stato trovato: il
+ * runtime espone il comando `bundle`, che produce un eszip **byte per byte
+ * identico** a quello della CLI. Il trucco, per farlo bene, è la directory di
+ * lavoro: il nome del servizio finisce nei metadati, quindi il `bundle` va
+ * lanciato da dentro `supabase/functions` e non dalla radice del repository.
+ *
+ *   docker run --rm -v "$PWD:/w" -w /w/functions \
+ *     --entrypoint edge-runtime public.ecr.aws/supabase/edge-runtime:v1.77.1 \
+ *     bundle --entrypoint notifica-richiesta/index.ts --output /w/mio.eszip
+ *
+ * Con l'eszip giusto la funzione resta però in `BOOT_ERROR`, e il motivo è
+ * un difetto dell'API, non dell'archivio: **`PATCH` con eszip cancella i primi
+ * quattro byte del corpo**. Si vede rileggendo indietro ciò che è stato
+ * salvato — `GET /functions/<nome>/body` restituisce un file 4 byte più corto,
+ * che inizia con `P2.3` invece che con `ESZIP2.3`. Anticipando quei 4 byte si
+ * ottiene un eszip che si salva intero, ma la funzione **resta** in
+ * `BOOT_ERROR` con lo stesso corpo e gli stessi metadati di una funzione che
+ * prima funzionava: quindi `PATCH` lascia la funzione in uno stato che il
+ * runtime non riesce ad avviare, indipendentemente dai byte inviati.
+ *
+ * Quello che invece funziona, e che è l'unica strada trovata, è `PATCH` in
+ * JSON con il campo `body`: va il **sorgente** di un file solo, e la funzione
+ * si avvia. Il limite è proprio il file solo: `notifica-richiesta` è
+ * `index.ts` più `corpo.ts`, e `index.ts` da solo non parte perché non trova
+ * l'import. Serve allora un bundling, che è quello che fa la CLI.
  *
  * Il corpo è multipart con un campo `file` per ogni sorgente e un `metadata`
  * JSON che dice il punto d'ingresso e se va verificato il JWT.
