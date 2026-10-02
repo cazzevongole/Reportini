@@ -159,9 +159,11 @@ test, dove un guasto lo blocca prima di arrivare in giro.
 3. In **Authentication → URL Configuration** aggiungi in *Redirect URLs* `http://localhost:5173`,
    `http://127.0.0.1:42720` (il pacchetto desktop) e l'URL della web, cioè
    `https://reportini.cazzevongole.com`.
-4. Crea il bucket e le relative politiche RLS: apri `supabase/setup.sql`, copialo tutto ed
-   eseguilo nel **SQL Editor** del progetto Supabase (sidebar → *SQL Editor* → *New query* → *Run*).
-   È idempotente, quindi puoi rieseguirlo. In fondo ci sono le due query di verifica.
+4. Crea il bucket e le relative politiche RLS. **Non devi incollare niente**: da quando lo
+   schema si applica da solo (vedi *Lo schema si applica da solo*), il bucket e le RLS vengono
+   creati al prossimo merge su `master`. Se vuoi farlo adesso senza aspettare, apri
+   `supabase/setup.sql` ed eseguilo nel **SQL Editor** (sidebar → *SQL Editor* → *New query* →
+   *Run*): è idempotente, quindi puoi rieseguirlo. In fondo ci sono le due query di verifica.
 5. Copia il **Project URL** e la chiave **public** (`sb_publishable_…`) nelle variabili
    `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`.
 6. Se vuoi Google Calendar, pubblica anche la Edge Function `google-token` (vedi la sezione
@@ -442,12 +444,36 @@ Nelle impostazioni c'è una sezione **Chiedilo allo sviluppatore**: si scrive co
 (fix) o cosa dovrebbe poter fare il programma (funzionalità), e sotto si vanno le proprie
 richieste con lo stato — *da leggere*, *in corso*, *risolta* — e la risposta quando arriva.
 
+Le richieste sono divise in **In corso** e **Risolte**: le prime sono quelle su cui qualcuno sta
+lavorando (aperte o prese in carico), le seconde quelle chiuse. Sono le due domande che l'utente
+si fa guardando la pagina, ed è la stessa distinzione che lo sviluppatore vede nei suoi gruppi.
+
 Ogni richiesta nuova **fa anche arrivare una mail** a chi sviluppa: è un avviso, non un archivio,
 e la sezione nascosta resta il posto in cui si legge e si risponde. Come è montata è descritto
 più giù, in *Quando un utente scrive, arriva una mail*.
 
+E quando una richiesta **passa a risolta, l'utente riceve una mail con la risposta**. È la
+seconda metà di quella stessa notifica: stessa Edge Function, stesso segreto nel Vault, stesso
+trigger generato da `supabase/notifica-richieste.sql`, che ora ne installa due — uno per
+l'inserimento e uno per il passaggio a risolta. Il secondo ha una condizione che conta più delle
+altre: parte **solo** quando lo stato passa a `risolta` e prima non lo era, altrimenti salvare la
+risposta senza cambiare stato — cioè correggere un refuso — manderebbe all'utente una mail di
+chiusura ogni volta.
+
 Alla URL `/panel/sviluppo` c'è la **sezione nascosta dello sviluppatore**: non è nella barra
 e non la vede nessun altro. Chi non è lo sviluppatore viene rimandato al pannello.
+
+**Come si usa.** Su ogni richiesta c'è **un'azione sola**, che cambia a seconda dello stato e dice
+cosa succede: *Prendo in carico* su una aperta, *Segna risolta* su una già presa. Prima erano
+quattro pulsanti e due scrivevano lo stesso campo, quindi l'ordine in cui venivano premuti decideva
+se la risposta appena scritta veniva salvata o persa: qui l'azione porta con sé la risposta, e
+*Salva la risposta* esiste solo per volerne salvare una senza cambiare stato.
+
+**Le richieste passate si cancellano** con *Cancella*, che chiede conferma. La cancellazione è
+**logica**: la riga resta nel database con la sua risposta e sparisce dagli elenchi, quindi è
+recuperabile (`cancellata_il` diventa `null`). Non è una `delete` e non serve una policy `delete`:
+passa dalla stessa `richieste_modifica` che richiede di essere sviluppatore. La pagina dichiara
+quante richieste sono nascoste invece di farle sparire in silenzio.
 
 Per arrivarci c'è un puntamento in fondo alla pagina **Impostazioni** — la scheda scura "Su
 questa versione" — che **compare solo se il database ti riconosce come sviluppatore**
@@ -471,16 +497,13 @@ pubblicata su GitHub Pages: chiunque leggendo il JavaScript poteva aggiungersi. 
 la lista non esiste lato browser — nessun client può ampliarla, e la funzione che la consulta
 gira con i permessi del database.
 
-Per attivarla, una volta sola, nella console SQL di Supabase
-(*Dashboard → SQL Editor → New query*):
+Anche `supabase/richieste.sql` **non va eseguito a mano**: si applica da solo al prossimo merge
+su `master`, come `setup.sql`.
 
-```bash
-# incolla e esegui il file
-supabase/richieste.sql
-```
-
-Poi la riga unica da scrivere a mano, dentro lo stesso script, è in fondo al file:
-`insert into public.sviluppatori (email) values ('<la tua email>')`.
+Quello che resta a mano è **una riga sola**, in fondo al file, ed è voluta:
+`insert into public.sviluppatori (email) values ('<la tua email>')`. Decide chi legge le richieste
+di tutti gli utenti, e per questo non la esegue nessuna macchina: se lo facesse, chi apre una pull
+request deciderebbe chi vede i dati degli altri, e il merge passerebbe inosservato.
 
 Se lo script non è stato eseguito l'app **non si rompe e lo dice**: al posto del modulo compare
 un avviso che nomina il file da eseguire, e la sezione nascosta spiega lo stesso invece di
@@ -1108,6 +1131,77 @@ con un *Nascondi* perché un errore vecchio non resti mentre l'utente riprova, e
 lascia una riga per ogni passo in `renderer.log`. Il `code` non ci finisce mai: è una credenziale.
 
 ---
+
+## Lo schema si applica da solo
+
+**Modificare una tabella non richiede di aprire la console SQL.** Si cambia il file
+`supabase/*.sql` e la cosa finisce lì: al prossimo merge su `master` la CI esegue quei file sul
+progetto, nell'ordine in cui dipendono l'uno dall'altro.
+
+```bash
+node scripts/migra-schema.mjs --check     # solo controlla il testo, non scrive
+node scripts/migra-schema.mjs --dry-run   # dice che cosa applicherebbe
+node scripts/migra-schema.mjs             # applica davvero
+```
+
+`scripts/migra-schema.mjs` è il pezzo che lo fa, e in CI è in due posti con due scopi:
+
+| Quando | Cosa | Perché lì |
+| --- | --- | --- |
+| su **qualsiasi** push e pull request | `--check` | controlla il testo, non scrive niente |
+| su push a **`master`** | applica | è il posto in cui lo schema cambia davvero |
+
+La divisione è la parte che conta. Su una pull request la macchina **non deve poter scrivere sul
+database**, per quanto sia fidato il branch: su `master` il token c'è, e quel qualcuno non è
+necessariamente chi ha aperto la pull request. Applicare lì avrebbe significato che una
+pull request potesse cambiare il database di produzione passando per un merge, che è esattamente
+ciò che una pull request dovrebbe evitare.
+
+### Perché non `supabase db push`
+
+Lo schema è in tre file che si possono rieseguire — `if not exists`, `create or replace` — e non
+in una cartella di migrazioni numerate. Ogni file descrive **lo stato finale**, non un passo, e
+rieseguirlo è innocuo: è questa proprietà che permette allo script di non tenere nessun registro
+di cosa è già stato applicato. Il database stesso è lo stato, e il file dice come arrivarci da
+qualunque punto di partenza — anche da un database di tre settimane fa.
+
+Il rovescio della medaglia è che **non c'è un rollback**. Applicare lo schema non può annullare un
+deploy: se un file dice qualcosa di sbagliato, il danno è già dentro. Per questo i file sono
+scritti per essere innocui da rieseguire, e non per essere annullabili: nessuno contiene un
+`drop table`, e i tre non si cancellano fra loro.
+
+### Cosa non passa da qui, e perché
+
+Tre cose restano a mano, tutte per la stessa ragione: sono **permessi**, non schema.
+
+1. **I due segreti nel Vault** (`notifica_richieste_url`, `notifica_richieste_chiave`). Le righe
+   che li creano sono dentro commenti, e `problemiNelSql` **fallisce** se qualcuno le decomenta.
+   Applicare una chiave dalla CI significherebbe metterla in un secret di GitHub, che è
+   proprio il posto da cui il progetto ha deciso di tenerla fuori. Si creano una volta sola, a
+   mano, e da quel momento lo script non li tocca più.
+
+2. **La riga che ti registra come sviluppatore** (`insert into public.sviluppatori`). È la lista
+   di chi può leggere le richieste di tutti gli utenti. Se la eseguisse una macchina, chi apre
+   una pull request deciderebbe chi vede i dati degli altri, e il merge passerebbe inosservato.
+   `promozioniNelSql` blocca `insert`, `update` e `delete` su quella tabella.
+
+3. **Leggere il Vault è invece ammesso**, ed è una distinzione deliberata: il trigger ne ha
+   bisogno per funzionare, perché la chiave sta in un posto solo e la funzione non ne ha una
+   copia. Bloccare anche la lettura romperebbe le notifiche, e per evitare un guasto che la
+   lettura non può causare.
+
+### Se un file non si applica
+
+Lo script **non si ferma al primo errore** e va avanti con gli altri. `notifica-richieste.sql`
+mette un trigger su `public.richieste`, quindi fallirebbe se le tabelle non ci fossero ancora —
+fermarsi lascerebbe lo schema a metà, che è lo stato peggiore. Al termine esce con codice 1 e il
+messaggio dice quale file è fallito e perché.
+
+Un `403` vuol dire che il token può leggere ma non scrivere: serve uno scope `database:write`, e
+`verifica-edge-function.mjs` va bene con quello di sola lettura perché non modifica niente. Un
+`already exists` vuol dire che un file ha un `create` senza `if not exists`, e da quel momento
+ogni merge successivo fallisce: è il difetto che questa automatizzazione rende visibile, perché
+prima nessuno lo notava.
 
 ## Pubblicare su GitHub Pages
 

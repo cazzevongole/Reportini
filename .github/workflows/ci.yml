@@ -104,6 +104,17 @@ jobs:
           fi
           echo "Nessun segreto nel bundle"
 
+      # Su una pull request lo schema viene solo CONTROLLATO, mai applicato.
+      # Il controllo è la parte che può girare ovunque: se qualcuno mette una
+      # riga che scrive un segreto, o lascia un segnaposto attivo, la pull
+      # request è rossa prima di arrivare a master. Applicarlo qui sarebbe
+      # dare a chi apre la pull request il permesso di scrivere sul database,
+      # e su un fork non c'è nemmeno il token per farlo — ma su master
+      # qualcuno lo ha, e quel qualcuno non è necessariamente chi ha aperto
+      # la pull request.
+      - name: Lo schema di Supabase è applicabile
+        run: node scripts/migra-schema.mjs --check
+
       # La Edge Function pubblicata è una seconda copia del codice che sta
       # in supabase/, e nessuna delle due avvisa l'altra quando divergono.
       # È successo: dopo il passaggio a reportini.cazzevongole.com il
@@ -115,6 +126,30 @@ jobs:
       # controllo che non gira è uno che nessuno imparerebbe a leggere.
       - name: La Edge Function pubblicata è quella del repository
         run: node scripts/verifica-edge-function.mjs
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+
+      # Applica lo schema, e solo qui. Le condizioni sono tre, e ognuna
+      # chiude una porta diversa:
+      #
+      #   1. `push`: su una pull request questa macchina non deve poter
+      #      scrivere sul database, per quanto sia trusted il branch.
+      #   2. `master`: il ramo in cui si rilascia. Gli altri rami non
+      #      scrivono, nemmeno in un merge di un fork.
+      #   3. il tipo di evento è proprio `push`: GitHub attiva `push` anche
+      #      per i tag, e un tag non è un merge.
+      #
+      # La copertura di `master` più `push` è voluta: il repository sviluppa
+      # su master, e il fatto che esista anche `main` nel deploy della web non
+      # significa che le migrazioni debbano poter partire da lì.
+      #
+      # Senza SUPABASE_ACCESS_TOKEN lo script esce dicendo che non può
+      # applicare, senza fallire: su un fork il secret non c'è, e un controllo
+      # che non gira è uno che nessuno imparerebbe a leggere.
+      - name: Applica lo schema a Supabase
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        run: node scripts/migra-schema.mjs
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
