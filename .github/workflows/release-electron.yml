@@ -66,6 +66,9 @@ on:
       - ".prettierignore"
       - ".github/workflows/ci.yml"
       - ".github/workflows/deploy-pages.yml"
+      # Il workflow del pacchetto di prova: non finisce nel pacchetto, e un
+      # commit che cambia solo lui non deve alzare la versione dell'app.
+      - ".github/workflows/desktop-dev.yml"
       # Anche questo workflow è "non finisce nel pacchetto", e per la stessa
       # ragione: cambiarlo non cambia l'app che l'utente scarica. Senza questa
       # riga, il commit che introduce il filtro rilascierebbe una versione
@@ -259,6 +262,18 @@ jobs:
         env:
           GITHUB_REF_TYPE: tag
           GITHUB_REF_NAME: ${{ needs.versione.outputs.versione }}
+
+      - name: L'identità del pacchetto è quella ufficiale
+        # I pacchetti dev si costruiscono con `scripts/identita-desktop.mjs
+        # dev`, che riscrive electron/package.json: in CI quel file vive solo
+        # nel runner, ma in locale resta sul disco e un `git add` distratto lo
+        # porterebbe qui. Il risultato sarebbe un "Reportini Dev" pubblicato
+        # come ultima versione, con l'aggiornamento automatico che lo installa
+        # a tutti — un pacchetto di prova travestito da ufficiale.
+        #
+        # Il controllo è una riga e vale un rilascio intero: si fa prima di
+        # costruire, perché dopo sarebbe tardi per non pubblicarlo.
+        run: node scripts/identita-desktop.mjs controlla
 
       - name: Dipendenze
         run: bun install --frozen-lockfile

@@ -1,6 +1,9 @@
 const { app, BrowserWindow, ipcMain, shell, dialog } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs/promises");
+// Solo per una domanda di esistenza (`app-update.yml`): `fs/promises` non ha
+// una versione sincrona, e `caricaAggiornatore` viene chiamata all'avvio.
+const { existsSync } = require("node:fs");
 const { avviaServer, riportaAllaApp } = require("./server-locale.cjs");
 
 const DB_FILE = () => path.join(app.getPath("userData"), "reportini.sqlite");
@@ -253,6 +256,17 @@ ipcMain.handle("db:reveal", async () => {
 // inutile a ogni avvio non serve a nessuno.
 function caricaAggiornatore() {
   if (!app.isPackaged) return null;
+  // Il menù dell'aggiornamento lo scrive electron-builder dalla sezione
+  // `publish` del pacchetto: un pacchetto costruito senza provider — la
+  // variante dev, per esempio, che serve proprio a provare senza pubblicare —
+  // quel file non ce l'ha. Senza, electron-updater non sa dove guardare e
+  // fallisce a ogni avvio, con un errore che all'utente non dice niente di
+  // utile; e l'unica cosa che si potrebbe fare con quel canale è installare
+  // sopra la versione ufficiale. Quindi non si accende affatto.
+  if (!existsSync(path.join(process.resourcesPath, "app-update.yml"))) {
+    console.warn("Aggiornamento automatico non configurato: questo pacchetto non ne ha il menù.");
+    return null;
+  }
   try {
     return require("electron-updater").autoUpdater;
   } catch (errore) {

@@ -182,3 +182,37 @@ jobs:
       # Il secondo passo serve perché il confronto legge l'hash da
       # `public.edge_function_deploy`, e quel `--registra` lo scrive: senza, il
       # confronto segnalerebbe che la funzione non è allineata anche se lo è.
+
+  # Il confronto qui sopra guarda il **codice** della funzione pubblicata;
+  # questo guarda se **risponde**: è raggiungibile, riconosce l'origine del
+  # sito, e sa ancora parlare con Google. Sono due guasti diversi, e il secondo
+  # non si vede dal repository: una funzione identica a questa può avere i
+  # segreti vuoti, un elenco di origini sbagliato, o un progetto che non
+  # risponde più.
+  #
+  # Non usa segreti — solo l'indirizzo pubblico del progetto, che sta
+  # nell'ambiente "prod" insieme alle variabili della build. Se quell'indirizzo
+  # non è configurato (un fork, un repository senza l'ambiente) lo script esce
+  # dicendo che non può provare, e **non** fallisce: è la stessa scelta del
+  # confronto dei sorgenti quando manca il token.
+  backend:
+    needs: verify
+    runs-on: ubuntu-24.04
+    # Le variabili dell'ambiente non arrivano da sole al job: va dichiarato,
+    # come fa quello che compila la web.
+    environment: prod
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          # Lo script non usa altro che `fetch` e i moduli di Node, quindi
+          # qualunque Node recente andrebbe bene: la versione si fissa lo
+          # stesso, perché la prova deve giudicare il backend e non il Node
+          # che capita nel runner.
+          node-version: 24
+
+      - name: Il backend pubblicato risponde come deve
+        run: node scripts/prova-backend.mjs
+        env:
+          SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
