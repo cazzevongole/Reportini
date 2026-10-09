@@ -79,6 +79,13 @@ export default function Impostazioni() {
     setProfilo(readProfile());
   }, []);
 
+  // Un errore ricordato è un tentativo fallito: finché c'è, la scheda non può
+  // dire "Collegato" — e non può nascondere, insieme, il modo di rimettere a
+  // posto il collegamento. Era lo stato da cui è nata la segnalazione:
+  // "Collegato come …" sopra e, due righe sotto, "il collegamento non è più
+  // valido", senza nessun pulsante per ricollegarlo.
+  const daRicollegare = !collegato || Boolean(erroreCollegamento);
+
   async function esportaCopia() {
     await esegui(
       async () => {
@@ -145,6 +152,11 @@ export default function Impostazioni() {
       successo: (r) => r.messaggio,
       errore: "Sincronizzazione delle attività non riuscita",
     });
+    // Un tentativo fallito può aver scoperto che il collegamento non vale più
+    // (consenso revocato, token morto): senza rileggere, la scheda resterebbe
+    // "Collegato" fino alla prossima visita della pagina.
+    setCollegato(isConnected());
+    setErroreCollegamento(readErroreCollegamento());
     setOccupato(false);
   }
 
@@ -248,49 +260,24 @@ export default function Impostazioni() {
             Google Calendar
           </h2>
           <p className="mt-1.5 text-sm text-ink-500">
-            {collegato
-              ? `Collegato come ${profilo?.email ?? accountEmail ?? "questo account"}. ${sincronizzati} attività su ${attivita.length} sono già pubblicati.`
-              : googleConfigured
+            {daRicollegare
+              ? googleConfigured
                 ? "Il calendario fa parte dell'accesso con Google: si concede insieme. Se manca, è perché il consenso è stato revocato o annullato."
-                : "Serve il collegamento con Supabase e il client Google: senza, l'accesso funziona ma le attività restano solo nell'app."}
+                : "Serve il collegamento con Supabase e il client Google: senza, l'accesso funziona ma le attività restano solo nell'app."
+              : `Collegato come ${profilo?.email ?? accountEmail ?? "questo account"}. ${sincronizzati} attività su ${attivita.length} sono già pubblicati.`}
           </p>
-          {collegato ? (
+          {daRicollegare ? null : (
             <p className="mt-1.5 text-sm text-ink-400">
               Il collegamento si rinnova da solo: non devi ricollegarti ogni ora.
             </p>
-          ) : null}
+          )}
           {erroreCollegamento ? (
             <p className="mt-3 rounded-xl border border-clay-200 bg-clay-50 px-3.5 py-2.5 text-sm text-clay-800">
               {erroreCollegamento}
             </p>
           ) : null}
           <div className="mt-4 flex flex-wrap gap-2">
-            {collegato ? (
-              <>
-                <Button onClick={sincronizzaTutto} disabled={occupato}>
-                  {occupato ? "Sincronizzazione…" : "Sincronizza in attesa"}
-                </Button>
-                <Button
-                  variant="secondary"
-                  onClick={async () => {
-                    // disconnect() revoca il consenso via API: se la revoca
-                    // fallisce l'utente deve saperlo, perché l'app resta
-                    // autorizzata su myaccount.google.com/permissions.
-                    await esegui(() => disconnect(), {
-                      successo: (r) =>
-                        r.revocato
-                          ? "Account Google scollegato."
-                          : "Token rimosso, ma la revoca su Google non è riuscita: l'app resta autorizzata su myaccount.google.com/permissions.",
-                    });
-                    setCollegato(false);
-                    setProfilo(null);
-                    setErroreCollegamento(null);
-                  }}
-                >
-                  Scollega
-                </Button>
-              </>
-            ) : (
+            {daRicollegare ? (
               // Il calendario fa parte dell'accesso: questo pulsante non è
               // "attivare una funzione in più", è rimettere in pari un
               // collegamento che manca (consenso revocato, backend non
@@ -298,7 +285,32 @@ export default function Impostazioni() {
               <Button onClick={ricollegaCalendar} disabled={occupato || !googleConfigured}>
                 {occupato ? "Ricollegamento…" : "Ricollega il calendario"}
               </Button>
+            ) : (
+              <Button onClick={sincronizzaTutto} disabled={occupato}>
+                {occupato ? "Sincronizzazione…" : "Sincronizza in attesa"}
+              </Button>
             )}
+            {collegato ? (
+              <Button
+                variant="secondary"
+                onClick={async () => {
+                  // disconnect() revoca il consenso via API: se la revoca
+                  // fallisce l'utente deve saperlo, perché l'app resta
+                  // autorizzata su myaccount.google.com/permissions.
+                  await esegui(() => disconnect(), {
+                    successo: (r) =>
+                      r.revocato
+                        ? "Account Google scollegato."
+                        : "Token rimosso, ma la revoca su Google non è riuscita: l'app resta autorizzata su myaccount.google.com/permissions.",
+                  });
+                  setCollegato(false);
+                  setProfilo(null);
+                  setErroreCollegamento(null);
+                }}
+              >
+                Scollega
+              </Button>
+            ) : null}
             <Button
               variant="secondary"
               onClick={() => {

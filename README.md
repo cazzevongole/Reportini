@@ -258,6 +258,8 @@ La versione non sta in una discussione: sale da sola.
 | `scripts/versione.mjs` | **un unico script per la versione**: senza argomenti controlla che le copie coincidano e che il tag sia quello giusto; con `patch`, `minor` o `major` alza la versione in `package.json` e in `electron/package.json` e scrive il `CHANGELOG.md`. Un `.rilascio` nella radice vince sul suo argomento e viene cancellato dopo l'uso |
 | `scripts/verifica-node.mjs` | controlla che Node sia abbastanza recente per i test, e spiega cosa fare se non lo è |
 | `.github/workflows/release-electron.yml` | **un unico workflow**: a ogni merge su `master` alza la versione, crea il tag, costruisce i pacchetti (mac, Windows, Linux) e pubblica la release come **latest** |
+| `scripts/identita-desktop.mjs` | l'identità del pacchetto desktop: con `dev` lo rende un pacchetto di prova (nome, cartelle e canale di aggiornamento suoi), con `controlla` verifica che sia ancora quello ufficiale — il rilascio lo esegue prima di impacchettare |
+| `.github/workflows/desktop-dev.yml` | il pacchetto desktop **di prova**: solo a mano, senza permessi di scrittura, come artefatto dell'esecuzione e mai come release |
 
 Versionare e rilasciare stanno **nello stesso workflow**, ed è voluto. Erano due, e la corsa fra
 loro era la ragione per cui la release era sempre un numero indietro:
@@ -329,6 +331,48 @@ radice del filesystem, dove non c'è nulla — il pacchetto si aprirebbe bianco.
 non saprebbe che fare. E `scripts/copia-renderer.mjs`
 sostituisce `rm -rf && cp -R` perché su Windows la shell di GitHub Actions è PowerShell: senza,
 i pacchetti si costruirebbero solo su Linux e macOS.
+
+### Il pacchetto desktop di prova, senza pubblicarlo
+
+Provare una correzione dell'accesso sulla macchina vera non deve costare un rilascio: la release
+ufficiale alza la versione, crea un tag e si mette come **latest**, e da lì tutte le app installate si
+aggiornano da sole. Per questo c'è `.github/workflows/desktop-dev.yml`, che parte **solo a mano**
+(*Actions → Pacchetto desktop per le prove → Run workflow*, da qualsiasi ramo) e lascia un
+**artefatto** dell'esecuzione: privato, e scade dopo sette giorni.
+
+Tre cose tengono una prova al riparo dal rilascio ufficiale:
+
+1. parte solo a mano, quindi quello che si prova in un ramo non può uscire da solo;
+2. dichiara `permissions: contents: read`: il suo token non può creare release né spingere commit o
+   tag, nemmeno se qualcuno aggiungesse un passo che ci prova;
+3. non alza versioni, non crea tag, non committa niente: la versione del pacchetto è quella del
+   file più `-dev.<sha corto>`.
+
+L'identità del pacchetto la riscrive `scripts/identita-desktop.mjs dev` in `electron/package.json`,
+e ognuna delle differenze chiude un modo diverso di pestare i piedi all'app installata:
+
+| Cosa | Ufficiale | Di prova | Perché conta |
+| --- | --- | --- | --- |
+| `name` | `reportini-desktop` | `reportini-desktop-dev` | la cartella di installazione su Windows è `%LOCALAPPDATA%\Programs\<name>` |
+| `productName` — e `build.productName`, che **vince** | `Reportini` | `Reportini Dev` | eseguibile, scorciatoie e — per Electron — la cartella dei dati: `%APPDATA%\Reportini Dev`, accanto a quella vera |
+| `appId` | `app.reportini.desktop` | `app.reportini.desktop.dev` | installazione e disinstallazione restano due cose distinte |
+| `build.publish` | la release GitHub | **`null`**, e `null` anche in `build.nsis.publish` | senza menù (`resources/app-update.yml`) non c'è nessun canale da cui aggiornarsi, e `caricaAggiornatore` (`electron/main.cjs`) non accende nemmeno l'aggiornatore. **Non basta togliere la sezione**: senza `publish`, electron-builder ricava il fornitore dal campo `repository` — che qui punta al repository ufficiale — e il menù lo scrive lo stesso. Verificato nel suo sorgente: `PublishManager.getPublishConfigs` risponde `null` solo se `publish` è `null`, altrimenti `getPublishConfigsForUpdateInfo` ricade sul repository |
+| versione | `0.4.3` | `0.4.3-dev.abc1234` | `app.getVersion()` è quello che l'app mostra nelle impostazioni: la prova si riconosce da dentro |
+
+Il workflow controlla il pacchetto **dopo** averlo costruito, perché l'uscita di `electron-builder` è
+verde anche quando il pacchetto è quello sbagliato: dentro deve esserci `Reportini Dev.exe`, non deve
+esistere nessun `resources/app-update.yml`, e nessun installer può chiamarsi come quello ufficiale.
+
+Dall'altra parte il rilascio ufficiale esegue `scripts/identita-desktop.mjs controlla` **prima** di
+impacchettare. L'identità dev si applica in locale, e in locale il file resta sul disco: un
+`git add` distratto lo porterebbe nel rilascio, che pubblicherebbe "Reportini Dev" come ultima
+versione — cioè la installerebbe a tutti. Il commit che tocca solo il workflow di prova non fa
+partire il rilascio, perché il file è in `paths-ignore`.
+
+Una cosa da sapere prima di provarlo: l'indirizzo di rientro di Google è registrato sulla **porta
+42720**, una sola. Se l'app ufficiale è aperta, il pacchetto di prova ne prende una vicina, che
+Google non conosce, e l'accesso si ferma con un `redirect_uri_mismatch`. Quindi: chiudere l'app
+ufficiale prima di aprire quella di prova.
 
 ### Aggiornamento automatico dell'app
 
@@ -698,6 +742,22 @@ Se la risposta contiene l'origine esatta che hai chiesto, l'elenco la
 riconosce; se contiene altro, è il valore di ripiego e quell'origine non è in
 lista.
 
+Quella `curl` va lanciata a mano, e il giorno in cui serve nessuno se la
+ricorda: `bun run prova:backend` fa la stessa domanda e qualche altra, e gira
+anche in CI (job `backend`). Interroga la funzione **pubblicata** e pretende
+sei risposte: è pubblicata (un `404` vuol dire che non lo è), il preflight
+torna con l'origine del sito, torna anche con quella del pacchetto desktop
+(`127.0.0.1:42720`, ammessa a prescindere dall'elenco), un'origine estranea
+**non** riceve l'eco, uno scambio con un **codice finto** arriva fino a Google
+— che lo rifiuta, ed è proprio quel rifiuto a dire che i segreti ci sono e che
+il client è quello giusto — e un rinnovo senza sessione risponde `401`.
+
+Non usa segreti e non ne vuole: le basta l'indirizzo del progetto, che prende
+dalla riga di comando, da `SUPABASE_URL` o da `VITE_SUPABASE_URL` (in CI è la
+variabile dell'ambiente `prod`, la stessa della build). Senza quell'indirizzo
+esce dicendo che non può provare e **non** fallisce, come il confronto dei
+sorgenti quando manca il token.
+
 5. Metti il **Client ID** (solo quello, non il secret) in `VITE_GOOGLE_CLIENT_ID` nelle
    variabili d'ambiente della web.
 
@@ -875,6 +935,7 @@ bun run test:ui    # solo i test vitest
 bun run version:check  # la versione è coerente? (lo usa anche il rilascio)
 bun run version:patch  # alza la versione di un patch, come fa il workflow
 bun run dimensioni    # quanto pesa la web, e rispetta i tetti?
+bun run prova:backend # la funzione Google pubblicata risponde come deve?
 ```
 
 C'è anche `scripts/azzera-dati-utenti.mjs`, che **non** sta in `package.json` perché non
@@ -942,7 +1003,7 @@ installatore lo segnala. `vitest.config.ts` ripete il controllo per chi lancia `
 direttamente, ma arriva dopo che Vite ha costruito la configurazione: è la rete di sicurezza,
 non il primo avviso. Il motivo di tutto questo è in `scripts/verifica-node.mjs`, in testa al file.
 
-I test vitest coprono **294 prove in 25 file**; questi sono quelli che meritano una riga:
+I test vitest coprono **355 prove in 31 file**; questi sono quelli che meritano una riga:
 
 - `tests/app.test.tsx` monta l'app reale in jsdom con un IndexedDB finto: è la rete che
   intercetta i crash a runtime (per esempio un dereferenziamento di `window.reportini` fatto al
@@ -1043,6 +1104,12 @@ I test vitest coprono **294 prove in 25 file**; questi sono quelli che meritano 
   pubblicato su Supabase, che vale per **entrambe** le funzioni e **file per file**: una funzione
   aggiunta all'elenco con un file in più (`corpo.ts` accanto a `index.ts`) resterebbe fuori dal
   controllo, ed è già successo che il controllo ne guardasse una sola.
+- `tests/prova-backend.test.ts` prova il giudizio del controllo che interroga la funzione
+  **pubblicata**: funzione non pubblicata (`404`), preflight che torna con l'origine di ripiego,
+  origine estranea che invece riceve l'eco, segreti vuoti (`503`), `redirect_uri` non registrato,
+  e il caso insidioso del client sbagliato — anche un `client_secret` di un altro client dà un
+  `400`, quindi un controllo che guardasse solo lo stato direbbe che va tutto bene con il
+  calendario rotto.
 - `tests/richieste.test.tsx` prova "Chiedilo allo sviluppatore" con un Supabase finto che
   applica la stessa regola del database (un utente vede solo le proprie richieste, lo
   sviluppatore tutte): l'email viene dalla sessione, il titolo vuoto non parte, lo stato

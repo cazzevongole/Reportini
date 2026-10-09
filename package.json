@@ -24,6 +24,7 @@
     "electron:dev": "cd electron && npm run dev",
     "electron:pack": "bun run electron:build && cd electron && npm run dist",
     "edge:function:check": "node scripts/verifica-edge-function.mjs",
+    "prova:backend": "node scripts/prova-backend.mjs",
     "version:check": "node scripts/versione.mjs",
     "version:patch": "node scripts/versione.mjs patch",
     "version:minor": "node scripts/versione.mjs minor",

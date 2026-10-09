@@ -323,8 +323,32 @@ interface RispostaRinnovo {
   expires_in: number;
 }
 
+/**
+ * Un rifiuto del backend, con lo stato HTTP che l'ha prodotto.
+ *
+ * Serve perché la funzione risponde 401 per due motivi diversi — "la tua
+ * sessione non vale" e "il consenso Google non vale più" — e chi chiama deve
+ * poterli trattare senza leggere una frase italiana. Lo stato è il contratto;
+ * il testo è per l'utente.
+ */
+class ErroreBackend extends Error {
+  readonly stato: number;
+
+  constructor(messaggio: string, stato: number) {
+    super(messaggio);
+    this.name = "ErroreBackend";
+    this.stato = stato;
+  }
+}
+
 async function chiamaBackend<T>(corpo: Record<string, unknown>): Promise<T> {
   if (!supabase) throw new Error("Supabase non è collegato.");
+  // Senza l'indirizzo del progetto non c'è nessuna funzione da chiamare: è un
+  // pacchetto costruito senza `VITE_SUPABASE_URL`, e va detto così, invece di
+  // mandare a cercare una funzione che non è mai stata nominata.
+  if (!FUNZIONE) {
+    throw new Error("Manca VITE_SUPABASE_URL: questo pacchetto non sa dove sta il backend.");
+  }
 
   // Il rinnovo e la revoca chiedono un account; lo scambio no, perché
   // avviene proprio mentre l'utente sta ancora entrando. Si manda il JWT
@@ -341,15 +365,39 @@ async function chiamaBackend<T>(corpo: Record<string, unknown>): Promise<T> {
       headers: intestazioni,
       body: JSON.stringify(corpo),
     });
-  } catch {
+  } catch (causa) {
+    // Che la richiesta sia arrivata o no, è una cosa che qui si sa; **perché**
+    // no, no. Quindi il messaggio dice il fatto e la causa va nel log.
+    //
+    // Prima qui c'era "controlla che la funzione google-token sia
+    // pubblicata": un'accusa che nessuno aveva verificato. Con la funzione
+    // pubblicata e che risponde — il caso normale — mandava a cercare un
+    // problema di deploy mentre il problema era la rete, ed è il tipo di
+    // pista falsa che costa un pomeriggio.
+    console.error("accesso: la richiesta al backend non è arrivata —", causa);
     throw new Error(
-      "Backend non raggiungibile: controlla che la funzione google-token sia pubblicata.",
+      "Backend non raggiungibile: la richiesta è stata bloccata prima di arrivare (rete, proxy o firewall).",
     );
   }
 
   const dati = (await risposta.json().catch(() => ({}))) as { errore?: string } & T;
   if (!risposta.ok) {
-    throw new Error(dati.errore ?? `Il backend ha risposto ${risposta.status}.`);
+    // Un 404 è l'unica risposta che dice davvero "questa funzione non esiste".
+    // Verificato sull'API: una funzione che non c'è risponde 404 con
+    // `Access-Control-Allow-Origin: *` e `{"code":"NOT_FOUND"}`, quindi il
+    // browser la legge senza equivoci — non è una risposta che si confonde con
+    // un errore di rete, che invece qui non arriva affatto.
+    if (risposta.status === 404 && !dati.errore) {
+      throw new ErroreBackend(
+        "La funzione google-token non è pubblicata: pubblicala con " +
+          "`supabase functions deploy google-token`.",
+        404,
+      );
+    }
+    throw new ErroreBackend(
+      dati.errore ?? `Il backend ha risposto ${risposta.status}.`,
+      risposta.status,
+    );
   }
   return dati;
 }
@@ -521,6 +569,13 @@ export async function accessToken(): Promise<string> {
       return rinnovo.access_token;
     } catch (causa) {
       const messaggio = causa instanceof Error ? causa.message : "Rinnovo non riuscito";
+      // Un 401 sul rinnovo è un consenso che non c'è più (o una sessione che
+      // non vale): in entrambi i casi la via d'uscita è la stessa — rifare
+      // l'accesso, che riporta anche il consenso del calendario. Quindi il
+      // token morto va tolto di mezzo adesso: senza, l'app si dichiara
+      // collegata e intanto, nello stesso riquadro delle impostazioni, dice
+      // che il collegamento non è più valido.
+      if (causa instanceof ErroreBackend && causa.stato === 401) dimenticaToken();
       ricordaErrore(messaggio);
       throw new Error(messaggio);
     } finally {
@@ -529,6 +584,18 @@ export async function accessToken(): Promise<string> {
   })();
 
   return rinnovoInCorso;
+}
+
+/**
+ * Butta via il token quando non c'è più niente da rinnovare.
+ *
+ * Il rifiuto di Google non si aggiusta da solo: tenendo il refresh token,
+ * `isConnected()` resta vero, la scheda dice "Collegato" e ogni salvataggio
+ * ritenta un rinnovo che non può riuscire. Il profilo (nome ed email) resta:
+ * è cosmetico, non un'autorizzazione.
+ */
+function dimenticaToken(): void {
+  localStorage.removeItem(TOKEN_KEY);
 }
 
 export async function disconnect(): Promise<{ revocato: boolean }> {
