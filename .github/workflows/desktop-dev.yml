@@ -1,0 +1,180 @@
+name: Pacchetto desktop per le prove
+
+# Un pacchetto desktop da provare sulla macchina vera, senza che una prova
+# possa diventare un rilascio.
+#
+# Perché serve. Il rilascio ufficiale alza la versione, crea un tag e pubblica
+# la release come "ultima": da lì tutte le app installate si aggiornano da
+# sole. Provare una correzione dell'accesso con quel meccanismo significa
+# pubblicarla a tutti, e una prova non deve avere quel potere. Questo workflow
+# costruisce lo stesso pacchetto con un'identità sua — "Reportini Dev", vedi
+# scripts/identita-desktop.mjs — e lo lascia come artefatto di questa
+# esecuzione, che è privato e scade.
+#
+# Le tre garanzie, perché "non va in produzione" sia una proprietà e non una
+# promessa:
+#
+#   1. si parte solo a mano, da un ramo qualsiasi: nessun push fa partire
+#      niente, quindi nulla di quanto si prova in un ramo può uscire da solo;
+#   2. `contents: read`: il token di questo lavoro non può creare release, né
+#      spingere commit o tag, nemmeno se qualcuno aggiungesse un passo che ci
+#      prova;
+#   3. nessuna versione alzata, nessun tag, nessun commit: la versione del
+#      pacchetto è quella del file più `-dev.<sha corto>`, quindi la prova si
+#      riconosce da dentro l'app e non solo dal nome dell'installer.
+#
+# Il pacchetto dev non si sovrappone a quello installato: cartella di
+# installazione, eseguibile, scorciatoie e cartella dei dati sono suoi (per
+# Windows sono `%LOCALAPPDATA%\Programs\reportini-desktop-dev` e
+# `%APPDATA%\Reportini Dev`), e il `publish: null` che gli mette
+# scripts/identita-desktop.mjs lo lascia senza il menù dell'aggiornamento:
+# non esiste nessun canale ufficiale da cui questa app possa aggiornarsi.
+# (Togliere la sezione `publish` non basterebbe: electron-builder ricava il
+# fornitore dal campo `repository` del pacchetto, e il menù nascerebbe lo
+# stesso — puntando al repository ufficiale.)
+#
+# Una cosa da sapere prima di provarla: l'indirizzo di rientro di Google è
+# registrato sulla porta 42720, una sola. Se l'app ufficiale è aperta, il
+# pacchetto dev prende una porta vicina — che Google non conosce — e l'accesso
+# si ferma con un `redirect_uri_mismatch`. Quindi: chiudere l'app ufficiale
+# prima di aprire quella di prova.
+#
+# Questo workflow è per Windows perché è il sistema su cui si prova l'app
+# installata. Per aggiungere gli altri due, il pezzo da copiare è la matrice
+# `impacchetta` di .github/workflows/release-electron.yml.
+
+on:
+  workflow_dispatch:
+    inputs:
+      suffisso:
+        description: "Suffisso della versione dev (vuoto: dev.<sha corto>)"
+        required: false
+
+# Read e basta: nessun permesso di scrittura, quindi nessuna release possibile.
+permissions:
+  contents: read
+
+# Due pacchetti dev insieme non servono a nessuno, e uno dei due sarebbe
+# comunque vecchio: l'ultimo che parte è quello che si vuole provare.
+concurrency:
+  group: desktop-dev
+  cancel-in-progress: true
+
+jobs:
+  pacchetto-dev:
+    # Immagine bloccata, non "latest": qui si prova un pacchetto, e non si
+    # vuole che il sistema su cui lo si prova cambi da solo.
+    runs-on: windows-latest
+    # Le variabili VITE_* stanno nell'ambiente "prod", e GitHub le rende
+    # disponibili solo ai job che lo dichiarano. Il progetto Supabase e il
+    # client Google sono gli stessi dell'ufficiale di proposito: la correzione
+    # da provare è nell'accesso, e un backend finto proverebbe un'altra cosa.
+    environment: prod
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - uses: actions/setup-node@v7
+        with:
+          # Node 24 per i test: jsdom carica un modulo ESM con `require()`, e
+          # Node lo permette solo dalla 22.12.
+          node-version: 24
+
+      - name: Dipendenze
+        run: bun install --frozen-lockfile
+
+      - name: Test
+        # Prima di costruire: un pacchetto da provare a mano è tempo di
+        # qualcuno, e non si spende per una correzione che non passa la suite.
+        run: bun run test
+
+      - name: Controlla la configurazione
+        # shell: bash esplicito perché il runner Windows usa PowerShell, dove
+        # `[ -z "$VAR" ]` non è un test: passerebbe senza controllare niente.
+        shell: bash
+        run: |
+          if [ -z "$VITE_SUPABASE_URL" ] || [ -z "$VITE_SUPABASE_ANON_KEY" ]; then
+            echo "::error::Mancano VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY nell'ambiente 'prod' (Settings > Secrets and variables > Actions > Variables > prod)."
+            exit 1
+          fi
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+
+      - name: Build della web
+        # ELECTRON=1 forza la base "./": l'app si apre da un server locale, ma
+        # il pacchetto dev deve avere la stessa forma di quello ufficiale,
+        # altrimenti non si sta provando la stessa app.
+        run: bun run build
+        env:
+          ELECTRON: "1"
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+          VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
+
+      - name: Copia nel renderer di Electron
+        run: node scripts/copia-renderer.mjs
+
+      - name: Identità dev del pacchetto
+        # Riscrive electron/package.json *in questa macchina*: nome, nome del
+        # prodotto, identità, nome dell'installer, versione con il suffisso, e
+        # `publish: null` in due punti. Non viene committato niente.
+        run: node scripts/identita-desktop.mjs dev
+        env:
+          SUFFISSO: ${{ inputs.suffisso }}
+          GITHUB_SHA: ${{ github.sha }}
+
+      - name: Dipendenze di Electron
+        working-directory: electron
+        run: npm install
+
+      - name: electron-builder
+        working-directory: electron
+        # `--publish never` è la seconda rete oltre al `publish: null` del
+        # manifest: qui non si pubblica niente, mai.
+        run: npm run dist -- --publish never
+
+      - name: Il pacchetto è dev, e non ha nessun canale di aggiornamento
+        shell: bash
+        # Non si guarda l'uscita di electron-builder, che è verde anche quando
+        # il pacchetto è quello sbagliato: si guarda il pacchetto. Senza questo
+        # passo un errore nell'identità produrrebbe un installer con il nome
+        # dell'ufficiale, scaricabile da chiunque abbia accesso all'esecuzione.
+        run: |
+          set -euo pipefail
+          ls -l electron/release
+
+          # L'eseguibile dentro il pacchetto si chiama come il prodotto.
+          test -f "electron/release/win-unpacked/Reportini Dev.exe"
+          test ! -f "electron/release/win-unpacked/Reportini.exe"
+
+          # Nessun menù dell'aggiornamento: è quello che tiene questa app
+          # fuori dal canale ufficiale, e la sua assenza va vista.
+          test ! -f "electron/release/win-unpacked/resources/app-update.yml"
+
+          # L'installer porta "Dev" nel nome, e non esiste un installer che
+          # somigli a quello ufficiale.
+          installer=$(ls electron/release/Reportini-Dev-Setup-*.exe)
+          echo "Installer: $installer"
+          for file in electron/release/*.exe; do
+            case "$file" in
+              *Reportini-Dev-Setup-*) ;;
+              *) echo "::error::Installer con un nome non dev: $file"; exit 1 ;;
+            esac
+          done
+
+      - name: Pubblica l'artefatto
+        uses: actions/upload-artifact@v7
+        with:
+          # Il nome dice che è una prova, così non si confonde con gli
+          # artefatti del rilascio, che si chiamano `reportini-win` e finiscono
+          # in una release.
+          name: reportini-dev-windows
+          # Solo l'installer: la cartella scompattata sono centinaia di file e
+          # non la scarica nessuno.
+          path: electron/release/Reportini-Dev-Setup-*.exe
+          if-no-files-found: error
+          retention-days: 7
