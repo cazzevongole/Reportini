@@ -18,6 +18,7 @@ import {
   completaAccesso,
   disconnect,
   googleConfigured,
+  impostaArrivoDesktop,
   isConnected,
   readErroreCollegamento,
   readToken,
@@ -72,6 +73,9 @@ beforeEach(() => {
   finto.getSession.mockResolvedValue({ data: { session: SESSIONE } });
   finto.signInWithIdToken.mockClear();
   finto.signInWithOAuth.mockClear();
+  // Il rientro del desktop vive in una variabile di modulo: un test che lo
+  // lascia dietro farebbe partire lo scambio anche nei test dopo.
+  impostaArrivoDesktop(null);
   assegnata = null;
   fetchMock = vi.fn(async (url: unknown, opzioni?: { body?: string }) => {
     const corpo = opzioni?.body ? (JSON.parse(opzioni.body) as { azione: string }) : { azione: "" };
@@ -250,22 +254,23 @@ describe("Ritorno da Google", () => {
     expect(isConnected()).toBe(true);
   });
 
-  it("sul desktop il rientro arriva dalla session, non dall'URL", async () => {
-    // Il main process mette il rientro in `sessionStorage` e riporta la
-    // finestra su un indirizzo pulito. Se il renderer guardasse solo l'URL, sul
-    // desktop non chiuderebbe mai l'accesso — ed è esattamente quello che
-    // faceva, con la pagina che non si aggiornava.
+  it("sul desktop il rientro arriva dal main process, non dall'URL", async () => {
+    // Il main tiene il rientro finché il renderer non lo chiede, e glielo
+    // consegna una volta sola. Se il renderer guardasse solo l'URL, sul desktop
+    // non chiuderebbe mai l'accesso — ed è esattamente quello che faceva, con la
+    // pagina che non si aggiornava.
     statoRitorno("abc123");
     tornaCon({});
-    sessionStorage.setItem("reportini.google.arrivo", "code=il-code&state=abc123");
+    impostaArrivoDesktop("code=il-code&state=abc123");
     scambioPronto();
 
     await expect(completaAccesso()).resolves.toBe("calendario");
 
     expect(chiamateFunzione()[0].code).toBe("il-code");
-    // E non resta appeso: un rientno vecchio non deve riaprire l'accesso al
-    // ricaricamento successivo.
-    expect(sessionStorage.getItem("reportini.google.arrivo")).toBeNull();
+    // Consumato: un secondo giro non lo ritrova, quindi non rifà lo scambio con
+    // un codice che Google accetta una volta sola.
+    await expect(completaAccesso()).resolves.toBe("nessuno");
+    expect(chiamateFunzione()).toHaveLength(1);
   });
 
   it("dopo lo scambio arricchisce il profilo, ma senza profilo il collegamento regge", async () => {
@@ -326,7 +331,7 @@ describe("Ritorno da Google", () => {
     expect(readErroreCollegamento()).toBeNull();
   });
 
-  it("se il backend non ha i segreti, l'utente entra comunque e sa cosa manca", async () => {
+  it("se il backend non ha i segreti, chi è già dentro non viene buttato fuori", async () => {
     statoRitorno("abc123");
     tornaCon({ code: "il-code", state: "abc123" });
     risposte.set("scambio", {
@@ -334,12 +339,31 @@ describe("Ritorno da Google", () => {
       stato: 503,
     });
 
-    // Non si butta fuori l'utente: ripiega sull'accesso con Supabase da sola.
+    // La sessione c'è — è il caso di chi preme "Ricollega" dalle impostazioni —
+    // quindi il calendario non si collega, ma l'accesso non si rifà: rifarlo
+    // sarebbe un'altra cosa da quella che l'utente ha chiesto, e gli farebbe
+    // vedere la schermata di accesso al posto dell'errore.
     await expect(completaAccesso()).resolves.toBe("solo-account");
-    expect(finto.signInWithOAuth).toHaveBeenCalled();
+    expect(finto.signInWithOAuth).not.toHaveBeenCalled();
     expect(readErroreCollegamento()).toMatch(/GOOGLE_CLIENT_SECRET/);
     expect(readErroreCollegamento()).toMatch(/senza calendario/);
     expect(readToken()).toBeNull();
+  });
+
+  it("senza una sessione, un backend che non risponde non lascia fuori l'utente", async () => {
+    // Il primo accesso: non c'è nessuna sessione da conservare, quindi il
+    // ripiego è l'unica strada per entrare — profilo e basta, senza calendario.
+    finto.getSession.mockResolvedValue({ data: { session: null } } as never);
+    statoRitorno("abc123");
+    tornaCon({ code: "il-code", state: "abc123" });
+    risposte.set("scambio", {
+      dati: { errore: "Backend Google non pronto: manca GOOGLE_CLIENT_SECRET." },
+      stato: 503,
+    });
+
+    await expect(completaAccesso()).resolves.toBe("solo-account");
+    expect(finto.signInWithOAuth).toHaveBeenCalled();
+    expect(readErroreCollegamento()).toMatch(/senza calendario/);
   });
 
   it("se Supabase rifiuta l'id_token, l'utente entra lo stesso", async () => {

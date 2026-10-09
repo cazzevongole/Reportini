@@ -13,6 +13,8 @@ const fs = require("node:fs/promises");
  * Fa due cose: serve i file del renderer, e intercetta il ritorno di Google.
  * Il secondo punto è il motivo per cui sta qui e non dentro il main process:
  * l'ha aperto il browser di sistema, quindi l'app da sola non lo saprebbe mai.
+ * I parametri del rientro li passa al main, che è quello che sa dove metterli
+ * in attesa del renderer (`riportaRitorno`).
  *
  * Non richiede Electron di proposito: è logica, non finestra, e così si
  * verifica senza un display.
@@ -53,14 +55,6 @@ const PAGINA_ATTESA = `<!doctype html>
 const CHIAVI_RITORNO = ["code", "state", "error", "error_description"];
 
 /**
- * Dove il main lascia il rientro, per il renderer che sta per ripartire.
- *
- * Deve coincidere con `ARRIVO_KEY` di `src/lib/google/auth.ts`: uno la
- * scrive, l'altro lo legge, e i due non possono accorgersi del disaccordo.
- */
-const CHIAVE_ARRIVO = "reportini.google.arrivo";
-
-/**
  * Tiene solo ciò che serve, e lo ricostruisce da capo.
  *
  * Questa porta è raggiungibile da qualunque programma sulla macchina, quindi
@@ -77,30 +71,29 @@ function queryRitorno(parametri) {
 }
 
 /**
- * Porta il rientro dentro l'app, senza rimetterlo nell'URL.
+ * Riporta avanti la finestra dell'app e la fa ripartire da un indirizzo pulito.
  *
  * **Perché non si naviga a `/?code=…`.** Il server riconosce il rientro proprio
  * da quei parametri, quindi chiedere alla finestra di caricare quella stessa
  * URL la farebbe sembrare un rientro nuovo: il main rimanda la finestra, la
- * finestra chiede di nuovo, e l'app si ricarica all'infinito senza mai
- * mostrare niente. È successo, ed è la ragione per cui il rientro finiva con
- * "la pagina non si aggiorna" e nessun errore.
+ * finestra chiede di nuovo, e l'app si ricarica all'infinito senza mai mostrare
+ * niente. È successo, ed è la ragione per cui il rientro finiva con "la pagina
+ * non si aggiorna" e nessun errore.
  *
- * Quindi i parametri passano dalla sessionStorage della pagina corrente, che
- * sopravvive al ricaricamento, e la finestra si riporta a un indirizzo pulito.
+ * **Perché qui non si scrive niente nella pagina.** Prima i parametri finivano
+ * nella sessionStorage del documento aperto, contando che a leggerli fosse
+ * quello nuovo dopo il ricaricamento. Non era vero: `show()` e `focus()` (due
+ * righe più sotto, prima del ricaricamento) svegliano il documento che c'è già,
+ * e la finestra dell'app se li prendeva da sotto il naso. Lo scambio partiva da
+ * un documento che stava per sparire e la richiesta moriva con lui.
+ *
+ * Adesso il rientro resta al main process (`riportaRitorno` in main.cjs), che lo
+ * consegna al renderer quando lo chiede: chi lo chiede lo consuma, e a
+ * chiederlo è solo il documento che vive. Qui resta da fare una cosa sola —
+ * portare l'app davanti, su un indirizzo che non è un rientro.
  */
-async function riportaAllaApp(finestra, origine, query) {
+async function riportaAllaApp(finestra, origine) {
   if (finestra.isDestroyed()) return false;
-  // JSON.stringify anche del codice eseguito: la query arriva da un URL, e
-  // iniettarla cruda sarebbe eseguire ciò che c'era scritto lì.
-  const codice = `sessionStorage.setItem(${JSON.stringify(CHIAVE_ARRIVO)}, ${JSON.stringify(query)}); true`;
-  try {
-    await finestra.webContents.executeJavaScript(codice);
-  } catch (errore) {
-    // Senza questo passaggio il rientro non c'è più: meglio saperlo nel log
-    // che perdere l'accesso in silenzio.
-    throw new Error(`non riesco a portare il rientro dentro l'app: ${errore.message}`);
-  }
   if (finestra.isMinimized()) finestra.restore();
   finestra.show();
   finestra.focus();
@@ -215,7 +208,6 @@ function avviaServer({ porta, tentativi = 10, ...resto }) {
 module.exports = {
   TIPI,
   PAGINA_ATTESA,
-  CHIAVE_ARRIVO,
   CHIAVI_RITORNO,
   avviaServer,
   creaServer,

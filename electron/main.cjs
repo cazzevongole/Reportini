@@ -51,8 +51,27 @@ let serverLocale = null;
 let origineLocale = "";
 
 /**
- * Porta a casa il rientro di Google: la finestra dell'app si riporta avanti e
- * da lì il renderer fa il resto.
+ * Il rientro di Google ricevuto e non ancora consegnato, o `null`.
+ *
+ * **Perché lo tiene il main, e non la pagina.** Prima finiva nella
+ * `sessionStorage` della finestra, scritto subito prima di ricaricarla: si
+ * contava che a leggerlo fosse il documento nuovo. Ma `show()` e `focus()`, che
+ * servono a riportare l'app davanti all'utente, svegliano *il documento che c'è
+ * già* — supabase-js risponde a `visibilitychange` con un `SIGNED_IN` — e quello
+ * leggeva il rientro, cominciava lo scambio e veniva distrutto un istante dopo
+ * dal ricaricamento. La richiesta moriva a metà: nessun messaggio in console,
+ * niente nei log della funzione, e l'app che diceva "backend non raggiungibile"
+ * e rifaceva un accesso che non serviva.
+ *
+ * Qui invece il rientro aspetta di essere chiesto (`google:arrivo` dal preload),
+ * e chi lo chiede lo consuma: a chiederlo è solo il documento che vive, perché
+ * la richiesta la fa il renderer quando è pronto. Nessuna corsa possibile.
+ */
+let arrivoGoogle = null;
+
+/**
+ * Porta a casa il rientro di Google: la finestra dell'app si riporta avanti
+ * (ricaricata, così riparte pulita) e da lì il renderer fa il resto.
  *
  * La query è già stata ripulita dal server, che ha tenuto solo i parametri
  * che Google usa davvero: questa porta è raggiungibile da qualunque
@@ -61,15 +80,28 @@ let origineLocale = "";
  * `riportaAllaApp`.
  */
 async function riportaRitorno(query) {
+  // Prima di toccare la finestra: il rientro c'è, e aspetta chi lo chiederà.
+  arrivoGoogle = query;
   for (const finestra of BrowserWindow.getAllWindows()) {
     try {
-      await riportaAllaApp(finestra, origineLocale, query);
+      await riportaAllaApp(finestra, origineLocale);
       return;
     } catch (errore) {
       await registra(errore.message);
     }
   }
 }
+
+/**
+ * Il rientro che il renderer è venuto a prendere. Una volta sola: chi lo chiede
+ * lo consuma, o il codice verrebbe scambiato due volte — la seconda fallisce,
+ * perché Google un authorization code lo accetta una volta sola.
+ */
+ipcMain.handle("google:arrivo", () => {
+  const query = arrivoGoogle;
+  arrivoGoogle = null;
+  return query;
+});
 
 async function createWindow() {
   ventana = new BrowserWindow({

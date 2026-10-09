@@ -15,6 +15,7 @@ import {
   completaAccesso,
   cERitornoDaChiudere,
   googleConfigured,
+  impostaArrivoDesktop,
   type EsitoAvvio,
 } from "../google/auth";
 import { resettaRuolo } from "../sviluppo/richieste";
@@ -42,9 +43,10 @@ let accessoGirato = false;
 
 function giraRientroDaGoogle(): void {
   if (accessoGirato) return;
-  // Non basta guardare l'URL: sul desktop il rientro è in `sessionStorage`,
-  // perché lì rimetterlo significherebbe far sembrare il ricaricamento della
-  // finestra un rientro nuovo, e l'app ripartirebbe da capo per sempre.
+  // Non basta guardare l'URL: sul desktop il rientro lo consegna il main
+  // process, perché lì rimetterlo nell'indirizzo significherebbe far sembrare
+  // il ricaricamento della finestra un rientro nuovo, e l'app ripartirebbe da
+  // capo per sempre.
   if (!cERitornoDaChiudere()) return;
   accessoGirato = true;
   // Non è bloccante: se il backend non è pronto, `completaAccesso` ripiega
@@ -76,6 +78,19 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       setSession(prossima ?? null);
       giraRientroDaGoogle();
       setLoading(false);
+    });
+
+    // Il rientro del desktop lo tiene il main process finché qualcuno non lo
+    // chiede: qui lo si chiede, una volta per finestra. È l'unico modo perché a
+    // consumarlo sia il documento che vive e non quello che il main sta
+    // ricaricando — la corsa che faceva morire lo scambio a metà strada
+    // (electron/main.cjs, e il perché sta scritto in google/auth.ts).
+    const ponte = (window as { reportini?: { arrivoGoogle?: () => Promise<string | null> } })
+      .reportini;
+    void ponte?.arrivoGoogle?.().then((arrivo) => {
+      if (!attivo || !arrivo) return;
+      impostaArrivoDesktop(arrivo);
+      giraRientroDaGoogle();
     });
 
     return () => {

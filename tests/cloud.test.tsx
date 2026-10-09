@@ -159,6 +159,9 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => radice?.unmount());
   contenitore.remove();
+  // Il ponte desktop si mette e si toglie qui: un test che lo lascia dietro
+  // farebbe chiedere il rientro anche a quelli dopo.
+  delete (window as unknown as { reportini?: unknown }).reportini;
 });
 
 async function entraCome(email: string) {
@@ -187,6 +190,25 @@ describe("Accesso con Google", () => {
     });
     return () => stato!.signInWithGoogle();
   }
+
+  it("il rientro del desktop lo va a prendere dal main, e una volta sola", async () => {
+    // Sulla finestra ricaricata il rientro lo chiede il documento nuovo: è
+    // l'unico modo perché a fare lo scambio sia la pagina che vive, e non quella
+    // che il main sta sostituendo (il perché sta in electron/main.cjs).
+    const chiesto = vi.fn(async () => "code=il-code&state=stato-1");
+    (window as unknown as { reportini: unknown }).reportini = { arrivoGoogle: chiesto };
+    sessionStorage.setItem(
+      "reportini.google.ritorno",
+      JSON.stringify({ state: "stato-1", redirect: "http://127.0.0.1:42720" }),
+    );
+
+    await montaAccount();
+
+    expect(chiesto).toHaveBeenCalledTimes(1);
+    // Consumato da chi l'ha chiesto: non resta lì per il ricaricamento dopo, che
+    // rifarebbe lo scambio con un codice che Google accetta una volta sola.
+    expect(sessionStorage.getItem("reportini.google.ritorno")).toBeNull();
+  });
 
   it("con il client Google l'accesso non passa da Supabase", async () => {
     // Con il backend l'app porta sé stessa da Google, profilo e calendario
