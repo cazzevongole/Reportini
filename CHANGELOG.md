@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.5 — 2026-10-09
+
+- Versione incrementata automaticamente (patch).
+
 ## 0.4.4 — 2026-10-09
 
 - Versione incrementata automaticamente (patch).
