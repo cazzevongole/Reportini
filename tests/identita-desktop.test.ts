@@ -21,6 +21,7 @@ import { join } from "node:path";
 import {
   IDENTITA_DEV,
   IDENTITA_UFFICIALE,
+  conTitoloDev,
   identitaDev,
   problemiIdentita,
   suffissoDaAmbiente,
@@ -148,6 +149,69 @@ describe("Il pacchetto dev e l'aggiornamento automatico", () => {
     const corpo = main.slice(inizio, inizio + 800);
     expect(corpo).toContain("app-update.yml");
     expect(corpo).toMatch(/return null;/);
+  });
+});
+
+describe("Il titolo della finestra", () => {
+  const pagina =
+    '<!doctype html>\n<html lang="it">\n  <head>\n    <title>Reportini</title>\n  </head>\n  <body></body>\n</html>\n';
+
+  it("mette il nome dev nella pagina costruita", () => {
+    // La barra della finestra di Electron la decide il `<title>` della pagina,
+    // non il `productName`: senza questa riga il pacchetto di prova si
+    // chiamerebbe "Reportini Dev" nel file scaricato e "Reportini" nella
+    // barra, che è l'unico punto da cui si distingue l'app aperta.
+    const nuovo = conTitoloDev(pagina);
+    expect(nuovo).toContain("<title>Reportini Dev</title>");
+    expect(nuovo).not.toContain("<title>Reportini</title>");
+  });
+
+  it("cambia il titolo e nient'altro", () => {
+    // La pagina è quella che l'app serve: qualunque altra differenza sarebbe
+    // una modifica all'app, non un'identità.
+    const nuovo = conTitoloDev(pagina)?.replace(
+      "<title>Reportini Dev</title>",
+      "<title>Reportini</title>",
+    );
+    expect(nuovo).toBe(pagina);
+  });
+
+  it("rifiuta di inventare un titolo che non c'è", () => {
+    // Una pagina senza `<title>` servirebbe comunque "Reportini" — o il nome
+    // del file — e il pacchetto di prova sarebbe sbagliato in un modo che non
+    // si vede. Meglio fermarsi.
+    expect(conTitoloDev("<html><head></head><body></body></html>")).toBeNull();
+  });
+
+  it("applicato due volte dà lo stesso risultato", () => {
+    const una = conTitoloDev(pagina) as string;
+    expect(conTitoloDev(una)).toBe(una);
+  });
+});
+
+describe("Il workflow del pacchetto di prova", () => {
+  const workflow = readFileSync(join(RADICE, ".github", "workflows", "desktop-dev.yml"), "utf8");
+
+  function posizione(segno: string): number {
+    const indice = workflow.indexOf(segno);
+    expect(indice, `non trovo "${segno}" in desktop-dev.yml`).toBeGreaterThan(-1);
+    return indice;
+  }
+
+  it("applica l'identità dev dopo aver copiato il renderer", () => {
+    // Al contrario la copia — che cancella e ricrea `electron/renderer` —
+    // rimetterebbe il titolo dell'ufficiale: il pacchetto uscirebbe dev nel
+    // nome e ufficiale nella barra, senza nessun errore.
+    expect(posizione("copia-renderer.mjs")).toBeLessThan(posizione("identita-desktop.mjs dev"));
+  });
+
+  it("controlla il titolo dentro il pacchetto, non nel sorgente", () => {
+    // Il `<title>` finisce nell'archivio del pacchetto (asar), quindi è lì che
+    // si cerca: guardarlo nel sorgente direbbe che l'identità è stata
+    // applicata anche se poi a finire nel pacchetto è un'altra pagina.
+    const verifica = posizione("Il pacchetto è dev, e non ha nessun canale di aggiornamento");
+    expect(posizione("<title>Reportini Dev</title>")).toBeGreaterThan(verifica);
+    expect(workflow).toContain("app.asar");
   });
 });
 

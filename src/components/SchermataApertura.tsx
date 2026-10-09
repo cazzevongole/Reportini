@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { fraseBenvenuto, saluto } from "../lib/benvenuto";
+import { NOME_APP } from "../lib/nome";
 
 /** Quanto dura il dissolvenza che chiude la schermata. */
 const USCITA_MS = 700;
@@ -69,7 +70,7 @@ export default function SchermataApertura({
         opaca ? "opacity-100" : "opacity-0"
       }`}
     >
-      <p className="font-display text-4xl leading-none text-white">Reportini</p>
+      <p className="font-display text-4xl leading-none text-white">{NOME_APP}</p>
 
       <div className="mt-8 h-px w-16 bg-brand-500/60" />
 

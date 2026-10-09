@@ -6,6 +6,7 @@ import { useAvvisi } from "../components/Avvisi";
 import { useAccount } from "../lib/cloud/session";
 import { readErroreCollegamento, scordaErroreCollegamento } from "../lib/google/auth";
 import { problemaConfigurazione } from "../lib/cloud/supabase";
+import { NOME_APP } from "../lib/nome";
 
 /**
  * Unica pagina raggiungibile senza un account. Mostra cosa si trova dentro
@@ -56,7 +57,7 @@ export default function Accesso() {
     <div className="flex min-h-dvh flex-col">
       <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col justify-center px-5 py-12 sm:px-6">
         <div className="mx-auto w-full max-w-md text-center">
-          <p className="font-display text-3xl leading-none text-ink-950">Reportini</p>
+          <p className="font-display text-3xl leading-none text-ink-950">{NOME_APP}</p>
           <p className="mt-2 text-sm text-ink-400">Aziende, report e attività</p>
 
           <div className="card mt-8 p-6 text-left">

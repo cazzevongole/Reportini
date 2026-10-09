@@ -5,8 +5,13 @@ import App from "./App";
 import ErroreAvvio from "./components/ErroreAvvio";
 import { AccountProvider } from "./lib/cloud/session";
 import { indirizzoSicuro } from "./lib/cloud/destinazione";
+import { NOME_APP } from "./lib/nome";
 
 function monta() {
+  // Il titolo della finestra — e della scheda, sulla web. Sul desktop è questa
+  // riga a decidere cosa si legge nella barra: Electron lo prende dalla pagina,
+  // non dal nome del pacchetto (`BrowserWindow` non ha un `title` suo).
+  document.title = NOME_APP;
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
       {/* Fuori da tutto il resto: senza, un errore in una qualsiasi vista
@@ -43,7 +48,7 @@ function rimandaInHttps(): void {
     monta();
     return;
   }
-  document.title = "Reportini";
+  document.title = NOME_APP;
   const avviso = document.createElement("p");
   avviso.className = "grid min-h-dvh place-items-center p-6 text-center text-sm text-ink-400";
   avviso.textContent = "Ti riporto su https…";

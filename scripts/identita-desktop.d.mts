@@ -47,6 +47,17 @@ export declare const IDENTITA_DEV: {
  */
 export declare function versioneDev(versione: string, suffisso: string): string;
 
+/**
+ * La pagina costruita con il titolo dev.
+ *
+ * Prende l'HTML di `electron/renderer/index.html` — la copia che l'app
+ * impacchettata serve, non `dist/` — e ne riscrive il `<title>`.
+ *
+ * `null` quando la pagina non ha nessun titolo: chi la usa deve fermarsi
+ * invece di credere di aver cambiato qualcosa.
+ */
+export declare function conTitoloDev(html: string): string | null;
+
 /** Il manifest con l'identità dev. Non tocca quello passato. */
 export declare function identitaDev(manifest: ManifestDesktop, suffisso: string): ManifestDesktop;
 

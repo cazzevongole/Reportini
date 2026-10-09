@@ -140,6 +140,14 @@ jobs:
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
           VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
+          # Il nome dentro l'app: intestazione, schermata di apertura, pagina di
+          # accesso. La barra della finestra la riscrive poi l'identità dev
+          # nella pagina costruita, e i due nomi devono essere lo stesso: se
+          # divergono, la stessa app si presenta in due modi e non lo dice
+          # nessun errore (c'è un test su questo). Fuori da questo workflow la
+          # variabile non esiste, quindi la web e l'app installata usano il
+          # nome ufficiale senza sapere niente di tutto questo.
+          VITE_NOME_APP: Reportini Dev
 
       - name: Copia nel renderer di Electron
         run: node scripts/copia-renderer.mjs
@@ -180,6 +188,15 @@ jobs:
           # Nessun menù dell'aggiornamento: è quello che tiene questa app
           # fuori dal canale ufficiale, e la sua assenza va vista.
           test ! -f "electron/release/win-unpacked/resources/app-update.yml"
+
+          # Il titolo nella barra della finestra. Con due app aperte insieme —
+          # che è il caso normale mentre si prova — è quello che dice quale
+          # delle due si sta guardando, e non lo decide il pacchetto: lo decide
+          # il <title> della pagina servita. Si cerca dentro il pacchetto, non
+          # nel sorgente, perché è il pacchetto che si scarica.
+          asar="electron/release/win-unpacked/resources/app.asar"
+          test -f "$asar"
+          grep -qa "<title>Reportini Dev</title>" "$asar"
 
           # L'installer porta "Dev" nel nome, e non esiste un installer che
           # somigli a quello ufficiale.

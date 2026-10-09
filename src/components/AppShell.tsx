@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from "react-router-dom";
 import Aggiornamento from "./Aggiornamento";
+import { NOME_APP } from "../lib/nome";
 import { BuildingIcon, CalendarIcon, FileTextIcon, HomeIcon, SettingsIcon } from "./icons";
 
 /**
@@ -21,7 +22,7 @@ export default function AppShell() {
     <div className="mx-auto flex w-full max-w-6xl gap-8 px-4 pb-28 pt-6 sm:px-6 lg:pb-12">
       <aside className="sticky top-6 hidden h-fit w-60 shrink-0 flex-col gap-1 lg:flex">
         <div className="mb-6 px-2">
-          <p className="font-display text-2xl leading-none">Reportini</p>
+          <p className="font-display text-2xl leading-none">{NOME_APP}</p>
           <p className="mt-1 text-xs uppercase tracking-[0.18em] text-ink-400">
             Aziende, report &amp; attività
           </p>

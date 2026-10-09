@@ -11,7 +11,7 @@
 // sole. Per provare una correzione sulla macchina vera — che è l'unica prova
 // che conta per l'accesso — serve un pacchetto che non possa entrare in quel
 // canale e che non si sovrapponga all'app installata. Le separazioni sono
-// cinque, e ognuna chiude un modo diverso di pestare i piedi all'ufficiale:
+// sei, e ognuna chiude un modo diverso di pestare i piedi all'ufficiale:
 //
 //   - `name`: la cartella di installazione su Windows è
 //     `%LOCALAPPDATA%\Programs\<name>`, quindi il dev ha una cartella sua e
@@ -27,7 +27,12 @@
 //     l'aggiornatore: vedi `caricaAggiornatore` in electron/main.cjs);
 //   - la versione porta il suffisso `-dev.<sha>`: `app.getVersion()` è quello
 //     che l'app mostra nelle impostazioni, quindi la prova si riconosce da
-//     dentro e non solo dal nome del file scaricato.
+//     dentro e non solo dal nome del file scaricato;
+//   - la pagina costruita porta "Reportini Dev" come titolo: è lui che Electron
+//     mostra nella barra della finestra, perché il `productName` da solo non
+//     basta (la barra non la decide il pacchetto). Le due app si aprono
+//     *insieme* — è il caso normale mentre si prova — e devono dirsi diverse
+//     dove si guarda per sapere quale è quale.
 //
 // Perché il controllo sta nel rilascio. L'identità dev la si applica in locale
 // o in CI, e in CI il file viene buttato via col runner. In locale no: basta
@@ -39,15 +44,32 @@
 // Cosa NON fa. Non tocca la versione in `package.json`, non crea tag, non
 // pubblica niente: l'unica versione che cambia è quella del pacchetto desktop,
 // e solo perché un'app dev con il numero dell'ufficiale non si riconoscerebbe.
+//
+// E non tocca nessun sorgente: oltre al manifest riscrive la **copia
+// costruita** della pagina (`electron/renderer/index.html`, quella che il
+// server locale dell'app serve e che electron-builder mette nel pacchetto).
+// `index.html` e `src/` restano quelli dell'ufficiale, quindi il pacchetto
+// ufficiale non ha niente da disfare e l'identità dev non può uscire da
+// questo albero di lavoro.
 // =============================================================================
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const QUI = dirname(fileURLToPath(import.meta.url));
 const MANIFEST = join(QUI, "..", "electron", "package.json");
+
+/**
+ * La pagina costruita che l'app impacchettata serve davvero.
+ *
+ * Non è `dist/index.html`: la radice del server locale è `renderer`
+ * (`avviaServer` in electron/main.cjs), e quella cartella la riempie
+ * `scripts/copia-renderer.mjs` a partire da `dist`. Cambiare il titolo in
+ * `dist` non si vedrebbe, perché l'app non serve quella copia.
+ */
+const RENDERER = join(QUI, "..", "electron", "renderer", "index.html");
 
 /** L'identità dell'app che si scarica dal rilascio ufficiale. */
 export const IDENTITA_UFFICIALE = {
@@ -141,6 +163,35 @@ export function identitaDev(manifest, suffisso) {
 }
 
 /**
+ * La pagina costruita con il titolo dev, oppure `null` se non ha un titolo.
+ *
+ * Perché serve. Il titolo nella barra della finestra non lo decide il
+ * pacchetto: lo decide il `<title>` della pagina, che l'app prende dal suo
+ * server locale. Il `productName` dev cambia l'eseguibile, le scorciatoie e la
+ * cartella dei dati, ma la barra della finestra resterebbe "Reportini": due
+ * app aperte insieme — che è il caso normale mentre si prova, perché la prova
+ * si fa *accanto* all'ufficiale — sarebbero indistinguibili proprio nel punto
+ * in cui si guarda per sapere quale è quale.
+ *
+ * Perché qui e non in `index.html`. Quello è un sorgente: cambiarlo cambia
+ * l'app che l'utente scarica, cioè è un rilascio, e servirebbe una variabile
+ * nuova per farlo tornare indietro. La copia costruita invece vive solo
+ * nell'albero di lavoro di chi impacchetta (e nel runner, che viene buttato
+ * via), quindi il pacchetto ufficiale non la vede mai. È la stessa idea del
+ * manifest: si riscrive la copia, non l'originale.
+ *
+ * `null` e non il testo invariato: chi chiama deve fermarsi, non andare avanti
+ * credendo di aver cambiato qualcosa. Una pagina senza titolo servirebbe
+ * comunque "Reportini" — quello dell'ufficiale, o il nome del file — e il
+ * pacchetto di prova sarebbe sbagliato in un modo che nessuno vede.
+ */
+export function conTitoloDev(html) {
+  const titolo = /<title>[^<]*<\/title>/;
+  if (!titolo.test(html)) return null;
+  return html.replace(titolo, `<title>${IDENTITA_DEV.productName}</title>`);
+}
+
+/**
  * Perché questo manifest non è quello ufficiale, una frase per motivo.
  *
  * Vuota quando va bene: è il caso che il rilascio richiede. Guarda anche la
@@ -221,10 +272,36 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   if (azione === "dev") {
     const suffisso = suffissoDaAmbiente(process.argv.slice(3), process.env);
     const dev = identitaDev(manifest, suffisso);
+
+    // Il renderer si controlla **prima** di scrivere il manifest: applicata a
+    // metà — manifest dev e titolo ufficiale — l'identità è peggio che non
+    // applicata, perché il pacchetto si riconosce solo dal nome del file
+    // scaricato, che è il posto sbagliato dove accorgersene.
+    if (!existsSync(RENDERER)) {
+      console.error(
+        "ERRORE: manca electron/renderer/index.html, quindi il titolo della finestra " +
+          'resterebbe "Reportini".\nCostruisci prima il renderer: ' +
+          "bun run build && node scripts/copia-renderer.mjs",
+      );
+      process.exit(1);
+    }
+    const conTitolo = conTitoloDev(readFileSync(RENDERER, "utf8"));
+    if (conTitolo === null) {
+      console.error(
+        "ERRORE: electron/renderer/index.html non ha nessun <title>: " +
+          "niente su cui scrivere l'identità dev.",
+      );
+      process.exit(1);
+    }
+
     writeFileSync(MANIFEST, `${JSON.stringify(dev, null, 2)}\n`, "utf8");
+    writeFileSync(RENDERER, conTitolo, "utf8");
     console.log(
       `Identità dev applicata in electron/package.json: ${dev.productName} ` +
         `${dev.version}, cartella "${dev.name}", installer "${dev.build.win.artifactName}".`,
+    );
+    console.log(
+      `Titolo della finestra in electron/renderer/index.html: "${IDENTITA_DEV.productName}".`,
     );
     console.log(
       "Nessuna release, nessun tag, nessun commit: solo il pacchetto di questa macchina.",

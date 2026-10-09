@@ -26,11 +26,18 @@ const testo = readFileSync(WORKFLOW, "utf-8");
  * Tolgere i `\` è quello che rende i comandi riconoscibili: `gh release edit
  * "$VERSIONE" \` seguito da `--title` è un comando solo, e cercarlo diventa
  * cercare la sua testa e i suoi flag nella stessa stringa.
+ *
+ * `\r?\n` e non `\n`: su un working copy Windows con `core.autocrlf` il file
+ * arriva qui in CRLF, e un `\` seguito da CR e LF non è più una continuazione
+ * — il test diventava rosso per come era scritto il file, non per quello che
+ * il workflow fa. Nel repository (e sul runner, che parte dal repository) il
+ * file è in LF: la forma che conta è quella, e questa riga la accetta
+ * comunque.
  */
 function da(segno: string) {
   const indice = testo.indexOf(segno);
   expect(indice, `non trovo "${segno}" nel workflow`).toBeGreaterThan(-1);
-  return testo.slice(indice).replace(/ \\\n\s*/g, " ");
+  return testo.slice(indice).replace(/ \\\r?\n\s*/g, " ");
 }
 
 describe("Il rilascio desktop sopravvive a una release che esiste già", () => {

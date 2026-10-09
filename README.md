@@ -358,10 +358,34 @@ e ognuna delle differenze chiude un modo diverso di pestare i piedi all'app inst
 | `appId` | `app.reportini.desktop` | `app.reportini.desktop.dev` | installazione e disinstallazione restano due cose distinte |
 | `build.publish` | la release GitHub | **`null`**, e `null` anche in `build.nsis.publish` | senza menù (`resources/app-update.yml`) non c'è nessun canale da cui aggiornarsi, e `caricaAggiornatore` (`electron/main.cjs`) non accende nemmeno l'aggiornatore. **Non basta togliere la sezione**: senza `publish`, electron-builder ricava il fornitore dal campo `repository` — che qui punta al repository ufficiale — e il menù lo scrive lo stesso. Verificato nel suo sorgente: `PublishManager.getPublishConfigs` risponde `null` solo se `publish` è `null`, altrimenti `getPublishConfigsForUpdateInfo` ricade sul repository |
 | versione | `0.4.3` | `0.4.3-dev.abc1234` | `app.getVersion()` è quello che l'app mostra nelle impostazioni: la prova si riconosce da dentro |
+| nome dentro l'app | `Reportini` | `Reportini Dev` | intestazione, schermata di apertura e pagina di accesso lo leggono da un posto solo (`src/lib/nome.ts`), con il valore ufficiale come predefinito: senza la variabile della build — la web, l'app installata, i test — non cambia niente |
+| `<title>` della pagina costruita | `Reportini` | `Reportini Dev` | la barra della finestra la decide il **titolo della pagina**, non `productName` (`BrowserWindow` non ha un `title` suo): con le due app aperte insieme — che è il caso normale mentre si prova — è l'unica cosa che dice quale si sta guardando. Lo riscrive lo stesso script, in `electron/renderer/index.html`, cioè nella **copia costruita**: `index.html` e `src/` restano quelli dell'ufficiale, quindi il pacchetto ufficiale non ha niente da disfare |
+
+Il nome di prova lo scrivono due cose diverse: la variabile `VITE_NOME_APP` della build (dentro l'app,
+via `src/lib/nome.ts`) e `IDENTITA_DEV.productName` dello script (nella pagina costruita, cioè nella
+barra della finestra). Niente li tiene allineati da sé, e se divergono la stessa app si presenta in due
+modi senza che nessun errore lo dica: a pretendere che siano lo stesso nome è `tests/nome-app.test.ts`,
+insieme all'altro accordo che nessun compilatore vede — il `<title>` di `index.html` uguale al nome
+predefinito del modulo, perché è quello che si vede prima che il JavaScript parta.
 
 Il workflow controlla il pacchetto **dopo** averlo costruito, perché l'uscita di `electron-builder` è
 verde anche quando il pacchetto è quello sbagliato: dentro deve esserci `Reportini Dev.exe`, non deve
-esistere nessun `resources/app-update.yml`, e nessun installer può chiamarsi come quello ufficiale.
+esistere nessun `resources/app-update.yml`, nessun installer può chiamarsi come quello ufficiale, e
+dentro `resources/app.asar` il titolo dev c'è — si cerca lì e non nel sorgente, perché è il pacchetto
+che si scarica. L'identità dev si applica **dopo** la copia del renderer: al contrario quella copia
+cancellerebbe il titolo appena riscritto, e il pacchetto uscirebbe dev nel nome e ufficiale nella barra.
+
+**A quale backend si collega.** Agli stessi dell'app vera, di proposito: il job dichiara
+`environment: prod`, quindi prende le stesse `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` e lo stesso
+`VITE_GOOGLE_CLIENT_ID` del rilascio. Vuol dire che il pacchetto di prova vede il **progetto Supabase
+vero** (lo stesso ref di `SUPABASE_PROJECT_REF`), la stessa Edge Function `google-token` con lo stesso
+client secret, e lo stesso file per account nello Storage: si entra con l'account vero e, salvando dai
+dati di prova, si sovrascrive la copia online vera. Il database **locale** invece è separato
+(`%APPDATA%\Reportini Dev\reportini.sqlite`), perché è il `productName` a decidere la cartella dei dati.
+Non è una dimenticanza: la prova che serve riguarda l'accesso, e un backend finto proverebbe un'altra
+cosa. Per provare senza toccare i dati veri servirebbe un secondo progetto Supabase — con il suo
+`setup.sql`, il suo bucket e un client Google suo — e quindi una coppia di variabili `DEV_*` accanto a
+quelle di `prod`.
 
 Dall'altra parte il rilascio ufficiale esegue `scripts/identita-desktop.mjs controlla` **prima** di
 impacchettare. L'identità dev si applica in locale, e in locale il file resta sul disco: un
