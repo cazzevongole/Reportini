@@ -732,6 +732,65 @@ describe("Salvataggio online nelle impostazioni", () => {
   });
 });
 
+describe("Scheda Google Calendar", () => {
+  const CHIAVE_TOKEN = "reportini.google.token";
+  const CHIAVE_ERRORE = "reportini.google.errore";
+
+  afterEach(() => {
+    localStorage.removeItem(CHIAVE_TOKEN);
+    localStorage.removeItem(CHIAVE_ERRORE);
+  });
+
+  it("un collegamento morto non viene mostrato come collegato", async () => {
+    // Lo stato da cui è nata la segnalazione, letto davvero dall'app: un
+    // refresh token ancora in memoria (quindi `isConnected()` vero) e in
+    // memoria l'ultimo rifiuto di Google. La scheda diceva "Collegato come …"
+    // e nascondeva il pulsante per rimediare.
+    await entraCome("utente@esempio.it");
+    localStorage.setItem(
+      CHIAVE_TOKEN,
+      JSON.stringify({
+        accessToken: "ya29.vecchio",
+        refreshToken: "1//rifiutato",
+        expiresAt: Date.now() - 1000,
+      }),
+    );
+    localStorage.setItem(
+      CHIAVE_ERRORE,
+      "Il collegamento con Google non è più valido: ricollegalo dalle impostazioni.",
+    );
+
+    await monta("/panel/impostazioni");
+
+    const testo = contenitore.textContent ?? "";
+    // Il motivo resta leggibile…
+    expect(testo).toContain("non è più valido");
+    // …e la scheda non sostiene il contrario, né lascia l'utente senza sapere
+    // come rimediare.
+    expect(testo).not.toContain("Collegato come");
+    expect(testo).toContain("Ricollega il calendario");
+  });
+
+  it("un collegamento che funziona resta collegato, e si sincronizza da lì", async () => {
+    await entraCome("utente@esempio.it");
+    localStorage.setItem(
+      CHIAVE_TOKEN,
+      JSON.stringify({
+        accessToken: "ya29.buono",
+        refreshToken: "1//buono",
+        expiresAt: Date.now() + 3_600_000,
+      }),
+    );
+
+    await monta("/panel/impostazioni");
+
+    const testo = contenitore.textContent ?? "";
+    expect(testo).toContain("Collegato come utente@esempio.it");
+    expect(testo).toContain("Sincronizza in attesa");
+    expect(testo).not.toContain("Ricollega il calendario");
+  });
+});
+
 describe("Accesso obbligatorio", () => {
   it("la pagina di accesso si vede anche senza sessione", async () => {
     await monta("/accedi");

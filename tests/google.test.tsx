@@ -354,6 +354,52 @@ describe("Ritorno da Google", () => {
     await expect(completaAccesso()).resolves.toBe("solo-account");
     expect(readErroreCollegamento()).toMatch(/audience/);
   });
+
+  it("una richiesta che non arriva non accusa la funzione di non essere pubblicata", async () => {
+    // Il caso vero: la funzione è pubblicata e risponde, ma la richiesta non
+    // esce da qui (rete assente, proxy, estensione). Il vecchio messaggio
+    // diceva "controlla che la funzione google-token sia pubblicata", che è
+    // una cosa che non si era verificata e che manda a cercare nel posto
+    // sbagliato: qui si dice quello che si sa, e il resto va nel log.
+    statoRitorno("abc123");
+    tornaCon({ code: "il-code", state: "abc123" });
+    const causa = new TypeError("Failed to fetch");
+    const righe: string[] = [];
+    const spia = vi.spyOn(console, "error").mockImplementation((...argomenti: unknown[]) => {
+      righe.push(argomenti.map(String).join(" "));
+    });
+    fetchMock.mockImplementation(async (url: unknown) => {
+      if (String(url).includes("/functions/v1/")) throw causa;
+      return rispostaJson({});
+    });
+
+    await expect(completaAccesso()).resolves.toBe("solo-account");
+
+    const messaggio = readErroreCollegamento() ?? "";
+    expect(messaggio).toMatch(/non raggiungibile/i);
+    expect(messaggio).not.toMatch(/pubblicata/);
+    // L'utente entra lo stesso, e sa dove rimetterlo.
+    expect(messaggio).toMatch(/senza calendario/);
+    // La causa vera, senza la quale non c'è niente su cui lavorare.
+    expect(righe.join("\n")).toContain("Failed to fetch");
+    spia.mockRestore();
+  });
+
+  it("un 404 è la funzione che manca, e viene detto come tale", async () => {
+    // È l'unico caso in cui "non è pubblicata" è vero: Supabase risponde 404
+    // con `{"code":"NOT_FOUND"}` a un indirizzo che non è nessuna funzione.
+    statoRitorno("abc123");
+    tornaCon({ code: "il-code", state: "abc123" });
+    risposte.set("scambio", {
+      dati: { code: "NOT_FOUND", message: "Requested function was not found" },
+      stato: 404,
+    });
+
+    await expect(completaAccesso()).resolves.toBe("solo-account");
+
+    expect(readErroreCollegamento()).toMatch(/non è pubblicata/i);
+    expect(readErroreCollegamento()).toMatch(/functions deploy google-token/);
+  });
 });
 
 describe("Rinnovo in silenzio", () => {
@@ -397,7 +443,7 @@ describe("Rinnovo in silenzio", () => {
     await expect(accessToken()).rejects.toThrow(/ricollegalo/i);
   });
 
-  it("un consenso revocato da Google viene detto all'utente", async () => {
+  it("un consenso revocato da Google viene detto all'utente, e il token morto non resta", async () => {
     scriveToken("ya29.vecchio", "1//refresh", -1000);
     risposte.set("rinnovo", {
       dati: {
@@ -408,6 +454,55 @@ describe("Rinnovo in silenzio", () => {
 
     await expect(accessToken()).rejects.toThrow(/non è più valido/i);
     expect(readErroreCollegamento()).toMatch(/non è più valido/i);
+    // Il refresh token rifiutato da Google non torna valido da solo: se
+    // restasse, `isConnected()` direbbe di sì, le impostazioni direbbero
+    // "Collegato" e ogni salvataggio ritenterebbe un rinnovo impossibile.
+    expect(readToken()).toBeNull();
+    expect(isConnected()).toBe(false);
+    // E la via d'uscita c'è: senza token, il tentativo dopo lo dice.
+    await expect(accessToken()).rejects.toThrow(/ricollegalo/i);
+  });
+
+  it("anche un 401 di sessione scaduta lascia il collegamento da rifare", async () => {
+    // La funzione risponde 401 per due motivi — sessione che non vale, consenso
+    // che non vale più — e la via d'uscita è la stessa: rifare l'accesso, che
+    // riporta anche il consenso del calendario. Per questo non si distinguono.
+    scriveToken("ya29.vecchio", "1//refresh", -1000);
+    risposte.set("rinnovo", {
+      dati: { errore: "Serve un account Reportini per questa operazione." },
+      stato: 401,
+    });
+
+    await expect(accessToken()).rejects.toThrow(/Serve un account/i);
+    expect(isConnected()).toBe(false);
+    expect(readErroreCollegamento()).toMatch(/Serve un account/i);
+  });
+
+  it("una richiesta che non arriva non cancella il collegamento", async () => {
+    scriveToken("ya29.vecchio", "1//refresh", -1000);
+    fetchMock.mockImplementation(async (url: unknown) => {
+      if (String(url).includes("/functions/v1/")) throw new TypeError("Failed to fetch");
+      return rispostaJson({});
+    });
+
+    await expect(accessToken()).rejects.toThrow(/non raggiungibile/i);
+    // Rete assente, non un consenso ritirato: il token è ancora buono, e
+    // buttarlo via vorrebbe dire chiedere all'utente un consenso che ha già
+    // dato appena la rete torna.
+    expect(isConnected()).toBe(true);
+    expect(readToken()?.refreshToken).toBe("1//refresh");
+  });
+
+  it("un rifiuto che non è un 401 non cancella il collegamento", async () => {
+    scriveToken("ya29.vecchio", "1//refresh", -1000);
+    risposte.set("rinnovo", {
+      dati: { errore: "Google ha risposto male, ma il consenso c'è ancora." },
+      stato: 400,
+    });
+
+    await expect(accessToken()).rejects.toThrow(/consenso c'è ancora/);
+    expect(isConnected()).toBe(true);
+    expect(readToken()).not.toBeNull();
   });
 });
 
