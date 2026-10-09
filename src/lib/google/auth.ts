@@ -40,17 +40,29 @@ const ERRORE_KEY = "reportini.google.errore";
 const RITORNO_KEY = "reportini.google.ritorno";
 
 /**
- * Dove il pacchetto desktop lascia il rientro, subito prima di ricaricare la
- * finestra.
+ * Il rientro che il pacchetto desktop ha ricevuto, in attesa di chi lo chiede.
  *
- * Deve coincidere con `CHIAVE_ARRIVO` di `electron/server-locale.cjs`: uno la
- * scrive, l'altro la legge, e i due non possono accorgersi del disaccordo.
- * Sta in `sessionStorage` e non nell'URL per un motivo preciso: l'URL con
- * `?code=` è ciò che il server riconosce come rientro, quindi rimettercelo
- * farebbe sembrare un rientro nuovo e l'app si ricaricherebbe da sola all'
- * infinito.
+ * **Perché non sta nella pagina.** Prima il main lo scriveva nella
+ * `sessionStorage` della finestra e poi la ricaricava, contando che a leggerlo
+ * fosse il documento nuovo. Non era vero: `finestra.show()` e `finestra.focus()`
+ * svegliano il documento che c'è già — supabase-js risponde a `visibilitychange`
+ * con un `SIGNED_IN` — e la finestra dell'app se lo prendeva da sotto il naso.
+ * Così lo scambio partiva da un documento che stava per sparire: la richiesta
+ * veniva uccisa dal ricaricamento, senza un messaggio in console, e l'app finiva
+ * per dire "backend non raggiungibile" e rifare un accesso che non serviva. Nei
+ * log della funzione, di quella richiesta non è arrivato niente.
+ *
+ * Adesso il rientro resta nel main process (`electron/main.cjs`, che lo consegna
+ * sul canale `google:arrivo`) e il renderer lo chiede quando è pronto: chi lo
+ * chiede lo consuma, e a chiederlo è solo il documento che vive. L'URL resta
+ * pulito per il motivo che spiega `cERitornoDaChiudere`.
  */
-const ARRIVO_KEY = "reportini.google.arrivo";
+let arrivoDesktop = "";
+
+/** Il main ha consegnato il rientro: da qui in poi lo legge `completaAccesso`. */
+export function impostaArrivoDesktop(query: string | null): void {
+  arrivoDesktop = query ?? "";
+}
 
 const PROFILE_ENDPOINT = "https://www.googleapis.com/oauth2/v3/userinfo";
 const AUTHORIZE_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth";
@@ -193,23 +205,19 @@ function leggiRITORNO(): Ritorno | null {
   }
 }
 
-/** Il rientno lasciato dal main process, vuoto se non c'è. */
+/** Il rientro consegnato dal main process, vuoto se non c'è. */
 function leggiArrivo(): string {
-  try {
-    return sessionStorage.getItem(ARRIVO_KEY) ?? "";
-  } catch {
-    return "";
-  }
+  return arrivoDesktop;
 }
 
 /**
  * C'è un rientorno da chiudere?
  *
- * Nell'URL c'è solo sulla web: sul desktop il main process lo mette in
- * `sessionStorage` prima di ricaricare, perché rimetterlo nell'URL farebbe
- * sembrare il rientro a un rientro e l'app si ricaricherebbe da sola all'
- * infinito. Chi deve decidere se chiamare `completaAccesso()` non può
- * controllare solo l'URL, o sul desktop non chiamerebbe mai.
+ * Nell'URL c'è solo sulla web: sul desktop il main process lo tiene per sé e lo
+ * consegna al renderer, perché rimetterlo nell'URL farebbe sembrare il rientro a
+ * un rientro e l'app si ricaricherebbe da sola all'infinito. Chi deve decidere se
+ * chiamare `completaAccesso()` non può controllare solo l'URL, o sul desktop non
+ * chiamerebbe mai.
  */
 export function cERitornoDaChiudere(): boolean {
   if (leggiArrivo()) return true;
@@ -402,9 +410,22 @@ async function chiamaBackend<T>(corpo: Record<string, unknown>): Promise<T> {
   return dati;
 }
 
-/** Come entrava prima: profilo e basta, senza calendario. */
+/**
+ * Come entrava prima: profilo e basta, senza calendario.
+ *
+ * **Solo se una sessione non c'è già.** Questo è il ripiego di un
+ * ricollegamento del calendario andato storto, e non un motivo per buttare
+ * fuori chi è già dentro: senza il controllo qui sotto, un guasto di rete di
+ * mezzo secondo faceva sparire una sessione valida e ricomparire la schermata
+ * di accesso. L'utente premeva "Ricollega" e si ritrovava a rifare l'accesso,
+ * che è un'altra cosa da quella che aveva chiesto. Con la sessione in piedi il
+ * calendario resta scollegato, la ragione sta nelle impostazioni, e riprovare
+ * costa un clic invece di un accesso intero.
+ */
 async function accessoSupabaseSemplice(): Promise<void> {
   if (!supabase) return;
+  const { data: corrente } = await supabase.auth.getSession();
+  if (corrente.session) return;
   const rientro = urlDiRitorno(window.location.origin, baseRoutte());
   // `skipBrowserRedirect` fa restare l'URL a noi invece di navigare: serve
   // perché sul desktop l'indirizzo va aperto nel browser di sistema, dove
@@ -434,9 +455,9 @@ export type EsitoAccesso = "calendario" | "solo-account" | "nessuno";
  * si può fare è tirare a indovinare — cosa che è già costato due release.
  */
 export async function completaAccesso(): Promise<EsitoAccesso> {
-  // Sul desktop il rientro è in `sessionStorage`, non nell'URL: lo mette lì il
-  // main process prima di ricaricare la finestra. Sulla web non esiste un
-  // main process e tutto torna da Google nell'indirizzo, quindi si prova lì.
+  // Sul desktop il rientro non è nell'URL: lo tiene il main process e ce lo
+  // consegna quando lo chiediamo. Sulla web un main process non esiste e tutto
+  // torna da Google nell'indirizzo, quindi si prova lì.
   const dallUrl = new URL(window.location.href).searchParams;
   const dallArrivo = new URLSearchParams(leggiArrivo());
   const presa = dallArrivo.get("code") || dallArrivo.get("error") ? dallArrivo : dallUrl;
@@ -446,7 +467,9 @@ export async function completaAccesso(): Promise<EsitoAccesso> {
   const erroreGoogle = presa.get("error");
   const ritorno = leggiRITORNO();
   sessionStorage.removeItem(RITORNO_KEY);
-  sessionStorage.removeItem(ARRIVO_KEY);
+  // Il rientro si consuma adesso, chi lo ha letto: un documento nuovo non deve
+  // ritrovarselo e rifare lo scambio con lo stesso codice.
+  impostaArrivoDesktop(null);
 
   if (erroreGoogle) {
     ripulisciUrl();

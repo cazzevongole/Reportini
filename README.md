@@ -804,7 +804,10 @@ perché l'accesso funziona ma il calendario no.
 
 Se i segreti non sono caricati la funzione risponde `503` con il nome del segreto mancante. Se
 il backend non è pronto, **l'accesso non si blocca**: l'app ripiega su Supabase da sola, e le
-impostazioni dicono cosa manca.
+impostazioni dicono cosa manca. Il ripiego però parte **solo se una sessione non c'è già**: chi è
+già dentro (è il caso di chi preme "Ricollega" dalle impostazioni) resta dentro, col calendario
+scollegato e la ragione scritta lì. Rifare l'accesso al posto suo sarebbe un'altra cosa da quella
+che ha chiesto, e gli costerebbe un accesso intero per un guasto di rete di mezzo secondo.
 
 Senza backend l'app funziona lo stesso: ogni appuntamento si esporta in formato `.ics`, e
 l'area Calendar resta semplicemente non collegata.
@@ -1205,10 +1208,22 @@ web. Il `code` non finisce nel `renderer.log`.
 da quei parametri, quindi chiedere alla finestra di caricare `/?code=…` la farebbe sembrare un
 rientro nuovo: il main rimanda la finestra, la finestra chiede di nuovo, e l'app si ricarica
 all'infinito. Il sintomo era "la pagina non si aggiorna" e nessun errore — il renderer non arrivava
-mai a mostrare niente. Quindi i parametri passano dalla `sessionStorage` della pagina corrente
-(`riportaAllaApp` in `electron/server-locale.cjs`, che li scrive e poi porta la finestra a un
-indirizzo pulito) e `completaAccesso()` li legge da lì quando non arrivano dall'URL, cioè
-sempre sul desktop e mai sulla web.
+mai a mostrare niente. Quindi i parametri **restano nel main process** (`riportaRitorno` in
+`electron/main.cjs`), che li consegna al renderer solo quando il renderer li chiede
+(`arrivoGoogle` nel preload): chi li chiede li consuma. `completaAccesso()` li legge da lì quando
+non arrivano dall'URL, cioè sempre sul desktop e mai sulla web.
+
+**Il rientro non passa dalla pagina, e nemmeno questo è un dettaglio.** Il primo tentativo lo
+scriveva nella `sessionStorage` del documento aperto, subito prima di ricaricare la finestra,
+contando che a leggerlo fosse quello nuovo. Ma `show()` e `focus()` — che servono a riportare l'app
+davanti all'utente — svegliano *il documento che c'è già*: supabase-js risponde a `visibilitychange`
+con un `SIGNED_IN`, e la finestra dell'app se lo prendeva da sotto il naso. Lo scambio partiva da un
+documento che stava per essere distrutto, e la richiesta moriva con lui: nessun messaggio in console,
+niente nei log della funzione, e l'app che diceva "backend non raggiungibile" e rifaceva un accesso
+che non serviva. Il consenso si fa nel browser di sistema, quindi l'app è **sempre** coperta quando
+il rientro arriva: non era un caso raro, era il caso normale. Tenere il rientro nel main process, e
+consegnarlo a chi lo chiede, chiude la corsa per costruzione — non c'è niente nella pagina che possa
+essere consumato un istante prima di sparire.
 
 **Perché una porta fissa e non una libera.** L'indirizzo di rientro va registrato *prima*, in Google e
 in Supabase, e un numero che cambia a ogni avvio non si può registrare. Se la porta è occupata se ne

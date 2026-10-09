@@ -34,21 +34,18 @@ export interface FinestraApp {
   show(): void;
   focus(): void;
   webContents: {
-    executeJavaScript(codice: string): Promise<unknown>;
     loadURL(indirizzo: string): Promise<void>;
   };
 }
 
 /**
- * Porta il rientro dentro l'app e riporta la finestra su un indirizzo pulito.
- * Solleva se non riesce a passare i parametri: perderli in silenzio sarebbe
- * peggio.
+ * Riporta avanti la finestra e la fa ripartire da un indirizzo pulito. Il
+ * rientro non passa di qui: lo tiene il main process e lo consegna al renderer,
+ * che è l'unico che può consumarlo senza rischiare di morire a metà scambio.
+ *
+ * `false` se la finestra non c'è più; solleva se il ricaricamento non riesce.
  */
-export declare function riportaAllaApp(
-  finestra: FinestraApp,
-  origine: string,
-  query: string,
-): Promise<boolean>;
+export declare function riportaAllaApp(finestra: FinestraApp, origine: string): Promise<boolean>;
 
 /** La richiesta è il ritorno di Google? */
 export declare function eRitorno(url: URL): boolean;
@@ -61,5 +58,4 @@ export declare function queryRitorno(parametri: URLSearchParams): string;
 
 export declare const TIPI: Record<string, string>;
 export declare const PAGINA_ATTESA: string;
-export declare const CHIAVE_ARRIVO: string;
 export declare const CHIAVI_RITORNO: string[];

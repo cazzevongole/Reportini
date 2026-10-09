@@ -20,6 +20,10 @@ contextBridge.exposeInMainWorld("reportini", {
   // Il consenso di Google va visto dal browser di sistema: dentro la
   // finestra di Electron non viene accettato.
   apriUrlEsterno: (url) => ipcRenderer.invoke("browser:apri", url),
+  // Il rientro ricevuto dalla porta locale, che aspetta di essere chiesto.
+  // Si chiede una volta sola e chi lo chiede lo consuma: è così che a fare lo
+  // scambio è il documento che vive, non quello che il main sta ricaricando.
+  arrivoGoogle: () => ipcRenderer.invoke("google:arrivo"),
   // Aggiornamento automatico: il main tiene il stato (controllo, scarico,
   // pronto) e lo ripubblica a ogni finestra. `null` vuol dire "qui gli
   // aggiornamenti non esistono", cioè app aperta dal sorgente.
