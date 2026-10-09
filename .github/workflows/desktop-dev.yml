@@ -61,15 +61,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  pacchetto-dev:
-    # Immagine bloccata, non "latest": qui si prova un pacchetto, e non si
-    # vuole che il sistema su cui lo si prova cambi da solo.
-    runs-on: windows-latest
-    # Le variabili VITE_* stanno nell'ambiente "prod", e GitHub le rende
-    # disponibili solo ai job che lo dichiarano. Il progetto Supabase e il
-    # client Google sono gli stessi dell'ufficiale di proposito: la correzione
-    # da provare è nell'accesso, e un backend finto proverebbe un'altra cosa.
-    environment: prod
+  test:
+    # I test girano su Linux, che è dove la suite è provata: è lì che la fa
+    # girare la CI, e qualche prova legge i file del repository come testo.
+    # Su Windows quei file arrivano con i fine riga del sistema e i `\` di
+    # continuazione non si uniscono più: `tests/rilascio.test.ts` fallirebbe
+    # per un motivo che non c'entra con la correzione da provare, e un
+    # pacchetto di prova che non si costruisce per un falso rosso è peggio di
+    # un pacchetto che non si costruisce affatto.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
@@ -90,6 +90,32 @@ jobs:
         # Prima di costruire: un pacchetto da provare a mano è tempo di
         # qualcuno, e non si spende per una correzione che non passa la suite.
         run: bun run test
+
+  pacchetto-dev:
+    needs: test
+    # Immagine bloccata, non "latest": qui si prova un pacchetto, e non si
+    # vuole che il sistema su cui lo si prova cambi da solo.
+    runs-on: windows-latest
+    # Le variabili VITE_* stanno nell'ambiente "prod", e GitHub le rende
+    # disponibili solo ai job che lo dichiarano. Il progetto Supabase e il
+    # client Google sono gli stessi dell'ufficiale di proposito: la correzione
+    # da provare è nell'accesso, e un backend finto proverebbe un'altra cosa.
+    environment: prod
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - uses: actions/setup-node@v7
+        with:
+          # La stessa versione del job che impacchetta il rilascio ufficiale:
+          # qui non si sta provando Node, si sta provando il pacchetto.
+          node-version: 20
+
+      - name: Dipendenze
+        run: bun install --frozen-lockfile
 
       - name: Controlla la configurazione
         # shell: bash esplicito perché il runner Windows usa PowerShell, dove
